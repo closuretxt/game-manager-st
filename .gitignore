@@ -1,0 +1,6 @@
+# File
+/setup
+/base
+/.vscode
+*.log
+*.txt

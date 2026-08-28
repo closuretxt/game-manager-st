@@ -1,0 +1,11 @@
+{
+    "display_name": "Game Manager",
+    "loading_order": 9,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "actua",
+    "version": "0.1.0",
+    "homePage": ""
+}
