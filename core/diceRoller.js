@@ -27,12 +27,12 @@ const SYSTEM_PROMPT = [
     "Routine, guaranteed, or purely narrative actions do NOT need a roll.",
     "If a roll IS needed, respond with ONLY XML (no markdown fences, no prose):",
     '<roll title="<short action title, e.g. Use Fireball on Goblin>">',
-    '  <tier name="Critical Failure" chance="10">Fireball explodes in your face</tier>',
-    '  <tier name="Failure" chance="25">You launch and miss</tier>',
+    '  <tier name="Critical Failure" chance="10">The mage\'s Fireball explodes in her face</tier>',
+    '  <tier name="Failure" chance="25">She launches the spell and misses</tier>',
     '  <tier name="Success" chance="50">The blast engulfs the target</tier>',
     '  <tier name="Critical Success" chance="15">The goblin is vaporized instantly</tier>',
     "</roll>",
-    "Always provide exactly 4 tiers in that order. Chances are percentages of a 100% total. Outcome lines are short, vivid, second person (\"Fireball explodes in your face\").",
+    "Always provide exactly 4 tiers in that order. Chances are percentages of a 100% total. Outcome lines are short, vivid, and ALWAYS third person, referring to the actor by name (from the party list or the scene) — never \"you\"/\"your\"/\"I\", even though the player's action is written in first person (\"The mage's Fireball explodes in her face\").",
     "If no roll is needed respond with ONLY: <roll needs=\"false\"/>",
 ].join("\n");
 

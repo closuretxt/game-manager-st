@@ -38,10 +38,10 @@ const SYSTEM_PROMPT = [
     '    <clash title="Knight\'s Slash vs Goblin A\'s Swing">',
     '      <side who="party" actor="Knight" speed="3" action="Slash at Goblin A"/>',
     '      <side who="enemy" actor="Goblin A" speed="2" action="Swing club"/>',
-    '      <tier name="Critical Failure" chance="10">Your blade glances off; the club cracks your ribs</tier>',
-    '      <tier name="Failure" chance="25">You miss; the goblin\'s swing connects</tier>',
-    '      <tier name="Success" chance="50">Your slash lands before his club</tier>',
-    '      <tier name="Critical Success" chance="15">You cleave through his guard</tier>',
+    '      <tier name="Critical Failure" chance="10">The knight\'s blade glances off; the club cracks her ribs</tier>',
+    '      <tier name="Failure" chance="25">The knight misses; the goblin\'s swing connects</tier>',
+    '      <tier name="Success" chance="50">The knight\'s slash lands before the goblin\'s club</tier>',
+    '      <tier name="Critical Success" chance="15">The knight cleaves through the goblin\'s guard</tier>',
     '    </clash>',
     '  </clashes>',
     "",
@@ -49,7 +49,7 @@ const SYSTEM_PROMPT = [
     "- Pair each party-side action with the MOST RELEVANT opposing enemy action (match targets from the action text). One enemy action opposes at most one party-side action per group.",
     "- An action with no sensible opponent becomes a SINGLE-SIDED group: one <side> entry and 4 tiers describing how well it goes.",
     "- Multiple enemies: one group per pair of actions — separate chances for each group of actions.",
-    "- Tier outcome lines are short, vivid, second person for party actors (\"Your slash lands\") and third person for enemies (\"The goblin's swing connects\").",
+    "- Tier outcome lines are short, vivid, and ALWAYS third person, referring to EVERY actor by name — including player characters (\"The knight's slash lands\"; \"The goblin's swing connects\"). Never use \"you\"/\"your\"/\"I\" in outcome lines, even for the player's own action.",
     "- Every action on either side must appear in exactly one group.",
 ].join("\n");
 
