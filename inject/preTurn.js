@@ -1,5 +1,6 @@
-// Event wiring for pre-turn triggers, agentic resource updates, and snapshot
-// rollbacks.
+// Event wiring for the PRE-TURN stage: pre-pass routing, specialists, and
+// snapshot rollbacks. The agentic tracker pass lives in inject/postTurn.js
+// (it runs AFTER the AI reply lands, per the post-pass contract).
 //
 // ORDERING MATTERS: everything the LLM should see for THIS turn runs inside
 // the AWAITED GENERATION_AFTER_COMMANDS handler (SillyTavern's event emitter
@@ -7,56 +8,22 @@
 //
 //   player sends action / swipes
 //     └─ GENERATION_AFTER_COMMANDS (awaited)
-//          ├─ dice rolls / transactions (triggered by the action text)
-//          └─ agentic pass — analyses the exchange, applies tool tags + warnings
+//          ├─ pre-pass router LLM judges the action (core/prePass.js)
+//          └─ specialists execute the plan (core/triggerWatcher.js)
 //     └─ prompt assembly — {{gamemaster-*}} macros substitute the buffers
 //     └─ story generation — sees fresh, relevant state only
 //
 // Snapshots: the pre-change state of each tracked generation is snapshotted
 // (last 5 kept). Deleting the AI message, swiping it, or re-running the pass
 // rolls the state back to that baseline.
-//
-// The agentic pass is gated behind the "Agentic resource updates" setting
-// (off by default). buildPreTurnPrompt() remains the placeholder seam for
-// future pre-turn logic (relevant-info gating, action modification, maps).
 
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "../core/constants.js";
 import { logDebug } from "../core/debug.js";
 import { stateManager } from "../core/stateManager.js";
-import { runAgentPass } from "../core/agentRunner.js";
 import { restoreSnapshot, restoreLastDeleted } from "../core/snapshots.js";
 import { handlePreTurn } from "../core/triggerWatcher.js";
 import { clearHigh, clearLow } from "../core/injection.js";
-
-function updatesEnabled() {
-    const s = extension_settings[extensionName];
-    return !!(s.enabled && s.auto_update);
-}
-
-export function buildPreTurnPrompt(chatContext) {
-    // PLACEHOLDER: future pre-turn logic goes here.
-    logDebug("preTurn: buildPreTurnPrompt called (placeholder)");
-    return "";
-}
-
-// Manual run: reruns the agentic pass on the last AI message. If a snapshot
-// baseline already exists for it, the state is rolled back first so changes
-// don't stack on top of the previous run.
-export async function manualRun() {
-    const st = getContext();
-    if (!updatesEnabled()) {
-        logDebug("manual run skipped — agentic updates disabled");
-        return 0;
-    }
-    const mesId = st.chat.length - 1;
-    const msg = st.chat[mesId];
-    if (!msg || msg.is_user) {
-        logDebug("manual run skipped — no AI message found");
-        return 0;
-    }
-    return runAgentPass("manual", mesId);
-}
 
 export function initPreTurn() {
     const st = getContext();
@@ -112,10 +79,4 @@ export function initPreTurn() {
         }
     });
 
-    // GENERATION_STARTED — pre-turn hook placeholder.
-    st.eventSource.on(st.event_types.GENERATION_STARTED, (...args) => {
-        const s = extension_settings[extensionName];
-        if (!s.enabled) return;
-        buildPreTurnPrompt(args); // seam for future logic
-    });
 }

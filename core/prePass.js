@@ -8,6 +8,9 @@
 //   transactions — implied shared-resource spends/gains (signed delta)
 //   warnings     — imminent-need remarks to set/clear
 //   relevant     — shared resources worth injecting this turn
+//   notes        — free-form contextual remarks worth injecting this turn
+//   rewrite      — clarified version of a vague/contradictory action
+//                  (actions only, dialogue cropped out)
 //   nothing      — fast path: skip every specialist
 //
 // The pre-pass decides IF; the specialists (diceRoller, transactions) decide
@@ -25,21 +28,48 @@ import { parseAttrs } from "./toolParser.js";
 const MAX_CONTEXT_MESSAGES = 8;
 
 const SYSTEM_PROMPT = [
-    "You are the router of a tabletop-style roleplay game system.",
-    "You receive the recent scene, a snapshot of the tracked state, and the player's action.",
-    "Judge what the action implies and respond with ONLY XML tags (no markdown fences, no prose). Every tag is OPTIONAL — emit only what applies:",
+    "You are the PRE-PASS ROUTER of a tabletop-style roleplay game system that runs alongside a story engine LLM.",
+    "",
+    "YOUR OBJECTIVE:",
+    "Before every player action reaches the story engine, you judge what that action IMPLIES and decide what the game system must do this turn. You are the only gate: nothing is injected, rolled, or spent unless you say so. You do not write the story, you do not narrate, you do not talk to the player — you route.",
+    "",
+    "WHAT YOU RECEIVE:",
+    "- TRACKED STATE: the party (characters, skills, statuses), the party-wide SHARED resources (money, food, ammo...), active warnings, OPEN THREADS, and optionally enemies.",
+    "- OPEN THREADS: untracked/unfinished things the post-pass left for itself (ongoing trips with resources spent so far, half-done actions) and secrets hidden from the player. Use them to keep continuity (e.g. a <transaction> or <note> that accounts for the fuel already burned) and to reveal a secret ONLY when the scene genuinely demands it.",
+    "- RECENT SCENE: the last few messages of the roleplay.",
+    "- PLAYER ACTION: the message you must judge.",
+    "",
+    "CORE PRINCIPLES:",
+    "- Judge INTENT, not keywords. \"I hand him the coins\" implies a money transaction even though no resource is named; \"I swing at it again\" can need a roll even though no skill is named. Conversely, naming a skill or resource in a trivial context (\"I mention Fireball to the mage\") triggers NOTHING.",
+    "- Minimal injection. The story engine must stay lean: inject ONLY what THIS turn genuinely needs. Casual chat with no survival, combat, or resource stakes costs the player nothing — that is a feature, not a failure.",
+    "- When in doubt whether something is needed, leave it out. False negatives are cheap; context flooding is the one thing this system exists to prevent.",
+    "",
+    "OUTPUT FORMAT:",
+    "Respond with ONLY XML tags — no markdown fences, no prose, no explanations. Every tag is OPTIONAL; emit only what applies:",
     '  <roll needed="true" title="<short action title, e.g. Use Fireball on Goblin>"/>',
     '  <transaction resource="<shared resource name>" delta="<signed number, negative = spending>" comparison="<plain-language note, under 12 words>"/>',
     '  <warning action="set" name="<short name>" text="<under 15 words>"/>  or  <warning action="clear" name="<short name>"/>',
     '  <relevant names="<comma-separated shared resource names whose value matters this turn>"/>',
+    '  <note text="<short contextual remark the story engine should know this turn>"/>',
+    '  <rewrite text="<clarified version of the player\'s action, actions only>"/>',
     "  <nothing/>",
     "",
-    "Rules:",
-    "- <roll> ONLY when the outcome is genuinely uncertain AND consequential. Naming a skill in a trivial context (\"I mention Fireball to the mage\") does NOT need a roll; implicit actions (\"I swing at it again\") CAN need one.",
-    "- <transaction> ONLY for the party-wide shared resources listed in the snapshot. delta is negative when spending, positive when gaining. Omit the tag if none. Use delta=\"0\" only when the action mentions the resource without implying an amount.",
-    "- <warning> ONLY for imminent, concrete needs the player should prepare for (supplies running out, deadlines, approaching dangers). Do not re-emit warnings that are already true and unchanged.",
-    "- <relevant>: shared resources the story needs to know the current value of this turn, even without a transaction.",
-    "- If nothing applies at all, respond with ONLY: <nothing/>",
+    "TAG RULES:",
+    "- <roll>: ONLY when the action's outcome is genuinely uncertain AND consequential — combat, risky stunts, contested attempts, unpredictable reactions. Routine, guaranteed, or purely narrative actions never roll. The dice engine will build the outcome tiers; you only decide IF and give the action a short title.",
+    "- <transaction>: ONLY for the party-wide shared resources listed in the snapshot, when the action implies spending or gaining. delta is negative when spending, positive when gaining; the transaction engine validates amounts against the current value. Use delta=\"0\" only when the action involves the resource but the amount is unclear — the engine will judge it. The comparison is a plain-language sense of scale (\"Could buy a week's worth of food\").",
+    "- <warning>: ONLY for imminent, concrete needs the player should prepare for (supplies running out, deadlines, approaching dangers). action=\"set\" adds or updates one; action=\"clear\" removes one whose cause is resolved. Never re-emit a warning that is already true and unchanged.",
+    "- <relevant>: shared resources whose CURRENT VALUE the story engine needs to know this turn even though nothing was spent (haggling, showing off wealth, checking supplies). Resources flagged always-inject are already visible — never list them.",
+    "- <note>: brief free-form information the story engine would otherwise miss and that affects how the scene should unfold right now (local prices, an NPC's hidden intent, a rule of the location). At most two per turn, under 25 words each. This is NOT for tracked values — those go in <relevant> — and NOT for anything the scene text already establishes.",
+    "- <rewrite>: ONLY when the action is vague, ambiguous, or self-contradictory AND clarifying it changes what should happen next (\"I grab the coins in my pocket and I hand it to the seller\" -> the amount and target become explicit). Rules: rewrite ONLY what the player DOES — CROP OUT all dialogue (quoted speech stays the player's own; the story engine already sees the original message); NEVER invent actions the player did not imply; NEVER answer or extend dialogue; keep it under 40 words, plain declarative description of the action. If the action is already clear, omit the tag entirely.",
+    "- <nothing/>: when NONE of the above applies (pure casual chat, simple dialogue, movement with no stakes). Respond with ONLY <nothing/> and nothing else.",
+    "",
+    "EXAMPLES OF JUDGMENT:",
+    "- \"I buy three apples\" -> <transaction resource=\"Dinheiro\" delta=\"-6\" comparison=\"A few days of meals\"/>",
+    "- \"I cast Fireball at the goblin\" -> <roll needed=\"true\" title=\"Cast Fireball on Goblin\"/>",
+    "- \"I ask the innkeeper about rumors\" -> <nothing/>",
+    "- \"I flaunt my wealth to impress the merchant\" -> <relevant names=\"Dinheiro\"/>",
+    "- \"I check our supplies before leaving\" -> <relevant names=\"Food, Water\"/>",
+    "- \"I grab the coins in my pocket and I hand it to the seller. Here you go, friend.\" -> <transaction resource=\"Dinheiro\" delta=\"0\" comparison=\"\"/> <rewrite text=\"I count out a handful of coins from my pocket and hand them to the seller as payment\"/>",
 ].join("\n");
 
 //
@@ -61,6 +91,10 @@ async function collectContext(playerAction) {
         })),
         sharedResources: (d.sharedResources || []).map(r => ({ name: r.name, qty: r.qty })),
         warnings: (d.warnings || []).map(w => w.name),
+        // Open threads: untracked/unfinished things + secrets left by the
+        // post-pass. Never injected into the story prompt directly — the
+        // router leaks what the scene demands via <note>.
+        openThreads: (d.threads || []).map(t => ({ name: t.name, text: t.text, ref: t.ref || "" })),
     };
     // Enemies only when the feature is on AND some exist — the router never
     // pays tokens for an enemy-free scene.
@@ -89,6 +123,10 @@ async function collectContext(playerAction) {
         if (deep) blocks.push("", "DEEP CONTEXT (card / persona / lore):", deep);
     }
 
+    // User's standing instructions for the pre-pass, verbatim.
+    const custom = String(s.custom_instructions?.pre || "").trim();
+    if (custom) blocks.push("", `<custom>\n${custom}\n</custom>`);
+
     return blocks.join("\n");
 }
 
@@ -98,7 +136,7 @@ async function collectContext(playerAction) {
 // fast path. Returns a raw plan or null when no recognizable tag is present.
 function parseReply(text) {
     if (!text) return null;
-    const plan = { roll: null, transactions: [], warnings: [], relevant: [], nothing: /<nothing\b/i.test(text) };
+    const plan = { roll: null, transactions: [], warnings: [], relevant: [], notes: [], rewrite: null, nothing: /<nothing\b/i.test(text) };
     let m;
 
     const rollM = text.match(/<roll\b([^>]*?)(?:\/>|>[\s\S]*?<\/roll>)/i);
@@ -127,7 +165,21 @@ function parseReply(text) {
         plan.relevant = String(a.names || a.name || "").split(/[,;]+/).map(s => s.trim()).filter(Boolean);
     }
 
-    const empty = !plan.roll && !plan.transactions.length && !plan.warnings.length && !plan.relevant.length;
+    const noteRe = /<note\b([^>]*?)(?:\/>|>([\s\S]*?)<\/note>)/gi;
+    while ((m = noteRe.exec(text)) !== null) {
+        const a = parseAttrs(m[1]);
+        const note = String(a.text || a.content || m[2] || "").trim();
+        if (note) plan.notes.push(note);
+    }
+
+    const rwM = text.match(/<rewrite\b([^>]*?)(?:\/>|>([\s\S]*?)<\/rewrite>)/i);
+    if (rwM) {
+        const a = parseAttrs(rwM[1]);
+        const rewrite = String(a.text || a.action || rwM[2] || "").trim();
+        if (rewrite) plan.rewrite = rewrite;
+    }
+
+    const empty = !plan.roll && !plan.transactions.length && !plan.warnings.length && !plan.relevant.length && !plan.notes.length && !plan.rewrite;
     if (empty && !plan.nothing) {
         logDebug("prePass: no recognizable plan tags in reply");
         return null;
@@ -140,7 +192,7 @@ function parseReply(text) {
 function sanitizePlan(parsed) {
     if (!parsed || typeof parsed !== "object") return null;
     if (parsed.nothing === true) {
-        return { roll: null, transactions: [], warnings: [], relevant: [], nothing: true };
+        return { roll: null, transactions: [], warnings: [], relevant: [], notes: [], rewrite: null, nothing: true };
     }
 
     const d = stateManager.getData();
@@ -176,8 +228,14 @@ function sanitizePlan(parsed) {
         .map(name => findShared(name))
         .filter(Boolean);
 
-    const nothing = !roll && !transactions.length && !warnings.length && !relevant.length;
-    return { roll, transactions, warnings, relevant, nothing };
+    const notes = (Array.isArray(parsed.notes) ? parsed.notes : [])
+        .map(n => String(n || "").trim().slice(0, 200))
+        .filter(Boolean);
+
+    const rewrite = parsed.rewrite ? String(parsed.rewrite).trim().slice(0, 300) : null;
+
+    const nothing = !roll && !transactions.length && !warnings.length && !relevant.length && !notes.length && !rewrite;
+    return { roll, transactions, warnings, relevant, notes, rewrite, nothing };
 }
 
 //
@@ -202,7 +260,7 @@ export async function runPrePass(playerAction) {
             logDebug("prePass: malformed reply — caller will fall back to keyword triggers");
             return null;
         }
-        logDebug(`prePass: plan — roll=${!!plan.roll} tx=${plan.transactions.length} warn=${plan.warnings.length} relevant=${plan.relevant.length} nothing=${plan.nothing}`);
+        logDebug(`prePass: plan — roll=${!!plan.roll} tx=${plan.transactions.length} warn=${plan.warnings.length} relevant=${plan.relevant.length} notes=${plan.notes.length} rewrite=${!!plan.rewrite} nothing=${plan.nothing}`);
         return plan;
     } catch (e) {
         console.error("[Game Manager] pre-pass failed:", e);

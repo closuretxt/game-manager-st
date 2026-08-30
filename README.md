@@ -8,8 +8,6 @@ A fully customizable manager for RPG-style information in SillyTavern: track **r
 2. Click "Install Extension" at the top right.
 3. Paste this repository URL and click 'Install for me'.
 
-Or clone/copy this folder into `data/<user>/extensions/game-manager-st`.
-
 ## Usage
 
 - A **floating window** (draggable by its header, resizable from the bottom-right corner — size and position are saved) opens on startup. It can be minimized or closed and reopened from the Extensions panel.
@@ -42,16 +40,6 @@ Bring any scenario or character and set everything up with **one button** (Party
   Place them anywhere in your preset; see `docs/AGENTIC.md`.
 
 Both the pre-pass/post-pass and the pre-master LLM calls (router, dice, transactions, setup wizard) run through SillyTavern connection profiles — **separate profile options** in the Advanced settings drawer, so you can put them on a fast/cheap model.
-
-## Development
-
-Run a whole-project syntax check (parses every `.js` file as an ES module, no execution):
-
-```
-syntax-check.cmd          (Windows, whole project)
-syntax-check.cmd core ui  (specific paths only)
-node scripts/syntax-check.js
-```
 
 ## Current status
 

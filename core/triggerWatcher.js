@@ -1,20 +1,25 @@
-// Pre-turn orchestrator.
-// EVERYTHING runs inside the awaited GENERATION_AFTER_COMMANDS handler:
+// Pre-turn orchestrator: PRE-PASS + SPECIALISTS only.
+// Everything here runs inside the awaited GENERATION_AFTER_COMMANDS handler:
 //
 //   player sends action
 //     └─ GENERATION_AFTER_COMMANDS (awaited — prompt assembly waits for us)
 //          ├─ PRE-PASS router LLM (core/prePass.js) judges EVERY fresh action
 //          │    └─ plan: roll? / transactions? / warnings? / relevant values?
-//          ├─ specialists execute only the plan's entries
-//          │    ├─ plan.roll        -> dice roll (core/diceRoller.js)
-//          │    ├─ plan.transactions-> transaction (core/transactions.js)
-//          │    └─ plan.warnings    -> stateManager warnings
-//          └─ agentic pass (core/agentRunner.js) analyses the exchange and
-//             applies tool tags + warnings
+//          └─ specialists execute only the plan's entries
+//               ├─ plan.roll        -> dice roll (core/diceRoller.js)
+//               ├─ plan.transactions-> transaction (core/transactions.js)
+//               ├─ plan.warnings    -> stateManager warnings
+//               ├─ plan.relevant    -> one-shot low-priority injection
+//               ├─ plan.notes       -> one-shot low-priority notes
+//               └─ plan.rewrite     -> highlighted tag on the message +
+//                                      high-priority clarified action
 //
 // Results land in the high-priority buffer BEFORE prompt assembly, so the
 // macros (substituted during prompt building, after this handler returns)
 // inject them into the SAME turn's story generation.
+//
+// The agentic tracker pass is NOT here — it runs AFTER the AI reply lands
+// (inject/postTurn.js, post-pass contract).
 //
 // Fallback: when the pre-pass is disabled or fails, the legacy keyword
 // detection (detectTriggers) builds a synthetic plan instead.
@@ -25,9 +30,9 @@ import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { rollDice } from "./diceRoller.js";
 import { runTransaction } from "./transactions.js";
-import { runAgentPass } from "./agentRunner.js";
 import { runPrePass } from "./prePass.js";
-import { queueLowOnce } from "./injection.js";
+import { queueLowOnce, queueLowNote, queueRewrite } from "./injection.js";
+import { attachRewriteToMessage } from "../ui/rewriteTag.js";
 
 function escapeRegex(str) {
     return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -71,6 +76,8 @@ function planFromTriggers(hits) {
         transactions: resources.map(h => ({ entry: h.entry, delta: 0, comparison: "" })),
         warnings: [],
         relevant: [],
+        notes: [],
+        rewrite: null,
         nothing: !hits.length,
     };
 }
@@ -105,7 +112,7 @@ export async function handlePreTurn(type = "normal") {
         plan = await runPrePass(action);
         if (!plan) plan = planFromTriggers(detectTriggers(action));
     }
-    if ((!plan || plan.nothing) && !s.auto_update) return;
+    if (!plan || plan.nothing) return;
 
     _running = true;
     try {
@@ -147,12 +154,27 @@ export async function handlePreTurn(type = "normal") {
                     queueLowOnce(`  <resource name="${entry.name}" value="${entry.qty}"/>`);
                 }
             }
-        }
 
-        // Agentic state pass — before the story LLM runs, so its results are
-        // injected into THIS turn's prompt instead of the next one.
-        if (s.auto_update) {
-            await runAgentPass(`pre_turn_${type}`, snapshotId);
+            // Notes — free-form contextual remarks the pre-pass judged worth
+            // injecting this turn (relevance-gated world info). One-shot,
+            // low priority, XML-escaped by the queue.
+            if (s.feature_injection && plan.notes?.length) {
+                for (const note of plan.notes) {
+                    logDebug(`pre-turn: note queued "${note}"`);
+                    queueLowNote(note);
+                }
+            }
+
+            // Rewrite — the pre-pass clarified a vague/contradictory action.
+            // The original message text is NEVER edited: the rewrite is
+            // rendered as a highlighted tag on the message (DOM-only) and
+            // injected high-priority so the story engine acts on the
+            // clarified intent this turn.
+            if (s.feature_rewrite && plan.rewrite) {
+                logDebug(`pre-turn: rewrite planned "${plan.rewrite}"`);
+                attachRewriteToMessage(playerMsgId, plan.rewrite);
+                queueRewrite(plan.rewrite);
+            }
         }
     } catch (e) {
         console.error("[Game Manager] pre-turn handling failed:", e);

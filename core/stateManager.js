@@ -77,6 +77,7 @@ export const stateManager = {
         if (!Array.isArray(d.roster)) d.roster = [];
         if (!Array.isArray(d.custom)) d.custom = [];
         if (!Array.isArray(d.warnings)) d.warnings = [];
+        if (!Array.isArray(d.threads)) d.threads = [];
         for (const c of d.characters) {
             c.id = c.id || genId();
             c.name = c.name || "Unnamed";
@@ -598,5 +599,44 @@ export const stateManager = {
         const d = this.getData();
         d.warnings = d.warnings.filter(w => w.id !== id);
         this.emitChange("clear_warning");
+    },
+
+    // ---------- party-level open threads (AI-managed, edit-mode-only UI) ----------
+    // Open threads track UNTRACKED or UNFINISHED things the formal containers
+    // cannot hold: ongoing trips (fuel spent so far), half-done actions,
+    // secrets the player must not see. Each thread records where/when it
+    // started (ref) so it can be compared later. They are visible only in
+    // edit mode; the pre-pass and post-pass see them, the story prompt does
+    // NOT — the pre-pass leaks what the scene demands via <note>.
+    setThread({ name, text, ref } = {}) {
+        if (!name) return false;
+        const d = this.getData();
+        const needle = String(name).toLowerCase();
+        let entry = d.threads.find(t => String(t.name).toLowerCase() === needle);
+        if (!entry) {
+            entry = { id: genId(), name };
+            d.threads.push(entry);
+        }
+        if (text !== undefined && text !== "") entry.text = text;
+        if (ref !== undefined && ref !== "") entry.ref = ref;
+        this.emitChange("set_thread");
+        return true;
+    },
+
+    clearThread(name) {
+        if (!name) return false;
+        const d = this.getData();
+        const needle = String(name).toLowerCase();
+        const before = d.threads.length;
+        d.threads = d.threads.filter(t => String(t.name).toLowerCase() !== needle);
+        if (d.threads.length === before) return false;
+        this.emitChange("clear_thread");
+        return true;
+    },
+
+    removeThread(id) {
+        const d = this.getData();
+        d.threads = d.threads.filter(t => t.id !== id);
+        this.emitChange("clear_thread");
     },
 };

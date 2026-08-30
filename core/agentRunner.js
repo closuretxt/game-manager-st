@@ -41,6 +41,9 @@ function buildStateSummary() {
         // agent never sees (and never invents) enemy state.
         enemies: (s.feature_enemies ? d.enemies : []).map(charSummary),
         customFeatures: d.custom.map(c => ({ name: c.name, value: c.value })),
+        // Open threads: untracked/unfinished things + secrets the agent left
+        // for itself (also visible to the pre-pass, never to the story prompt).
+        openThreads: (d.threads || []).map(t => ({ name: t.name, text: t.text, ref: t.ref || "" })),
         // Shared party resources are intentionally excluded: AI never touches them.
     };
 }
@@ -71,22 +74,29 @@ function buildSystemPrompt() {
         '  <set_statuses><char>Name</char><status name="Dazed" modifiers="Aim -2" effect="..."/></set_statuses>',
         '  <clear_statuses><char>Name</char><status name="Dazed"/></clear_statuses>',
         '  <warnings><warning name="Food" text="You have about two days of food left."/><warning_clear name="Food"/></warnings>',
+        '  <threads><thread name="Fuel trip" text="Left town with 40L fuel; ~120 km driven so far" ref="started when leaving town"/><thread_clear name="Fuel trip"/></threads>',
         '  <enemies><enemy action="add" name="Goblin"><resource name="HP" value="30" max="30"/><passive name="Brutal" description="+2 damage below half HP"/></enemy><enemy action="update" name="Goblin"><resource name="HP" delta="-7"/><status name="Wounded" modifiers="Aim -2"/></enemy><enemy action="remove" name="Goblin" reason="defeated"/></enemies>',
         "",
         "Use <warnings> ONLY for imminent, concrete needs the player should prepare for (supplies running out, deadlines, approaching dangers). Keep warning text under 15 words. Clear a warning when its cause is resolved. Do not re-emit unchanged warnings every turn.",
+        "Use <threads> to leave notes to yourself about UNTRACKED or UNFINISHED things the formal containers cannot hold: ongoing trips (fuel/money spent so far), half-done actions, unresolved behavior, or secrets that must stay hidden from the player. ALWAYS record where/when it started (ref) so you can compare progress later (\"started when leaving town\", \"day 2 of the siege\"). Update the thread as things progress; clear it (thread_clear) as soon as it is finished or irrelevant. Threads are invisible to the player and never injected into the story prompt — the pre-pass decides what the story needs to know.",
         "Use <enemies> when enemies or threats appear in the scene: action=\"add\" to introduce one (with its HP resource and notable passives/skills), nested <resource>/<status> tags or hp_delta to update it, and action=\"remove\" AS SOON AS an enemy stops being relevant (defeated, fled, scene moved on) — removed enemies are archived and automatically restored with their last state if they return. You may also damage enemies with <change_values><char>EnemyName</char>.",
         "Use <set_statuses> for TEMPORARY per-character conditions (Dazed, Drunk, Inspired...). When a status lands, also apply its listed stat modifiers through <change_values>; when the condition ends, remove the modifiers with a matching <change_values> and clear the status with <clear_statuses>. Do not use statuses for permanent traits (passives) or party-wide gimmicks (custom).",
     ].join("\n");
 }
 
 function buildUserPrompt(exchange) {
-    return [
+    const s = extension_settings[extensionName];
+    const custom = String(s.custom_instructions?.post || "").trim();
+    const blocks = [
         "STATE SNAPSHOT (JSON):",
         JSON.stringify(buildStateSummary()),
         "",
         "RECENT EXCHANGE:",
         ...exchange.map(m => `${m.role}: ${m.text}`),
-    ].join("\n");
+    ];
+    // User's standing instructions for the post-pass, verbatim.
+    if (custom) blocks.push("", `<custom>\n${custom}\n</custom>`);
+    return blocks.join("\n");
 }
 
 // Runs one agentic analysis pass for the message `mesId`. Returns the number

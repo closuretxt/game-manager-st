@@ -417,10 +417,41 @@
     background: rgba(255, 255, 255, 0.05);
 }
 
+.gm_back_btn span {
+    white-space: nowrap;
+}
+
 .gm_sheet_top {
     display: flex;
     gap: 8px;
     align-items: center;
+}
+
+/* ---------- settings warning banner ---------- */
+.gm_settings_warning {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    grid-column: 1 / -1;
+    margin-top: 4px;
+    padding: 8px 10px;
+    border: 1px solid rgba(255, 193, 7, 0.45);
+    border-radius: var(--gm-radius);
+    background: rgba(255, 193, 7, 0.08);
+    color: #ffd54f;
+    font-size: 12px;
+}
+
+.gm_settings_warning i {
+    color: #ffc107;
+    flex: 0 0 auto;
+}
+
+.gm_settings_warning code {
+    background: rgba(0, 0, 0, 0.35);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 11px;
 }
 
 /* ---------- Inline editor ---------- */
@@ -736,6 +767,120 @@ textarea.gm_input {
     font-style: italic;
 }
 
+/* ---------- action rewrite tag (DOM-only, attached to the player message) ---------- */
+
+.gm_rewrite_tag {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    margin: 6px 0 2px;
+    padding: 6px 10px;
+    font-size: 12px;
+    border-radius: var(--gm-radius, 8px);
+    border: 1px solid color-mix(in srgb, var(--gm-ok, #4caf7d) 45%, transparent);
+    background: color-mix(in srgb, var(--gm-ok, #4caf7d) 10%, transparent);
+    animation: gm_dice_in 0.3s ease-out both;
+}
+
+.gm_rewrite_tag i {
+    color: var(--gm-ok, #4caf7d);
+    font-size: 13px;
+}
+
+.gm_rewrite_tag_label {
+    color: var(--gm-ok, #4caf7d);
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.5px;
+}
+
+.gm_rewrite_tag_text {
+    color: var(--SmartThemeBodyColor, #ccc);
+    font-style: italic;
+}
+
+/* ---------- open threads (edit-mode-only section in the Custom tab) ---------- */
+
+.gm_thread_row {
+    align-items: flex-start;
+}
+
+.gm_thread_ref {
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
+    font-size: 11px;
+    font-style: italic;
+}
+
+.gm_thread_text {
+    color: var(--SmartThemeEmColor, #aaa);
+    font-size: 12px;
+    white-space: pre-wrap;
+}
+
+/* ---------- custom instructions modal ---------- */
+
+.gm_modal_overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10010;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(2px);
+}
+
+.gm_modal {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(560px, calc(100vw - 32px));
+    max-height: calc(100vh - 64px);
+    overflow-y: auto;
+    padding: 16px;
+    border-radius: var(--gm-radius, 10px);
+    border: 1px solid color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 40%, transparent);
+    background: var(--SmartThemeBlurTintColor, var(--SmartThemeBodyColor, #1a1a1a));
+    color: var(--SmartThemeBodyColor, #ccc);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.gm_modal_hint {
+    font-size: 12px;
+    color: var(--SmartThemeEmColor, #999);
+}
+
+.gm_modal label {
+    font-size: 12px;
+    font-weight: 600;
+    margin-top: 4px;
+}
+
+.gm_modal_textarea {
+    width: 100%;
+    min-height: 110px;
+    resize: vertical;
+    padding: 8px;
+    font-size: 12px;
+    border-radius: var(--gm-radius, 8px);
+    border: 1px solid color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 30%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #1a1a1a) 60%, transparent);
+    color: var(--SmartThemeBodyColor, #ccc);
+}
+
+.gm_modal_actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.gm_modal_save {
+    border: 1px solid color-mix(in srgb, var(--gm-ok, #4caf7d) 50%, transparent);
+}
+
 /* ---------- Roster chips ---------- */
 .gm_roster_chips {
     display: flex;
@@ -760,8 +905,9 @@ textarea.gm_input {
     padding: 1px 3px;
 }
 
-/* ---------- Scenario Setup Wizard modal ---------- */
-#gm_wizard_overlay {
+/* ---------- Scenario Setup Wizard / Character Creator modals ---------- */
+#gm_wizard_overlay,
+#gm_creator_overlay {
     position: fixed;
     inset: 0;
     z-index: 4000;

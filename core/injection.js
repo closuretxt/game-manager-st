@@ -35,10 +35,19 @@ function esc(v) {
 
 // ---------- high priority (one-shot queue) ----------
 
-// Queues an immediate report (roll result / transaction) for the next prompt.
+// Queues an immediate report (roll result / transaction / rewrite) for the
+// next prompt.
 export function queueHigh(xmlBlock) {
     if (!xmlBlock) return;
     _pendingHigh.push(xmlBlock);
+}
+
+// Queues a ONE-SHOT high-priority action rewrite produced by the pre-pass.
+// XML-escaped on queue.
+export function queueRewrite(text) {
+    const t = esc(String(text ?? "").trim());
+    if (!t) return;
+    queueHigh(`  <action_rewrite note="The player's clarified intent for this turn; the original message may be vague or contradictory. Dialogue in the original message still stands.">${t}</action_rewrite>`);
 }
 
 // Queues a ONE-SHOT low-priority line (e.g. a shared resource value the
@@ -47,6 +56,15 @@ export function queueHigh(xmlBlock) {
 export function queueLowOnce(line) {
     if (!line || !enabled()) return;
     _pendingLow.push(line);
+}
+
+// Queues a ONE-SHOT low-priority note: a free-form contextual remark the
+// pre-pass judged relevant this turn (relevance-gated world info). Rendered
+// inside the low-priority block, then dropped. XML-escaped on queue.
+export function queueLowNote(text) {
+    const t = esc(String(text ?? "").trim());
+    if (!t) return;
+    queueLowOnce(`  <note>${t}</note>`);
 }
 
 export function clearLow() {
@@ -58,7 +76,7 @@ export function consumeHigh() {
     if (!enabled() || _pendingHigh.length === 0) return "";
     const out = _pendingHigh.join("\n");
     _pendingHigh = [];
-    return `<gamemaster_result note="Outcomes just resolved by the game system (dice rolls, transactions). Treat as ground truth; narrate accordingly, do not repeat the numbers or the tags themselves.">\n${out}\n</gamemaster_result>`;
+    return `<gamemaster_result note="Outcomes just resolved by the game system (dice rolls, transactions, action rewrites). Treat as ground truth; narrate accordingly, do not repeat the numbers or the tags themselves.">\n${out}\n</gamemaster_result>`;
 }
 
 export function clearHigh() {

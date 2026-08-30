@@ -1,11 +1,11 @@
 {
-    "display_name": "Game Manager",
-    "loading_order": 9,
+    "display_name": "Game Manager | ST Gamemaster",
+    "loading_order": 10,
     "requires": [],
     "optional": [],
     "js": "index.js",
     "css": "style.css",
     "author": "actua",
-    "version": "0.1.0",
-    "homePage": ""
+    "version": "1.1",
+    "homePage": "https://github.com/closuretxt/game-manager-st"
 }

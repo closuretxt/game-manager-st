@@ -15,8 +15,8 @@ import { mainPanel } from "./ui/mainPanel.js";
 import { settingsUI } from "./ui/settingsUI.js";
 // Injection
 import { initMacros } from "./inject/macro.js";
-import { initPreTurn, buildPreTurnPrompt } from "./inject/preTurn.js";
-export { buildPreTurnPrompt };
+import { initPreTurn } from "./inject/preTurn.js";
+import { initPostTurn } from "./inject/postTurn.js";
 // Connection profiles
 import { swapProfile } from "./util/profileSwapper.js";
 export { swapProfile };
@@ -43,6 +43,7 @@ jQuery(async () => {
         mainPanel.init();
         initMacros();
         initPreTurn();
+        initPostTurn();
 
         logDebug("Game Manager initialized.", extension_settings[extensionName]);
     } catch (e) {

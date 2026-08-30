@@ -10,7 +10,7 @@ import { saveSettingsDebounced } from "../../../../../script.js";
 import { extensionName } from "../core/constants.js";
 import { gmNotify, logDebug } from "../core/debug.js";
 import { stateManager } from "../core/stateManager.js";
-import { manualRun } from "../inject/preTurn.js";
+import { manualRun } from "../inject/postTurn.js";
 import { getCharacterAvatar, clearAvatarCache } from "../util/avatars.js";
 import { settingsUI } from "./settingsUI.js";
 import { characterView } from "./characterView.js";
@@ -636,6 +636,9 @@ class MainPanel {
         });
         backRow.append(back);
         if (edit) {
+            // Spacer pushes the sheet actions right, away from "back".
+            backRow.append($("<div>").addClass("gm_wizard_spacer"));
+
             const toParty = $("<div>").addClass("gm_back_btn").append(
                 $("<i>").addClass("fa-solid fa-user-plus"), $("<span>").text(" To Party"));
             toParty.on("click", () => {
@@ -707,6 +710,9 @@ class MainPanel {
         });
         backRow.append(back);
         if (edit) {
+            // Spacer pushes the sheet actions right, away from "back".
+            backRow.append($("<div>").addClass("gm_wizard_spacer"));
+
             // Defection: a party member moves to the enemy side, sheet intact.
             const toEnemy = $("<div>").addClass("gm_back_btn").append(
                 $("<i>").addClass("fa-solid fa-skull"), $("<span>").text(" To Enemy"));
@@ -715,11 +721,6 @@ class MainPanel {
                 this.selectedCharacterId = null;
             });
             backRow.append(toEnemy);
-
-            const applyPreset = $("<div>").addClass("gm_back_btn").append(
-                $("<i>").addClass("fa-solid fa-wand-magic-sparkles"), $("<span>").text(" Apply Preset"));
-            applyPreset.on("click", () => settingsUI.applyTemplateToCharacter(char));
-            backRow.append(applyPreset);
 
             // Demote to roster — keeps the full sheet so a later promotion
             // inherits the last state (mission-based party swaps).
@@ -730,6 +731,11 @@ class MainPanel {
                 this.selectedCharacterId = null;
             });
             backRow.append(toRoster);
+
+            const applyPreset = $("<div>").addClass("gm_back_btn").append(
+                $("<i>").addClass("fa-solid fa-wand-magic-sparkles"), $("<span>").text(" Apply Preset"));
+            applyPreset.on("click", () => settingsUI.applyTemplateToCharacter(char));
+            backRow.append(applyPreset);
         }
         content.append(backRow);
 

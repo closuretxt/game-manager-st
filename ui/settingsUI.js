@@ -51,6 +51,50 @@ export const settingsUI = {
                 ok ? "success" : "error"
             );
         });
+
+        // Custom instructions popup (pre-pass / post-pass standing notes).
+        $("#gm_custom_instructions").on("click", () => this.openCustomInstructions());
+    },
+
+    // ---------- custom instructions popup ----------
+    // Two standing instruction fields injected verbatim into the specialists'
+    // prompt contexts: pre-pass (router) and post-pass (tracker). Use them for
+    // summaries, clock times, chronograms, house rules — anything the
+    // specialists should always know.
+    openCustomInstructions() {
+        const s = this._settings();
+        s.custom_instructions = s.custom_instructions || { pre: "", post: "" };
+
+        const overlay = $("<div>").addClass("gm_modal_overlay");
+        const dialog = $("<div>").addClass("gm_modal");
+        const preArea = $("<textarea>").addClass("gm_modal_textarea").val(s.custom_instructions.pre || "")
+            .attr("placeholder", "Standing instructions for the PRE-PASS router (judges every action)...");
+        const postArea = $("<textarea>").addClass("gm_modal_textarea").val(s.custom_instructions.post || "")
+            .attr("placeholder", "Standing instructions for the POST-PASS tracker (applies state changes)...");
+
+        const close = () => overlay.remove();
+        const save = () => {
+            s.custom_instructions.pre = String(preArea.val() || "");
+            s.custom_instructions.post = String(postArea.val() || "");
+            saveSettingsDebounced();
+            gmNotify("Custom instructions saved.", "success");
+            close();
+        };
+
+        dialog.append(
+            $("<b>").text("Custom instructions"),
+            $("<div>").addClass("gm_modal_hint").text("Injected verbatim as a <custom> block into the respective LLM's prompt context on every call."),
+            $("<label>").text("Pre-pass (router)"),
+            preArea,
+            $("<label>").text("Post-pass (tracker)"),
+            postArea,
+            $("<div>").addClass("gm_modal_actions").append(
+                $("<div>").addClass("menu_button").text("Cancel").on("click", close),
+                $("<div>").addClass("menu_button gm_modal_save").text("Save").on("click", save),
+            ),
+        );
+        overlay.append(dialog).appendTo("body");
+        overlay.on("mousedown", e => { if (e.target === overlay[0]) close(); });
     },
 
     // ---------- connection profiles ----------
