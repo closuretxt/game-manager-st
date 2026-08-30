@@ -21,6 +21,7 @@ import { parseToolBlocks, applyToolBlocks } from "./toolParser.js";
 import { captureSnapshot } from "./snapshots.js";
 import { sendRequestViaProfile, resolveConnectionProfile, getProfileNameById } from "../util/connectionService.js";
 import { swapProfile } from "../util/profileSwapper.js";
+import { buildDeepContext } from "../util/loreContext.js";
 
 const MAX_CONTEXT_MESSAGES = 6;
 let _running = false;
@@ -57,8 +58,19 @@ function collectRecentMessages() {
     }));
 }
 
-function buildSystemPrompt() {
-    return [
+// The system message: agent instructions plus, when the deep context setting
+// is on, the card / persona / author's note / activated World Info — so the
+// agent knows who and where the scene is before reading state or history.
+// The latest exchange text participates in WI activation, like the player
+// action does in the pre-pass.
+async function buildSystemPrompt(exchange = []) {
+    const s = extension_settings[extensionName];
+    let deep = "";
+    if (s.deep_context) {
+        const extraText = exchange.length ? exchange[exchange.length - 1].text : "";
+        deep = await buildDeepContext(extraText);
+    }
+    const lines = [
         "You are the game-state engine of a tabletop-style roleplay session.",
         "You will receive the recent exchange and a JSON snapshot of the tracked state.",
         "Report ONLY the concrete state changes that logically follow from the exchange (damage, spent resources, resolved rolls, items gained or consumed, attribute milestones, evolving custom features).",
@@ -81,7 +93,11 @@ function buildSystemPrompt() {
         "Use <threads> to leave notes to yourself about UNTRACKED or UNFINISHED things the formal containers cannot hold: ongoing trips (fuel/money spent so far), half-done actions, unresolved behavior, or secrets that must stay hidden from the player. ALWAYS record where/when it started (ref) so you can compare progress later (\"started when leaving town\", \"day 2 of the siege\"). Update the thread as things progress; clear it (thread_clear) as soon as it is finished or irrelevant. Threads are invisible to the player and never injected into the story prompt — the pre-pass decides what the story needs to know.",
         "Use <enemies> when enemies or threats appear in the scene: action=\"add\" to introduce one (with its HP resource and notable passives/skills), nested <resource>/<status> tags or hp_delta to update it, and action=\"remove\" AS SOON AS an enemy stops being relevant (defeated, fled, scene moved on) — removed enemies are archived and automatically restored with their last state if they return. You may also damage enemies with <change_values><char>EnemyName</char>.",
         "Use <set_statuses> for TEMPORARY per-character conditions (Dazed, Drunk, Inspired...). When a status lands, also apply its listed stat modifiers through <change_values>; when the condition ends, remove the modifiers with a matching <change_values> and clear the status with <clear_statuses>. Do not use statuses for permanent traits (passives) or party-wide gimmicks (custom).",
-    ].join("\n");
+    ];
+    if (deep) {
+        lines.push("", "DEEP CONTEXT (card / persona / lore):", deep);
+    }
+    return lines.join("\n");
 }
 
 function buildUserPrompt(exchange) {
@@ -122,9 +138,10 @@ export async function runAgentPass(reason = "manual", mesId = null) {
     _running = true;
     try {
         const st = getContext();
+        const exchange = collectRecentMessages();
         const messages = [
-            { role: "system", content: buildSystemPrompt() },
-            { role: "user", content: buildUserPrompt(collectRecentMessages()) },
+            { role: "system", content: await buildSystemPrompt(exchange) },
+            { role: "user", content: buildUserPrompt(exchange) },
         ];
 
         let reply = "";

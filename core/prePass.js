@@ -117,13 +117,6 @@ async function collectContext(playerAction) {
         `PLAYER ACTION TO JUDGE: ${playerAction}`,
     ];
 
-    // Deep context (setting-gated): card / persona / author's note / activated
-    // World Info, so judgments account for lore-defined rules and casts.
-    if (s.deep_context) {
-        const deep = await buildDeepContext(String(playerAction || ""));
-        if (deep) blocks.push("", "DEEP CONTEXT (card / persona / lore):", deep);
-    }
-
     // User's standing instructions for the pre-pass. Full ST macro parsing
     // ({{char}}, {{user}}, {{time}}...) via substituteParams, like a normal
     // generation would do.
@@ -252,6 +245,18 @@ function sanitizePlan(parsed) {
 
 //
 
+// Builds the system message: the router instructions plus, when the deep
+// context setting is on, the card / persona / author's note / activated World
+// Info — so the router knows who and where the scene is before judging
+// anything in the user message.
+async function buildSystemContent(playerAction) {
+    const s = extension_settings[extensionName];
+    if (!s.deep_context) return SYSTEM_PROMPT;
+    const deep = await buildDeepContext(String(playerAction || ""));
+    if (!deep) return SYSTEM_PROMPT;
+    return `${SYSTEM_PROMPT}\n\nDEEP CONTEXT (card / persona / lore):\n${deep}`;
+}
+
 // Runs the pre-pass router for a player action. Returns a sanitized plan, or
 // null when disabled/failed (caller falls back to keyword triggers).
 export async function runPrePass(playerAction) {
@@ -270,7 +275,7 @@ export async function runPrePass(playerAction) {
         const profileId = resolvePremasterProfile(st, s.premaster_profile, s.connection_profile);
         console.info(`[GM DIAG] runPrePass: calling pre-master profile='${profileId || "<same-as-current>"}'`);
         const messages = [
-            { role: "system", content: SYSTEM_PROMPT },
+            { role: "system", content: await buildSystemContent(playerAction) },
             { role: "user", content: await collectContext(playerAction) },
         ];
         const reply = await sendRequestViaProfile(profileId, messages);

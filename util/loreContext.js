@@ -1,8 +1,10 @@
 // Deep context builder (optional — gated by the "Deep context" setting).
-// When enabled, the extension's LLM calls (setup wizard, pre-pass router)
-// receive the character card, user persona, author's note and ACTIVATED World
-// Info entries. WI is activated against the recent chat + scenario text, so
-// only lore relevant to the current scene is pulled — never a whole-book dump.
+// When enabled, the extension's LLM calls (setup wizard, pre-pass router,
+// post-pass agent) receive the character card, user persona, author's note
+// and ACTIVATED World Info entries — appended to the SYSTEM message, before
+// any state or history in the user message. WI is activated against the
+// recent chat + scenario text, so only lore relevant to the current scene is
+// pulled — never a whole-book dump.
 //
 // Everything here is best-effort: a missing/changed SillyTavern API degrades
 // to an empty block instead of breaking the call.
