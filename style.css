@@ -1,4 +1,4 @@
-/* ===================== Game Manager ===================== */
+﻿/* ===================== Game Manager ===================== */
 
 :root {
     /* Deliberately modest so ST drawers/popups still layer above the window. */
@@ -541,15 +541,13 @@ textarea.gm_input {
     opacity: 1;
 }
 
-/* ---------- dice roll bubble ---------- */
+/* ---------- dice roll bubble (floats above the input bar) ---------- */
 
 #gm_dice_bubble {
     position: fixed;
-    right: 24px;
-    bottom: 120px;
     z-index: 39999;
-    min-width: 240px;
-    max-width: 340px;
+    min-width: 260px;
+    max-width: 380px;
     background: var(--SmartThemeBlurTintColor, rgba(23, 23, 28, 0.97));
     border: 1px solid var(--gm-line, rgba(255, 255, 255, 0.1));
     border-radius: 12px;
@@ -565,66 +563,131 @@ textarea.gm_input {
 }
 
 @keyframes gm_dice_in {
-    from { transform: translateY(8px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
+    from { transform: translateY(10px) scale(0.97); opacity: 0; }
+    to { transform: translateY(0) scale(1); opacity: 1; }
 }
 
 .gm_dice_head {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 6px;
+    gap: 10px;
+    margin-bottom: 7px;
 }
 
-.gm_dice_head .fa-dice-d6 {
-    font-size: 15px;
+.gm_dice_head .fa-solid {
+    font-size: 20px;
     color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
 }
 
 .gm_dice_head .gm_dice_rolling {
-    animation: gm_dice_shake 0.6s ease-in-out infinite;
+    animation: gm_dice_shake 0.5s ease-in-out infinite;
+    filter: drop-shadow(0 0 6px color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 60%, transparent));
 }
 
 @keyframes gm_dice_shake {
-    0%, 100% { transform: rotate(0deg); }
-    25% { transform: rotate(-20deg) translateY(-1px); }
-    75% { transform: rotate(20deg) translateY(1px); }
+    0%, 100% { transform: rotate(0deg) scale(1); }
+    25% { transform: rotate(-24deg) scale(1.08); }
+    75% { transform: rotate(24deg) scale(1.08); }
+}
+
+.gm_dice_head .gm_dice_win_pop {
+    animation: gm_dice_pop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+    filter: drop-shadow(0 0 10px var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)));
+}
+
+@keyframes gm_dice_pop {
+    0% { transform: scale(0.4) rotate(-180deg); }
+    100% { transform: scale(1.15) rotate(0deg); }
 }
 
 .gm_dice_status {
     color: var(--SmartThemeBodyColor, #ccc);
     line-height: 1.4;
+    position: relative;
+}
+
+.gm_dice_shimmer {
+    display: inline-block;
+    width: 1.6em;
+    text-align: left;
+}
+
+.gm_dice_shimmer::after {
+    content: "\1F3B2";
+    display: inline-block;
+    animation: gm_shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes gm_shimmer {
+    0%, 100% { opacity: 0.15; }
+    50% { opacity: 1; }
+}
+
+.gm_dice_resolved .gm_dice_status {
+    font-weight: 600;
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
 }
 
 .gm_dice_tiers {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 4px;
 }
 
 .gm_dice_tier {
+    position: relative;
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 10px;
-    padding: 4px 8px;
+    padding: 5px 9px;
     border-radius: 6px;
     background: rgba(255, 255, 255, 0.03);
-    animation: gm_dice_in 0.2s ease-out;
+    overflow: hidden;
+    animation: gm_tier_in 0.25s ease-out both;
+}
+
+@keyframes gm_tier_in {
+    from { transform: translateX(-10px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+.gm_dice_tier_bar_wrap {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.gm_dice_tier_bar {
+    height: 100%;
+    background: color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 14%, transparent);
+    transition: width 0.5s cubic-bezier(0.3, 1, 0.4, 1);
+}
+
+.gm_dice_tier_bar_win {
+    background: color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 30%, transparent);
 }
 
 .gm_dice_tier_name {
+    position: relative;
     color: var(--SmartThemeBodyColor, #ccc);
 }
 
 .gm_dice_tier_chance {
+    position: relative;
     color: var(--gm-muted, #8a8a92);
     font-variant-numeric: tabular-nums;
 }
 
 .gm_dice_tier_win {
     outline: 1px solid var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
-    background: color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 12%, transparent);
+    animation: gm_win_flash 0.6s ease-out both;
+}
+
+@keyframes gm_win_flash {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.05); }
+    100% { transform: scale(1); }
 }
 
 .gm_dice_tier_win .gm_dice_tier_name {
@@ -632,6 +695,161 @@ textarea.gm_input {
     font-weight: 600;
 }
 
-.gm_dice_win {
+.gm_dice_tier_win .gm_dice_tier_chance {
     color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
+}
+
+/* ---------- roll result tag (DOM-only, attached to the player message) ---------- */
+
+.gm_roll_tag {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    margin: 6px 0 2px;
+    padding: 6px 10px;
+    font-size: 12px;
+    border-radius: var(--gm-radius, 8px);
+    border: 1px solid color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 35%, transparent);
+    background: color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 7%, transparent);
+    animation: gm_dice_in 0.3s ease-out both;
+}
+
+.gm_roll_tag i {
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
+    font-size: 13px;
+}
+
+.gm_roll_tag b {
+    color: var(--SmartThemeBodyColor, #ccc);
+}
+
+.gm_roll_tag_tier {
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
+    font-weight: 600;
+}
+
+.gm_roll_tag_outcome {
+    color: var(--SmartThemeEmColor, #aaa);
+    font-style: italic;
+}
+
+/* ---------- Roster chips ---------- */
+.gm_roster_chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 4px 0;
+}
+
+.gm_roster_chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    font-size: 12px;
+    border: 1px solid var(--gm-line, #33333c);
+    border-radius: 999px;
+    opacity: 0.85;
+}
+
+.gm_roster_chip .gm_icon_btn {
+    font-size: 10px;
+    padding: 1px 3px;
+}
+
+/* ---------- Scenario Setup Wizard modal ---------- */
+#gm_wizard_overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 4000;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.gm_wizard_modal {
+    width: min(560px, 92vw);
+    max-height: 86vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--SmartThemeBlurTintColor, rgba(23, 23, 28, 0.97));
+    color: var(--SmartThemeBodyColor, #dcdcdc);
+    border: 1px solid var(--gm-line, #33333c);
+    border-radius: 10px;
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.5);
+    font-size: 13px;
+}
+
+.gm_wizard_head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--gm-line, #33333c);
+}
+
+.gm_wizard_head i {
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b8912f));
+}
+
+.gm_wizard_spacer {
+    flex: 1;
+}
+
+.gm_wizard_body {
+    padding: 10px 12px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.gm_wizard_scenario {
+    min-height: 110px;
+    resize: vertical;
+}
+
+.gm_wizard_actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.gm_accent_btn {
+    border: 1px solid color-mix(in srgb, var(--gm-accent, #b8912f) 45%, transparent);
+}
+
+.gm_wizard_compact {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+}
+
+.gm_wizard_compact i {
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b8912f));
+    width: 14px;
+    text-align: center;
+}
+
+.gm_wizard_compact span {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gm_wizard_mode {
+    display: flex;
+    gap: 16px;
+    font-size: 12px;
+}
+
+.gm_wizard_mode label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
 }

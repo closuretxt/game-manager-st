@@ -1,18 +1,24 @@
 // Event wiring for pre-turn triggers, agentic resource updates, and snapshot
 // rollbacks.
 //
-// Tool usage does NOT scan the main SillyTavern model's output. Instead, after
-// an exchange settles, a dedicated agentic call (core/agentRunner.js, on the
-// configured connection profile) analyses the final AI/player responses and
-// applies the resulting state changes (dice rolls, spent resources, etc.).
+// ORDERING MATTERS: everything the LLM should see for THIS turn runs inside
+// the AWAITED GENERATION_AFTER_COMMANDS handler (SillyTavern's event emitter
+// awaits its listeners, so prompt assembly waits for us):
 //
-// Snapshots: the pre-change state of each tracked message is snapshotted (last
-// 5 kept). Deleting the message, swiping it, or re-running the pass rolls the
-// state back to that baseline.
+//   player sends action / swipes
+//     └─ GENERATION_AFTER_COMMANDS (awaited)
+//          ├─ dice rolls / transactions (triggered by the action text)
+//          └─ agentic pass — analyses the exchange, applies tool tags + warnings
+//     └─ prompt assembly — {{gamemaster-*}} macros substitute the buffers
+//     └─ story generation — sees fresh, relevant state only
 //
-// The pass is gated behind the "Agentic resource updates" setting (off by
-// default). buildPreTurnPrompt() remains the placeholder seam for future
-// pre-turn logic (relevant-info gating, action modification, combat/maps).
+// Snapshots: the pre-change state of each tracked generation is snapshotted
+// (last 5 kept). Deleting the AI message, swiping it, or re-running the pass
+// rolls the state back to that baseline.
+//
+// The agentic pass is gated behind the "Agentic resource updates" setting
+// (off by default). buildPreTurnPrompt() remains the placeholder seam for
+// future pre-turn logic (relevant-info gating, action modification, maps).
 
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "../core/constants.js";
@@ -20,10 +26,8 @@ import { logDebug } from "../core/debug.js";
 import { stateManager } from "../core/stateManager.js";
 import { runAgentPass } from "../core/agentRunner.js";
 import { restoreSnapshot, restoreLastDeleted } from "../core/snapshots.js";
-import { initTriggerWatcher } from "../core/triggerWatcher.js";
-import { clearHigh } from "../core/injection.js";
-
-let _pendingTimer = null;
+import { handlePreTurn } from "../core/triggerWatcher.js";
+import { clearHigh, clearLow } from "../core/injection.js";
 
 function updatesEnabled() {
     const s = extension_settings[extensionName];
@@ -62,24 +66,24 @@ export function initPreTurn() {
         try {
             stateManager.loadForChat();
             clearHigh(); // pending one-shot results never cross chats
+            clearLow();
         } catch (e) {
             console.error("[Game Manager] failed to load state for chat:", e);
         }
     });
 
-    // Pre-master triggers (dice rolls / transactions) on the player's action.
-    initTriggerWatcher();
-
-    // MESSAGE_RECEIVED — after the exchange settles, run the agentic analysis.
-    st.eventSource.on(st.event_types.MESSAGE_RECEIVED, async (mesId) => {
+    // Pre-turn: EVERYTHING (dice, transactions, agentic pass) runs inside this
+    // awaited handler — before prompt assembly — so its results are injected
+    // into the SAME turn via the {{gamemaster-*}} macros.
+    st.eventSource.on(st.event_types.GENERATION_AFTER_COMMANDS, async (type, _opts, dryRun) => {
         try {
-            if (!updatesEnabled()) return;
-            const msg = st.chat[mesId];
-            if (!msg || msg.is_user) return;
-            clearTimeout(_pendingTimer);
-            _pendingTimer = setTimeout(() => runAgentPass("message_received", mesId), 1500);
+            if (dryRun) return;
+            const s = extension_settings[extensionName];
+            if (!s.enabled) return;
+            if (!["normal", "swipe", "regenerate", "continue"].includes(String(type))) return;
+            await handlePreTurn(String(type));
         } catch (e) {
-            console.error("[Game Manager] agent scheduling failed:", e);
+            console.error("[Game Manager] pre-turn failed:", e);
         }
     });
 

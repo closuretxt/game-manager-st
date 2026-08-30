@@ -10,6 +10,18 @@ export const defaultSettings = {
     debug_mode: false,
     open_panel_on_start: true,
 
+    // Pre-pass router — LLM judges every fresh action instead of keyword triggers.
+    pre_pass: true,
+
+    // Scenario Setup Wizard — one-button LLM bootstrap of the tracked setup.
+    feature_setup_wizard: true,
+    max_party_size: 6, // Full character sheets the wizard may propose; extra allies go to the roster.
+
+    // Deep context — send character card, persona, author's note and activated
+    // World Info to the extension's LLMs (wizard + pre-pass). Off by default:
+    // it raises the token cost of every pre-pass call.
+    deep_context: false,
+
     // Agentic feature toggles — every feature can be disabled separately.
     feature_warnings: true,       // AI-managed warnings (panel note + low-priority injection).
     feature_dice: true,           // Dice rolls (pre-master LLM on skill mentions).
@@ -46,6 +58,10 @@ export async function loadSettings() {
     $("#gm_setting_debug_mode").prop("checked", !!s.debug_mode);
     $("#gm_setting_open_panel").prop("checked", !!s.open_panel_on_start);
     $("#gm_setting_legacy").prop("checked", !!s.legacy_api);
+    $("#gm_setting_pre_pass").prop("checked", !!s.pre_pass);
+    $("#gm_setting_feat_wizard").prop("checked", !!s.feature_setup_wizard);
+    $("#gm_setting_party_cap").val(Math.max(1, Math.trunc(Number(s.max_party_size) || 6)));
+    $("#gm_setting_deep_context").prop("checked", !!s.deep_context);
     $("#gm_setting_feat_warnings").prop("checked", !!s.feature_warnings);
     $("#gm_setting_feat_dice").prop("checked", !!s.feature_dice);
     $("#gm_setting_feat_transactions").prop("checked", !!s.feature_transactions);
@@ -64,6 +80,10 @@ export function saveSettings() {
     s.debug_mode = $("#gm_setting_debug_mode").prop("checked");
     s.open_panel_on_start = $("#gm_setting_open_panel").prop("checked");
     s.legacy_api = $("#gm_setting_legacy").prop("checked");
+    s.pre_pass = $("#gm_setting_pre_pass").prop("checked");
+    s.feature_setup_wizard = $("#gm_setting_feat_wizard").prop("checked");
+    s.max_party_size = Math.max(1, Math.trunc(Number($("#gm_setting_party_cap").val()) || 6));
+    s.deep_context = $("#gm_setting_deep_context").prop("checked");
     s.feature_warnings = $("#gm_setting_feat_warnings").prop("checked");
     s.feature_dice = $("#gm_setting_feat_dice").prop("checked");
     s.feature_transactions = $("#gm_setting_feat_transactions").prop("checked");
@@ -72,7 +92,8 @@ export function saveSettings() {
 }
 
 export function initSettingsListeners() {
-    $("#gm_setting_enabled, #gm_setting_auto_update, #gm_setting_debug_mode, #gm_setting_open_panel, #gm_setting_legacy, " +
+    $("#gm_setting_enabled, #gm_setting_auto_update, #gm_setting_debug_mode, #gm_setting_open_panel, #gm_setting_legacy, #gm_setting_pre_pass, " +
+      "#gm_setting_feat_wizard, #gm_setting_party_cap, #gm_setting_deep_context, " +
       "#gm_setting_feat_warnings, #gm_setting_feat_dice, #gm_setting_feat_transactions, #gm_setting_feat_injection").on("change", saveSettings);
 }
 

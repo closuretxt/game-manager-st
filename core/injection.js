@@ -18,6 +18,7 @@ import { extensionName } from "./constants.js";
 import { stateManager } from "./stateManager.js";
 
 let _pendingHigh = [];
+let _pendingLow = [];
 
 function enabled() {
     const s = extension_settings[extensionName];
@@ -40,12 +41,24 @@ export function queueHigh(xmlBlock) {
     _pendingHigh.push(xmlBlock);
 }
 
+// Queues a ONE-SHOT low-priority line (e.g. a shared resource value the
+// pre-pass flagged as relevant this turn). Rendered by the next low-priority
+// build, then dropped — unlike always-inject values, it does not persist.
+export function queueLowOnce(line) {
+    if (!line || !enabled()) return;
+    _pendingLow.push(line);
+}
+
+export function clearLow() {
+    _pendingLow = [];
+}
+
 // Returns everything queued so far and drains the queue.
 export function consumeHigh() {
     if (!enabled() || _pendingHigh.length === 0) return "";
     const out = _pendingHigh.join("\n");
     _pendingHigh = [];
-    return `<gamemaster_result>\n${out}\n</gamemaster_result>`;
+    return `<gamemaster_result note="Outcomes just resolved by the game system (dice rolls, transactions). Treat as ground truth; narrate accordingly, do not repeat the numbers or the tags themselves.">\n${out}\n</gamemaster_result>`;
 }
 
 export function clearHigh() {
@@ -70,6 +83,11 @@ export function buildLowPriority() {
         }
     }
 
+    // One-shot lines queued by the pre-pass for THIS turn only.
+    if (_pendingLow.length) {
+        parts.push(..._pendingLow.splice(0, _pendingLow.length));
+    }
+
     if (!parts.length) return "";
-    return `<gamemaster_context>\n${parts.join("\n")}\n</gamemaster_context>`;
+    return `<gamemaster_context note="Ground-truth tracked state the story engine must not recount or track itself; warnings describe imminent needs.">\n${parts.join("\n")}\n</gamemaster_context>`;
 }

@@ -1,9 +1,23 @@
-// Trigger watcher — scans the player's outgoing action for pre-master hooks:
-//   - an explicitly named tracked SKILL  -> dice roll flow (core/diceRoller.js)
-//   - a mentioned SHARED RESOURCE name   -> fair-use transaction flow
-//     (core/transactions.js)
-// Per the spec, dice do not fire every turn: the skill name must appear
-// verbatim (word-boundary match) in the player's message.
+// Pre-turn orchestrator.
+// EVERYTHING runs inside the awaited GENERATION_AFTER_COMMANDS handler:
+//
+//   player sends action
+//     └─ GENERATION_AFTER_COMMANDS (awaited — prompt assembly waits for us)
+//          ├─ PRE-PASS router LLM (core/prePass.js) judges EVERY fresh action
+//          │    └─ plan: roll? / transactions? / warnings? / relevant values?
+//          ├─ specialists execute only the plan's entries
+//          │    ├─ plan.roll        -> dice roll (core/diceRoller.js)
+//          │    ├─ plan.transactions-> transaction (core/transactions.js)
+//          │    └─ plan.warnings    -> stateManager warnings
+//          └─ agentic pass (core/agentRunner.js) analyses the exchange and
+//             applies tool tags + warnings
+//
+// Results land in the high-priority buffer BEFORE prompt assembly, so the
+// macros (substituted during prompt building, after this handler returns)
+// inject them into the SAME turn's story generation.
+//
+// Fallback: when the pre-pass is disabled or fails, the legacy keyword
+// detection (detectTriggers) builds a synthetic plan instead.
 
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
@@ -11,6 +25,9 @@ import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { rollDice } from "./diceRoller.js";
 import { runTransaction } from "./transactions.js";
+import { runAgentPass } from "./agentRunner.js";
+import { runPrePass } from "./prePass.js";
+import { queueLowOnce } from "./injection.js";
 
 function escapeRegex(str) {
     return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -43,52 +60,103 @@ export function detectTriggers(actionText) {
 
 let _running = false;
 
-// Handler for the player's outgoing message.
-export async function handlePlayerAction(mesId) {
+// Builds a plan from legacy keyword hits — the fallback when the pre-pass is
+// disabled or fails. No delta/comparison: the specialists judge amounts
+// themselves, exactly like the old trigger-word flow.
+function planFromTriggers(hits) {
+    const skills = hits.filter(h => h.kind === "skill");
+    const resources = hits.filter(h => h.kind === "resource");
+    return {
+        roll: skills.length ? { needed: true, title: skills[0].name } : null,
+        transactions: resources.map(h => ({ entry: h.entry, delta: 0, comparison: "" })),
+        warnings: [],
+        relevant: [],
+        nothing: !hits.length,
+    };
+}
+
+// Called from the awaited GENERATION_AFTER_COMMANDS handler before prompt
+// assembly. `type` is the generation type ("normal", "swipe", ...).
+export async function handlePreTurn(type = "normal") {
     const s = extension_settings[extensionName];
     if (!s.enabled) return;
-    if (_running) return;
+    if (_running) {
+        logDebug("pre-turn skipped — already running");
+        return;
+    }
+
     const st = getContext();
-    const msg = st.chat?.[mesId];
-    if (!msg || !msg.is_user) return;
+    const chat = st.chat || [];
+    const isPlayerAction = type === "normal";
+    const playerMsgId = Math.max(0, chat.length - 1);
+    const playerMsg = chat[playerMsgId];
+    const action = (isPlayerAction && playerMsg?.is_user) ? String(playerMsg.mes ?? "").trim() : "";
 
-    const action = String(msg.mes ?? "").trim();
-    if (!action) return;
+    // Snapshot key: on a fresh send the AI reply will occupy chat.length, so
+    // snapshots keyed there are found by the delete/swipe rollback logic.
+    // On swipes/regenerates the AI message already sits at chat.length - 1.
+    const snapshotId = isPlayerAction ? chat.length : Math.max(0, chat.length - 1);
 
-    const hits = detectTriggers(action);
-    if (!hits.length) return;
+    // Pre-pass router — every fresh action is judged by the router LLM first
+    // (never on swipes, where the action was already judged when first sent).
+    // Falls back to legacy keyword detection when disabled or on failure.
+    let plan = null;
+    if (action) {
+        plan = await runPrePass(action);
+        if (!plan) plan = planFromTriggers(detectTriggers(action));
+    }
+    if ((!plan || plan.nothing) && !s.auto_update) return;
 
     _running = true;
     try {
-        const skills = hits.filter(h => h.kind === "skill");
-        const resources = hits.filter(h => h.kind === "resource");
+        // Specialist flows — only on a fresh player action, only for what the
+        // plan contains.
+        if (action && plan && !plan.nothing) {
+            // Dice — the pre-pass decided IF, the roller decides HOW.
+            if (s.feature_dice && plan.roll?.needed) {
+                logDebug(`pre-turn: roll planned "${plan.roll.title}"`);
+                await rollDice(action, playerMsgId, { title: plan.roll.title });
+            }
 
-        if (s.feature_dice && skills.length) {
-            logDebug(`triggerWatcher: skill trigger "${skills[0].name}" on message ${mesId}`);
-            await rollDice(action, mesId);
+            // Transactions — plan entries carry a pre-judged delta when the
+            // router provided one; otherwise the specialist judges the amount.
+            // Snapshot keyed to the upcoming AI message so delete/swipe
+            // rollback finds it.
+            if (s.feature_transactions && plan.transactions.length) {
+                for (const tx of plan.transactions) {
+                    logDebug(`pre-turn: transaction planned for "${tx.entry.name}"`);
+                    await runTransaction(tx.entry, action, snapshotId, tx);
+                }
+            }
+
+            // Warnings — set/clear per the plan.
+            if (s.feature_warnings && plan.warnings.length) {
+                for (const w of plan.warnings) {
+                    if (w.action === "clear") stateManager.clearWarning(w.name);
+                    else stateManager.setWarning({ name: w.name, text: w.text });
+                }
+            }
+
+            // Relevant resources — one-shot low-priority injection of values
+            // that matter THIS turn (always-inject ones are already persistent;
+            // transacted ones are reported by the transaction itself).
+            if (s.feature_injection && plan.relevant.length) {
+                const transacted = new Set(plan.transactions.map(t => t.entry.id));
+                for (const entry of plan.relevant) {
+                    if (entry.always_inject || transacted.has(entry.id)) continue;
+                    queueLowOnce(`  <resource name="${entry.name}" value="${entry.qty}"/>`);
+                }
+            }
         }
 
-        if (s.feature_transactions && resources.length) {
-            logDebug(`triggerWatcher: resource trigger "${resources[0].name}" on message ${mesId}`);
-            await runTransaction(resources[0].entry, action, mesId);
+        // Agentic state pass — before the story LLM runs, so its results are
+        // injected into THIS turn's prompt instead of the next one.
+        if (s.auto_update) {
+            await runAgentPass(`pre_turn_${type}`, snapshotId);
         }
     } catch (e) {
-        console.error("[Game Manager] trigger handling failed:", e);
+        console.error("[Game Manager] pre-turn handling failed:", e);
     } finally {
         _running = false;
     }
-}
-
-export function initTriggerWatcher() {
-    const st = getContext();
-    // MESSAGE_SENT fires with the new message index when the player sends.
-    st.eventSource.on(st.event_types.MESSAGE_SENT, async (mesId) => {
-        try {
-            const id = typeof mesId === "number" ? mesId : (st.chat?.length ?? 1) - 1;
-            await handlePlayerAction(id);
-        } catch (e) {
-            console.error("[Game Manager] trigger watcher failed:", e);
-        }
-    });
-    logDebug("trigger watcher armed");
 }

@@ -83,6 +83,18 @@ export const GM_SCHEMA = {
             { key: "description", label: "Description", type: "textarea", default: "" },
         ],
     },
+    roster: {
+        label: "Roster Ally",
+        plural: "Roster",
+        icon: "fa-solid fa-user-group",
+        container: "roster",
+        description: "Lightweight ally (name + note). Not tracked, not injected — promote to Party to fully track.",
+        partyLevel: true,
+        fields: [
+            { key: "name", label: "Name", type: "text", default: "New Ally" },
+            { key: "note", label: "Note", type: "textarea", default: "" },
+        ],
+    },
     shared: {
         label: "Shared Resource",
         plural: "Shared Resources",

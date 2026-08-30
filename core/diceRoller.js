@@ -9,14 +9,13 @@
 // Uses the pre-master connection profile (util/connectionService.js).
 
 import { extension_settings, getContext } from "../../../../extensions.js";
-import { updateMessageBlock } from "../../../../../script.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { captureSnapshot } from "./snapshots.js";
 import { queueHigh } from "./injection.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
-import { diceBubble } from "../ui/diceBubble.js";
+import { diceBubble, attachRollToMessage } from "../ui/diceBubble.js";
 
 const MAX_CONTEXT_MESSAGES = 8;
 
@@ -93,29 +92,16 @@ export function weightedRoll(tiers) {
     return tiers[tiers.length - 1];
 }
 
-function appendRollToMessage(mesId, title, tier) {
-    const st = getContext();
-    const msg = st.chat[mesId];
-    if (!msg) return;
-    const suffix = `\n\n> 🎲 **${title}** — **${tier.name}** (${Math.round(Number(tier.chance) || 0)}%): ${tier.outcome}`;
-    if (String(msg.mes ?? "").includes(suffix)) return; // re-run guard
-    msg.mes = String(msg.mes ?? "") + suffix;
-    try {
-        st.saveChat();
-    } catch { /* best effort */ }
-    try {
-        updateMessageBlock(mesId, msg);
-    } catch { /* message may already be gone */ }
-}
-
 function queueRollResult(title, tier) {
     const pct = Math.round(Number(tier.chance) || 0);
     queueHigh(`  <roll title="${title}" tier="${tier.name}" chance="${pct}">${tier.outcome}</roll>`);
 }
 
-// Full dice flow for a player action on message `mesId`. Returns true if a
-// roll was made.
-export async function rollDice(playerAction, mesId) {
+// Full dice flow for a player action on message `mesId`. `opts.title` comes
+// from the pre-pass plan: when set, the router already decided a roll IS
+// needed, so a needsRoll=false reply from the dice LLM is overridden (the
+// dice LLM still provides the tiers). Returns true if a roll was made.
+export async function rollDice(playerAction, mesId, { title = null } = {}) {
     const s = extension_settings[extensionName];
     if (!s.enabled || !s.feature_dice) return false;
 
@@ -145,7 +131,8 @@ export async function rollDice(playerAction, mesId) {
         });
 
         const parsed = parseReply(reply || streamed);
-        if (!parsed || parsed.needsRoll !== true || !Array.isArray(parsed.tiers)) {
+        const forced = !!title; // pre-pass already decided a roll is needed
+        if (!parsed || !Array.isArray(parsed.tiers) || (parsed.needsRoll !== true && !forced)) {
             bubble.resolveNoRoll();
             logDebug("diceRoller: no roll needed or malformed reply");
             return false;
@@ -164,10 +151,14 @@ export async function rollDice(playerAction, mesId) {
         await new Promise(r => setTimeout(r, 1600)); // let the animation breathe
         bubble.resolve(winner);
 
-        captureSnapshot(mesId, { messageText: String(getContext().chat[mesId]?.mes ?? "") });
-        appendRollToMessage(mesId, parsed.title || "Roll", winner);
-        queueRollResult(parsed.title || "Roll", winner);
-        logDebug(`diceRoller: rolled "${parsed.title}" -> ${winner.name}`);
+        // State baseline for swipe/delete rollback. The player's message text
+        // is NEVER edited — the result is DOM-rendered on the message and
+        // injected to the LLM via the high-priority macro.
+        const rollTitle = title || parsed.title || "Roll";
+        captureSnapshot(mesId);
+        attachRollToMessage(mesId, rollTitle, winner);
+        queueRollResult(rollTitle, winner);
+        logDebug(`diceRoller: rolled "${rollTitle}" -> ${winner.name}`);
         return true;
     } catch (e) {
         console.error("[Game Manager] dice roll failed:", e);

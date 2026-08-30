@@ -51,29 +51,41 @@ function parseReply(text) {
 }
 
 // Transaction flow for a player action mentioning `resource` on message
-// `mesId`. Returns true if a transaction was applied.
-export async function runTransaction(resource, playerAction, mesId = null) {
+// `mesId`. `plan` is an optional pre-pass entry ({ delta, comparison }) — when
+// it carries a non-zero delta the router already judged the transaction and
+// the specialist LLM call is skipped. Returns true if a transaction was applied.
+export async function runTransaction(resource, playerAction, mesId = null, plan = null) {
     const s = extension_settings[extensionName];
     if (!s.enabled || !s.feature_transactions) return false;
     if (!resource) return false;
 
     try {
-        const st = getContext();
-        const profileId = resolvePremasterProfile(st, s.premaster_profile, s.connection_profile);
-        const messages = [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: collectContext(resource, playerAction) },
-        ];
-        const reply = await sendRequestViaProfile(profileId, messages);
-        const parsed = parseReply(reply || "");
-        if (!parsed || parsed.applies !== true) {
-            logDebug("transactions: no transaction implied");
-            return false;
+        let tx = 0;
+        let comparison = "";
+        if (plan && Number(plan.delta) !== 0) {
+            // Pre-pass already judged this transaction — no specialist call.
+            tx = Math.trunc(Number(plan.delta) || 0);
+            comparison = String(plan.comparison || "").slice(0, 120);
+        } else {
+            const st = getContext();
+            const profileId = resolvePremasterProfile(st, s.premaster_profile, s.connection_profile);
+            const messages = [
+                { role: "system", content: SYSTEM_PROMPT },
+                { role: "user", content: collectContext(resource, playerAction) },
+            ];
+            const reply = await sendRequestViaProfile(profileId, messages);
+            const parsed = parseReply(reply || "");
+            if (!parsed || parsed.applies !== true) {
+                logDebug("transactions: no transaction implied");
+                return false;
+            }
+            tx = Math.trunc(Number(parsed.transaction) || 0);
+            comparison = String(parsed.comparison || "").slice(0, 120);
         }
 
-        const tx = Math.trunc(Number(parsed.transaction) || 0);
         const current = Math.trunc(Number(resource.qty) || 0);
-        const remaining = Math.max(0, current - Math.max(0, tx) + Math.min(0, tx)); // spend capped at owned; gains added
+        // Signed delta: negative = spending (capped at owned), positive = gain.
+        const remaining = Math.max(0, current + tx);
         const net = current - remaining;
 
         // Baseline snapshot so delete/swipe rolls the resource back too.
@@ -81,7 +93,6 @@ export async function runTransaction(resource, playerAction, mesId = null) {
         resource.qty = remaining;
         stateManager.emitChange("transaction");
 
-        const comparison = String(parsed.comparison || "").slice(0, 120);
         queueHigh(`  <transaction resource="${resource.name}" current="${current}" transaction="${net}" remaining="${remaining}">${comparison}</transaction>`);
         gmNotify(`${resource.name}: ${net >= 0 ? "-" : "+"}${Math.abs(net)} → ${remaining} (${comparison})`, "info");
         logDebug(`transactions: ${resource.name} ${current} -> ${remaining} (${comparison})`);

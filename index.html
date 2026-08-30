@@ -33,6 +33,22 @@
                 <input id="gm_setting_enabled" type="checkbox" />
                 <span>Enable extension</span>
             </label>
+            <label class="checkbox_label" for="gm_setting_pre_pass">
+                <input id="gm_setting_pre_pass" type="checkbox" />
+                <span>Pre-pass router (LLM judges every action instead of keyword triggers)</span>
+            </label>
+            <label class="checkbox_label" for="gm_setting_feat_wizard">
+                <input id="gm_setting_feat_wizard" type="checkbox" />
+                <span>Scenario Setup Wizard (one-button LLM setup of party, roster and resources)</span>
+            </label>
+            <div class="gm_field">
+                <label for="gm_setting_party_cap">Wizard party cap (extra allies go to the roster)</label>
+                <input id="gm_setting_party_cap" type="number" min="1" max="20" step="1" />
+            </div>
+            <label class="checkbox_label" for="gm_setting_deep_context">
+                <input id="gm_setting_deep_context" type="checkbox" />
+                <span>Deep context (send character card, persona, author's note and activated World Info to the extension's LLMs — higher token cost)</span>
+            </label>
             <label class="checkbox_label" for="gm_setting_auto_update">
                 <input id="gm_setting_auto_update" type="checkbox" />
                 <span>Agentic resource updates (AI analyses each exchange) — experimental</span>

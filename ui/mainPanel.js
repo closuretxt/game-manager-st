@@ -16,6 +16,8 @@ import { settingsUI } from "./settingsUI.js";
 import { characterView } from "./characterView.js";
 import { customTab } from "./customTab.js";
 import { resourceManager } from "./resourceManager.js";
+import { setupWizard } from "./setupWizard.js";
+import { iconBtn } from "./characterView.js";
 
 const TABS = [
     { id: "party", label: "Party", icon: "fa-solid fa-users" },
@@ -314,12 +316,19 @@ class MainPanel {
     }
 
     _renderPartyList(content, edit) {
+        const s = extension_settings[extensionName];
         const wrap = $("<div>").addClass("gm_list");
         const header = $("<div>").addClass("gm_section_header").append(
             $("<b>").text("Party"),
             $("<span>").addClass("gm_section_hint").text("Tracked characters. Select one to open their sheet."),
         );
         if (edit) {
+            if (s.feature_setup_wizard) {
+                const wizardBtn = $("<div>").addClass("menu_button gm_add_btn").append(
+                    $("<i>").addClass("fa-solid fa-wand-magic-sparkles"), $("<span>").text(" Setup Scenario"));
+                wizardBtn.on("click", () => setupWizard.open());
+                header.append(wizardBtn);
+            }
             const addBtn = $("<div>").addClass("menu_button gm_add_btn").append(
                 $("<i>").addClass("fa-solid fa-plus"), $("<span>").text(" Add Character"));
             addBtn.on("click", () => {
@@ -360,6 +369,44 @@ class MainPanel {
                 .text("No characters yet. Unlock edit mode (lock icon in the header) to add one."));
         }
         wrap.append(header, list);
+        content.append(wrap);
+
+        this._renderRoster(content, edit);
+    }
+
+    // ---------- Roster: lightweight allies (collapsed chips, never injected) ----------
+    _renderRoster(content, edit) {
+        const roster = stateManager.getData().roster || [];
+        const wrap = $("<div>").addClass("gm_list");
+        wrap.append($("<div>").addClass("gm_section_header").append(
+            $("<b>").text(`Roster (${roster.length})`),
+            $("<span>").addClass("gm_section_hint").text("Allies not fully tracked — promote to Party to track one."),
+        ));
+
+        const chips = $("<div>").addClass("gm_roster_chips");
+        for (const ally of roster) {
+            const chip = $("<div>").addClass("gm_roster_chip").attr("title", ally.note || ally.name);
+            chip.append($("<span>").text(ally.name));
+            if (edit) {
+                const promote = iconBtn("fa-solid fa-user-plus").attr("title", "Promote to Party");
+                promote.on("click", (e) => {
+                    e.stopPropagation();
+                    const c = stateManager.promoteRosterEntry(ally.id);
+                    if (c) this.selectedCharacterId = c.id;
+                });
+                const del = iconBtn("fa-solid fa-xmark").attr("title", "Remove");
+                del.on("click", (e) => {
+                    e.stopPropagation();
+                    stateManager.removeRosterEntry(ally.id);
+                });
+                chip.append(promote, del);
+            }
+            chips.append(chip);
+        }
+        if (!roster.length) {
+            chips.append($("<div>").addClass("gm_empty").text("No roster allies."));
+        }
+        wrap.append(chips);
         content.append(wrap);
     }
 

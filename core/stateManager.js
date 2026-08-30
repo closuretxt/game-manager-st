@@ -72,6 +72,7 @@ export const stateManager = {
         const d = this.getData();
         if (!Array.isArray(d.characters)) d.characters = [];
         if (!Array.isArray(d.sharedResources)) d.sharedResources = [];
+        if (!Array.isArray(d.roster)) d.roster = [];
         if (!Array.isArray(d.custom)) d.custom = [];
         if (!Array.isArray(d.warnings)) d.warnings = [];
         for (const c of d.characters) {
@@ -213,6 +214,40 @@ export const stateManager = {
             container.splice(idx, 1);
             this.emitChange("remove_entry");
         }
+    },
+
+    // ---------- party-level roster (lightweight allies, not fully tracked) ----------
+    // Gacha-style scenarios can have DOZENS of allies; only the ones the user
+    // promotes become full party sheets. Roster entries are never injected
+    // and never rolled for.
+    addRosterEntry(overrides = {}) {
+        const entry = defaultEntry("roster", overrides);
+        this.getData().roster.push(entry);
+        this.emitChange("add_roster");
+        return entry;
+    },
+
+    updateRosterEntry(id, patch) {
+        const entry = this.getData().roster.find(x => x.id === id);
+        if (entry) {
+            Object.assign(entry, patch);
+            this.emitChange("update_roster");
+        }
+    },
+
+    removeRosterEntry(id) {
+        const d = this.getData();
+        d.roster = d.roster.filter(x => x.id !== id);
+        this.emitChange("remove_roster");
+    },
+
+    // Promotes a roster ally to a fully tracked party character.
+    promoteRosterEntry(id) {
+        const d = this.getData();
+        const entry = d.roster.find(x => x.id === id);
+        if (!entry) return null;
+        d.roster = d.roster.filter(x => x.id !== id);
+        return this.addCharacter(entry.name);
     },
 
     // ---------- party-level shared resources ----------
