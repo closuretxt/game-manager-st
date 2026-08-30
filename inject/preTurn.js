@@ -22,7 +22,7 @@ import { extensionName } from "../core/constants.js";
 import { logDebug } from "../core/debug.js";
 import { stateManager } from "../core/stateManager.js";
 import { restoreSnapshot, restoreLastDeleted } from "../core/snapshots.js";
-import { handlePreTurn } from "../core/triggerWatcher.js";
+import { handlePreTurn, setPendingAction } from "../core/triggerWatcher.js";
 import { clearHigh, clearLow } from "../core/injection.js";
 
 export function initPreTurn() {
@@ -39,15 +39,31 @@ export function initPreTurn() {
         }
     });
 
+    // MESSAGE_SENT — capture the player's action the moment it is created.
+    // Some send flows fire GENERATION_AFTER_COMMANDS BEFORE the user message
+    // is pushed into chat, so handlePreTurn can't read it from there.
+    st.eventSource.on(st.event_types.MESSAGE_SENT, (mesId) => {
+        try {
+            const msg = st.chat?.[mesId];
+            if (msg?.is_user) setPendingAction(String(msg.mes ?? ""));
+        } catch (e) {
+            console.error("[Game Manager] MESSAGE_SENT capture failed:", e);
+        }
+    });
+
     // Pre-turn: EVERYTHING (dice, transactions, agentic pass) runs inside this
     // awaited handler — before prompt assembly — so its results are injected
     // into the SAME turn via the {{gamemaster-*}} macros.
     st.eventSource.on(st.event_types.GENERATION_AFTER_COMMANDS, async (type, _opts, dryRun) => {
         try {
+            console.info(`[GM DIAG] GENERATION_AFTER_COMMANDS fired: type=${type} dryRun=${!!dryRun}`);
             if (dryRun) return;
             const s = extension_settings[extensionName];
-            if (!s.enabled) return;
-            if (!["normal", "swipe", "regenerate", "continue"].includes(String(type))) return;
+            if (!s.enabled) { console.info("[GM DIAG] skipped: extension disabled"); return; }
+            if (!["normal", "swipe", "regenerate", "continue"].includes(String(type))) {
+                console.info(`[GM DIAG] skipped: type "${type}" not handled`);
+                return;
+            }
             await handlePreTurn(String(type));
         } catch (e) {
             console.error("[Game Manager] pre-turn failed:", e);

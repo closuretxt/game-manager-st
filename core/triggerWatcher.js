@@ -33,6 +33,7 @@ import { runTransaction } from "./transactions.js";
 import { runPrePass } from "./prePass.js";
 import { queueLowOnce, queueLowNote, queueRewrite } from "./injection.js";
 import { attachRewriteToMessage } from "../ui/rewriteTag.js";
+import { statusBubble } from "../ui/statusBubble.js";
 
 function escapeRegex(str) {
     return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -65,6 +66,34 @@ export function detectTriggers(actionText) {
 
 let _running = false;
 
+// Some send flows fire GENERATION_AFTER_COMMANDS BEFORE the user's message is
+// pushed into chat (last message is still the AI's). inject/preTurn.js captures
+// the action at MESSAGE_SENT and parks it here; handlePreTurn consumes it.
+let _pendingAction = "";
+
+export function setPendingAction(text) {
+    _pendingAction = String(text ?? "").trim();
+}
+
+function takePendingAction() {
+    const t = _pendingAction;
+    _pendingAction = "";
+    return t;
+}
+
+// Some send flows (custom send buttons, QR/Choices-style extensions) fire
+// GENERATION_AFTER_COMMANDS BEFORE the player's message is pushed into chat —
+// the typed text is still sitting in the send textarea. NEVER block or poll
+// here: the awaited handler would hold the user's input hostage. Just read
+// the textarea as a non-blocking fallback.
+function readTextareaAction() {
+    try {
+        return String(document.querySelector("#send_textarea")?.value ?? "").trim();
+    } catch {
+        return "";
+    }
+}
+
 // Builds a plan from legacy keyword hits — the fallback when the pre-pass is
 // disabled or fails. No delta/comparison: the specialists judge amounts
 // themselves, exactly like the old trigger-word flow.
@@ -88,7 +117,7 @@ export async function handlePreTurn(type = "normal") {
     const s = extension_settings[extensionName];
     if (!s.enabled) return;
     if (_running) {
-        logDebug("pre-turn skipped — already running");
+        console.info("[GM DIAG] handlePreTurn skipped: already running");
         return;
     }
 
@@ -97,23 +126,49 @@ export async function handlePreTurn(type = "normal") {
     const isPlayerAction = type === "normal";
     const playerMsgId = Math.max(0, chat.length - 1);
     const playerMsg = chat[playerMsgId];
-    const action = (isPlayerAction && playerMsg?.is_user) ? String(playerMsg.mes ?? "").trim() : "";
 
-    // Snapshot key: on a fresh send the AI reply will occupy chat.length, so
-    // snapshots keyed there are found by the delete/swipe rollback logic.
-    // On swipes/regenerates the AI message already sits at chat.length - 1.
-    const snapshotId = isPlayerAction ? chat.length : Math.max(0, chat.length - 1);
+    let action = "";
+    let snapshotId;
+    let targetMsgId;
+    if (isPlayerAction && playerMsg?.is_user) {
+        // Usual flow: the user message is already the last chat entry.
+        action = String(playerMsg.mes ?? "").trim();
+        snapshotId = chat.length; // the AI reply will occupy chat.length
+        targetMsgId = playerMsgId;
+    } else if (isPlayerAction) {
+        // Send flow where the user message is NOT in chat yet — use the
+        // MESSAGE_SENT capture, then the send textarea (still holds the typed
+        // text in these flows). The message will land at chat.length and the
+        // AI reply the one after it.
+        action = takePendingAction() || readTextareaAction();
+        targetMsgId = chat.length;
+        snapshotId = chat.length + 1;
+    } else {
+        // Swipes/regenerates: the AI message already sits at chat.length - 1.
+        snapshotId = Math.max(0, chat.length - 1);
+        targetMsgId = playerMsgId;
+    }
+    console.info(`[GM DIAG] handlePreTurn: type=${type} lastMsg.is_user=${!!playerMsg?.is_user} actionLength=${action.length} snapshotId=${snapshotId} targetMsgId=${targetMsgId}`);
 
     // Pre-pass router — every fresh action is judged by the router LLM first
     // (never on swipes, where the action was already judged when first sent).
     // Falls back to legacy keyword detection when disabled or on failure.
     let plan = null;
     if (action) {
+        // Live feedback: the story generation waits for the pre-pass, so the
+        // screen would otherwise look frozen.
+        statusBubble.show(s.pre_pass ? "Judging action..." : "Checking action...");
         plan = await runPrePass(action);
+        console.info(`[GM DIAG] pre-pass returned: ${plan ? `roll=${!!plan.roll} tx=${plan.transactions.length} warn=${plan.warnings.length} relevant=${plan.relevant.length} notes=${plan.notes.length} rewrite=${!!plan.rewrite} nothing=${plan.nothing}` : "NULL (fell back to keywords)"}`);
         if (!plan) plan = planFromTriggers(detectTriggers(action));
     }
-    if (!plan || plan.nothing) return;
+    if (!plan || plan.nothing) {
+        console.info("[GM DIAG] plan empty/nothing — no specialists will run");
+        statusBubble.done("Nothing to track this turn.");
+        return;
+    }
 
+    statusBubble.update("Applying...");
     _running = true;
     try {
         // Specialist flows — only on a fresh player action, only for what the
@@ -122,7 +177,8 @@ export async function handlePreTurn(type = "normal") {
             // Dice — the pre-pass decided IF, the roller decides HOW.
             if (s.feature_dice && plan.roll?.needed) {
                 logDebug(`pre-turn: roll planned "${plan.roll.title}"`);
-                await rollDice(action, playerMsgId, { title: plan.roll.title });
+                statusBubble.close(true); // the dice bubble takes over visually
+                await rollDice(action, targetMsgId, { title: plan.roll.title });
             }
 
             // Transactions — plan entries carry a pre-judged delta when the
@@ -132,6 +188,7 @@ export async function handlePreTurn(type = "normal") {
             if (s.feature_transactions && plan.transactions.length) {
                 for (const tx of plan.transactions) {
                     logDebug(`pre-turn: transaction planned for "${tx.entry.name}"`);
+                    statusBubble.update(`Checking ${tx.entry.name}...`);
                     await runTransaction(tx.entry, action, snapshotId, tx);
                 }
             }
@@ -172,7 +229,8 @@ export async function handlePreTurn(type = "normal") {
             // clarified intent this turn.
             if (s.feature_rewrite && plan.rewrite) {
                 logDebug(`pre-turn: rewrite planned "${plan.rewrite}"`);
-                attachRewriteToMessage(playerMsgId, plan.rewrite);
+                statusBubble.update("Clarifying action...");
+                attachRewriteToMessage(targetMsgId, plan.rewrite);
                 queueRewrite(plan.rewrite);
             }
         }
@@ -180,5 +238,6 @@ export async function handlePreTurn(type = "normal") {
         console.error("[Game Manager] pre-turn handling failed:", e);
     } finally {
         _running = false;
+        statusBubble.done("All set.");
     }
 }

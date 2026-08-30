@@ -256,26 +256,35 @@ function sanitizePlan(parsed) {
 // null when disabled/failed (caller falls back to keyword triggers).
 export async function runPrePass(playerAction) {
     const s = extension_settings[extensionName];
-    if (!s.enabled || !s.pre_pass) return null;
-    if (!playerAction) return null;
+    if (!s.enabled || !s.pre_pass) {
+        console.info(`[GM DIAG] runPrePass skipped: enabled=${!!s.enabled} pre_pass=${!!s.pre_pass}`);
+        return null;
+    }
+    if (!playerAction) {
+        console.info("[GM DIAG] runPrePass skipped: empty player action");
+        return null;
+    }
 
     try {
         const st = getContext();
         const profileId = resolvePremasterProfile(st, s.premaster_profile, s.connection_profile);
+        console.info(`[GM DIAG] runPrePass: calling pre-master profile='${profileId || "<same-as-current>"}'`);
         const messages = [
             { role: "system", content: SYSTEM_PROMPT },
             { role: "user", content: await collectContext(playerAction) },
         ];
         const reply = await sendRequestViaProfile(profileId, messages);
+        console.info(`[GM DIAG] runPrePass raw reply (${String(reply || "").length} chars):`, String(reply || "").slice(0, 400));
         const plan = sanitizePlan(parseReply(reply || ""));
         if (!plan) {
+            console.info("[GM DIAG] runPrePass: malformed reply — caller will fall back to keyword triggers");
             logDebug("prePass: malformed reply — caller will fall back to keyword triggers");
             return null;
         }
         logDebug(`prePass: plan — roll=${!!plan.roll} tx=${plan.transactions.length} warn=${plan.warnings.length} relevant=${plan.relevant.length} notes=${plan.notes.length} rewrite=${!!plan.rewrite} nothing=${plan.nothing}`);
         return plan;
     } catch (e) {
-        console.error("[Game Manager] pre-pass failed:", e);
+        console.error("[GM DIAG] pre-pass failed (exception):", e);
         return null;
     }
 }

@@ -576,6 +576,77 @@ textarea.gm_input {
 
 /* ---------- dice roll bubble (floats above the input bar) ---------- */
 
+#gm_status_bubble {
+    position: fixed;
+    z-index: 9998;
+    min-width: 220px;
+    max-width: min(420px, calc(100vw - 24px));
+    padding: 10px 14px;
+    border-radius: var(--gm-radius, 10px);
+    border: 1px solid color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 40%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #1a1a1a) 85%, transparent);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+    animation: gm_dice_in 0.25s ease-out both;
+}
+
+#gm_status_bubble.gm_dice_fadeout {
+    opacity: 0;
+    transition: opacity 0.35s ease;
+}
+
+.gm_status_head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.gm_status_head .fa-solid {
+    font-size: 16px;
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
+}
+
+.gm_status_head .gm_status_spin {
+    animation: gm_status_turn 1.1s linear infinite;
+}
+
+@keyframes gm_status_turn {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.gm_status_head .gm_status_check {
+    color: var(--gm-ok, #4caf7d);
+    animation: gm_dice_pop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+
+.gm_status_text {
+    color: var(--SmartThemeBodyColor, #ccc);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.gm_status_lines {
+    display: none;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 25%, transparent);
+}
+
+.gm_status_lines:not(:empty) {
+    display: block;
+}
+
+.gm_status_line {
+    color: var(--SmartThemeEmColor, #aaa);
+    font-size: 12px;
+    padding: 2px 0;
+}
+
+.gm_status_done .gm_status_text {
+    color: var(--SmartThemeEmColor, #aaa);
+    font-weight: 400;
+}
+
 #gm_dice_bubble {
     position: fixed;
     z-index: 39999;

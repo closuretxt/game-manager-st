@@ -11,11 +11,12 @@
 
 import { extension_settings } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
-import { logDebug, gmNotify } from "./debug.js";
+import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { captureSnapshot } from "./snapshots.js";
 import { queueHigh } from "./injection.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
+import { statusBubble } from "../ui/statusBubble.js";
 
 const SYSTEM_PROMPT = [
     "You are the game master's accountant for a tabletop-style roleplay session.",
@@ -94,7 +95,7 @@ export async function runTransaction(resource, playerAction, mesId = null, plan 
         stateManager.emitChange("transaction");
 
         queueHigh(`  <transaction resource="${resource.name}" current="${current}" transaction="${net}" remaining="${remaining}">${comparison}</transaction>`);
-        gmNotify(`${resource.name}: ${net >= 0 ? "-" : "+"}${Math.abs(net)} → ${remaining} (${comparison})`, "info");
+        statusBubble.result(`${resource.name}: ${net >= 0 ? "-" : "+"}${Math.abs(net)} → ${remaining}${comparison ? ` · ${comparison}` : ""}`);
         logDebug(`transactions: ${resource.name} ${current} -> ${remaining} (${comparison})`);
         return true;
     } catch (e) {
