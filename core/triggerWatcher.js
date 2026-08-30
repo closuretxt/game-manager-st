@@ -150,6 +150,13 @@ export async function handlePreTurn(type = "normal") {
     }
     console.info(`[GM DIAG] handlePreTurn: type=${type} lastMsg.is_user=${!!playerMsg?.is_user} actionLength=${action.length} snapshotId=${snapshotId} targetMsgId=${targetMsgId}`);
 
+    // Skill cooldowns tick once per fresh player message (never on swipes —
+    // the SWIPED rollback already restored the pre-message state). Runs BEFORE
+    // the pre-pass so its snapshot reflects who is on cooldown right now.
+    if (isPlayerAction && type === "normal") {
+        stateManager.tickCooldowns();
+    }
+
     // Pre-pass router — every fresh action is judged by the router LLM first
     // (never on swipes, where the action was already judged when first sent).
     // Falls back to legacy keyword detection when disabled or on failure.

@@ -11,6 +11,8 @@
 //   <update_custom>   — create/update AI-managed custom features
 //   <set_statuses>    — apply temporary per-character statuses (with modifiers)
 //   <clear_statuses>  — remove statuses whose condition ended
+//   <use_skills>      — report active skills a character used; the CODE starts
+//                       their cooldowns (LLMs never manage cooldowns themselves)
 //   <warnings>        — set/clear player warnings (imminent needs like food)
 //   <threads>         — set/clear open threads (untracked/unfinished things,
 //                       secrets; edit-mode-only UI, pre/post-pass see them)
@@ -23,7 +25,7 @@
 import { stateManager } from "./stateManager.js";
 import { logDebug } from "./debug.js";
 
-const BLOCK_TAGS = ["change_values", "set_attributes", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "warnings", "threads", "enemies"];
+const BLOCK_TAGS = ["change_values", "set_attributes", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "warnings", "threads", "enemies"];
 const BLOCK_RE = new RegExp(`<(${BLOCK_TAGS.join("|")})>([\\s\\S]*?)<\\/\\1>`, "gi");
 const INNER_RE = /<(char|target|resource|item|attribute|entry|status|warning|warning_clear|thread|thread_clear|passive|skill)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const ENEMY_RE = /<enemy\b([^>]*?)(?:\/>|>([\s\S]*?)<\/enemy>)/gi;
@@ -104,13 +106,10 @@ function applyAction(blockType, char, action) {
                 return stateManager.removeStatusByName(char.id, name);
             }
             return false;
-        case "status":
-            // Statuses are temporary per-character conditions.
-            if (blockType === "set_statuses") {
-                return stateManager.updateStatus(char.id, { name, modifiers: attrs.modifiers ?? "", effect: attrs.effect ?? attrs.description ?? content ?? "" });
-            }
-            if (blockType === "clear_statuses") {
-                return stateManager.removeStatusByName(char.id, name);
+        case "skill":
+            // Skill USES reported by the post-pass — the code owns cooldowns.
+            if (blockType === "use_skills") {
+                return stateManager.useSkill(char.id, name);
             }
             return false;
         case "warning":

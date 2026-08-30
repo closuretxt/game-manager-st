@@ -56,6 +56,7 @@ export const GM_SCHEMA = {
         fields: [
             { key: "name", label: "Name", type: "text", default: "New Skill" },
             { key: "cost", label: "Cost", type: "text", default: "" },
+            { key: "cooldown", label: "Cooldown (messages)", type: "number", default: 0 },
             { key: "description", label: "Description", type: "textarea", default: "" },
         ],
     },

@@ -21,7 +21,7 @@ const CHAR_RESPONSE_SHAPE = [
     '      <resource name="Health" value="80" min="0" max="100" description="..."/>',
     '      <attribute name="Strength" value="5" description="..."/>',
     '      <item name="Rope" qty="1" description="..."/>',
-    '      <skill name="Fireball" cost="10 Mana" description="..."/>',
+    '      <skill name="Fireball" cost="10 Mana" cooldown="2" description="..."/>  <!-- cooldown in messages; 0 or omitted = always ready -->',
     '      <passive name="Tough" ptype="stat" description="..."/>  <!-- ptype: special|stat -->',
     '      <status name="Dazed" modifiers="Aim -2" effect="..."/>  <!-- TEMPORARY conditions only, removed when they end -->',
     "    </char>",

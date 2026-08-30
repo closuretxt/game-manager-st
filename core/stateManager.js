@@ -567,6 +567,47 @@ export const stateManager = {
         return true;
     },
 
+    // ---------- skill cooldowns (deterministic, code-controlled) ----------
+    // Cooldowns are NEVER LLM-managed: the post-pass only REPORTS skill uses
+    // (<use_skills> tool tag), the code sets cooldown_left = cooldown and
+    // ticks it down once per fresh player message. LLMs only ever see a
+    // boolean (on_cooldown) — they never reason about the remaining count.
+
+    // Marks a skill as just used: starts its cooldown (in messages). Skills
+    // with cooldown 0 are always ready and ignore this call.
+    useSkill(characterId, skillName) {
+        const char = this.getSheet(characterId);
+        if (!char) return false;
+        const needle = String(skillName ?? "").toLowerCase();
+        const skill = (char.skills || []).find(s => String(s.name).toLowerCase() === needle);
+        if (!skill) return false;
+        const cd = Math.trunc(Number(skill.cooldown) || 0);
+        if (cd <= 0) return false;
+        skill.cooldown_left = cd;
+        this.emitChange("use_skill");
+        return true;
+    },
+
+    // Decrements every running cooldown by one message. Called once per fresh
+    // player action, BEFORE the pre-pass judges it — so a skill used in the
+    // previous exchange (cooldown 2) is still on cooldown this turn (1) and
+    // frees up on the turn after (0).
+    tickCooldowns() {
+        const d = this.getData();
+        let ticked = false;
+        for (const c of [...(d.characters || []), ...(d.enemies || [])]) {
+            for (const skill of c.skills || []) {
+                const left = Number(skill.cooldown_left) || 0;
+                if (left > 0) {
+                    skill.cooldown_left = left - 1;
+                    ticked = true;
+                }
+            }
+        }
+        if (ticked) this.emitChange("tick_cooldowns");
+        return ticked;
+    },
+
     // ---------- party-level warnings (AI-managed, injected via low-priority) ----------
     // Warnings are short, minimalist remarks ("Food runs out in ~2 days") shown
     // to the player in the panel and injected into the story LLM context.

@@ -63,6 +63,7 @@ const SYSTEM_PROMPT = [
     "- <note>: brief free-form information the story engine would otherwise miss and that affects how the scene should unfold right now (local prices, an NPC's hidden intent, a rule of the location). At most two per turn, under 25 words each. This is NOT for tracked values — those go in <relevant> — and NOT for anything the scene text already establishes.",
     "- <rewrite>: ONLY when the action is vague, ambiguous, or self-contradictory AND clarifying it changes what should happen next (\"I grab the coins in my pocket and I hand it to the seller\" -> the amount and target become explicit). Rules: rewrite ONLY what the player DOES — CROP OUT all dialogue (quoted speech stays the player's own; the story engine already sees the original message); NEVER invent actions the player did not imply; NEVER answer or extend dialogue; keep it under 40 words, plain declarative description of the action. If the action is already clear, omit the tag entirely.",
     "- <nothing/>: when NONE of the above applies (pure casual chat, simple dialogue, movement with no stakes). Respond with ONLY <nothing/> and nothing else.",
+    "- COOLDOWNS are tracked by the system, not by you: a skill marked on_cooldown in the snapshot is UNAVAILABLE this turn. If the player's action tries to use one, emit a <note> saying that skill is still on cooldown so the story engine can narrate the failed/refused attempt — never decide yourself when a cooldown ends.",
     "",
     "EXAMPLES OF JUDGMENT:",
     "- \"I buy three apples\" -> <transaction resource=\"Dinheiro\" delta=\"-6\" comparison=\"A few days of meals\"/>",
@@ -87,7 +88,13 @@ async function collectContext(playerAction) {
     const snapshot = {
         party: (d.characters || []).map(c => ({
             name: c.name,
-            skills: (c.skills || []).map(s => s.name),
+            // on_cooldown is a code-computed boolean — the router never sees
+            // (and never computes) remaining cooldown counts.
+            skills: (c.skills || []).map(s => {
+                const skill = { name: s.name };
+                if ((Number(s.cooldown_left) || 0) > 0) skill.on_cooldown = true;
+                return skill;
+            }),
             statuses: (c.statuses || []).map(s => ({ name: s.name, modifiers: s.modifiers || "" })),
         })),
         sharedResources: (d.sharedResources || []).map(r => ({ name: r.name, qty: r.qty })),
@@ -103,6 +110,11 @@ async function collectContext(playerAction) {
         snapshot.enemies = d.enemies.map(e => ({
             name: e.name,
             resources: (e.resources || []).map(r => ({ name: r.name, value: r.value, max: r.max })),
+            skills: (e.skills || []).map(sk => {
+                const skill = { name: sk.name };
+                if ((Number(sk.cooldown_left) || 0) > 0) skill.on_cooldown = true;
+                return skill;
+            }),
             statuses: (e.statuses || []).map(x => ({ name: x.name, modifiers: x.modifiers || "" })),
         }));
     }
