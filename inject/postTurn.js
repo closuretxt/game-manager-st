@@ -15,8 +15,10 @@
 //
 // Snapshots: keyed to the AI message id, so deleting or swiping that message
 // rolls the state back to the pre-message baseline (core/snapshots.js).
-// Swipes are safe: the SWIPED handler restores the baseline before the new
-// reply lands, so re-running the tracker on the new text is correct.
+// Swipes are safe: the swipe/regenerate branch of handlePreTurn restores the
+// baseline inside the awaited GENERATION_AFTER_COMMANDS handler, before the
+// new reply is generated — so re-running the tracker on the new text starts
+// from the correct pre-message state.
 //
 // Gated behind the "Agentic updates" setting (auto_update — off by default).
 

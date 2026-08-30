@@ -35,6 +35,7 @@ import { rollDice } from "./diceRoller.js";
 import { runCombatTurn } from "./combatEngine.js";
 import { runTransaction } from "./transactions.js";
 import { runPrePass } from "./prePass.js";
+import { restoreSnapshot } from "./snapshots.js";
 import { queueLowOnce, queueLowNote, queueRewrite, replayHigh, stashHigh } from "./injection.js";
 import { attachRewriteToMessage } from "../ui/rewriteTag.js";
 import { statusBubble } from "../ui/statusBubble.js";
@@ -151,12 +152,26 @@ export async function handlePreTurn(type = "normal") {
         // Swipes/regenerates: the AI message already sits at chat.length - 1.
         snapshotId = Math.max(0, chat.length - 1);
         targetMsgId = playerMsgId;
+        // Roll back to the pre-message baseline HERE, inside the awaited
+        // handler. The SWIPED event cannot be relied on: it does not fire
+        // before a new-swipe generation (and in some ST versions only fires
+        // after the reply lands, when restoring would wipe the NEW tracker
+        // pass instead of the old one). "continue" is excluded: it extends
+        // the existing reply and never re-runs the tracker.
+        if (type === "swipe" || type === "regenerate") {
+            if (restoreSnapshot(snapshotId)) {
+                console.info(`[GM DIAG] handlePreTurn: rolled back state for message ${snapshotId} before swipe/regenerate`);
+            } else {
+                console.info(`[GM DIAG] handlePreTurn: no baseline to roll back for message ${snapshotId}`);
+            }
+        }
     }
     console.info(`[GM DIAG] handlePreTurn: type=${type} lastMsg.is_user=${!!playerMsg?.is_user} actionLength=${action.length} snapshotId=${snapshotId} targetMsgId=${targetMsgId}`);
 
     // Skill cooldowns tick once per fresh player message (never on swipes —
-    // the SWIPED rollback already restored the pre-message state). Runs BEFORE
-    // the pre-pass so its snapshot reflects who is on cooldown right now.
+    // the swipe branch above already rolled the state back to the pre-message
+    // baseline). Runs BEFORE the pre-pass so its snapshot reflects who is on
+    // cooldown right now.
     if (isPlayerAction && type === "normal") {
         stateManager.tickCooldowns();
     }
