@@ -24,7 +24,7 @@ import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
-import { parseAttrs } from "./toolParser.js";
+import { parseAttrs, escAttr } from "./toolParser.js";
 
 const MAX_CONTEXT_MESSAGES = 8;
 
@@ -84,50 +84,58 @@ async function collectContext(playerAction) {
     const history = chat.slice(-MAX_CONTEXT_MESSAGES, -1)
         .map(m => `${m.is_user ? "Player" : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 1500)}`);
 
-    // Compact snapshot: only what the router needs to judge intent.
+    // Compact XML snapshot: only what the router needs to judge intent, in
+    // the same XML dialect every other LLM call in the extension speaks.
     const d = stateManager.getData();
     const s = extension_settings[extensionName];
-    const snapshot = {
-        party: (d.characters || []).map(c => {
-            // The dead have nothing left to judge — collapse their entry.
-            if (c.dead === true) return { name: c.name, dead: true };
-            return {
-                name: c.name,
-                // on_cooldown is a code-computed boolean — the router never sees
-                // (and never computes) remaining cooldown counts.
-                skills: (c.skills || []).map(s => {
-                    const skill = { name: s.name };
-                    if ((Number(s.cooldown_left) || 0) > 0) skill.on_cooldown = true;
-                    return skill;
-                }),
-                statuses: (c.statuses || []).map(s => ({ name: s.name, modifiers: s.modifiers || "" })),
-            };
-        }),
-        sharedResources: (d.sharedResources || []).map(r => ({ name: r.name, qty: r.qty })),
-        warnings: (d.warnings || []).map(w => w.name),
-        // Open threads: untracked/unfinished things + secrets left by the
-        // post-pass. Never injected into the story prompt directly — the
-        // router leaks what the scene demands via <note>.
-        openThreads: (d.threads || []).map(t => ({ name: t.name, text: t.text, ref: t.ref || "" })),
-    };
+    const parts = ["<state>"];
+
+    for (const c of d.characters || []) {
+        // The dead have nothing left to judge — collapse their entry.
+        if (c.dead === true) {
+            parts.push(`  <character name="${escAttr(c.name)}" dead="true"/>`);
+            continue;
+        }
+        const lines = [`  <character name="${escAttr(c.name)}">`];
+        // on_cooldown is a code-computed boolean — the router never sees
+        // (and never computes) remaining cooldown counts.
+        for (const sk of c.skills || []) {
+            const onCd = (Number(sk.cooldown_left) || 0) > 0;
+            lines.push(`    <skill name="${escAttr(sk.name)}"${onCd ? ' on_cooldown="true"' : ""}/>`);
+        }
+        for (const st of c.statuses || []) lines.push(`    <status name="${escAttr(st.name)}"${st.modifiers ? ` modifiers="${escAttr(st.modifiers)}"` : ""}/>`);
+        lines.push("  </character>");
+        parts.push(...lines);
+    }
+
+    for (const r of d.sharedResources || []) parts.push(`  <resource name="${escAttr(r.name)}" qty="${escAttr(r.qty)}"/>`);
+    for (const w of d.warnings || []) parts.push(`  <warning name="${escAttr(w.name)}"/>`);
+    // Open threads: untracked/unfinished things + secrets left by the
+    // post-pass. Never injected into the story prompt directly — the
+    // router leaks what the scene demands via <note>.
+    for (const t of d.threads || []) {
+        parts.push(`  <thread name="${escAttr(t.name)}"${t.ref ? ` ref="${escAttr(t.ref)}"` : ""}>${escAttr(t.text)}</thread>`);
+    }
     // Enemies only when the feature is on AND some exist — the router never
     // pays tokens for an enemy-free scene.
     if (s.feature_enemies && (d.enemies || []).length) {
-        snapshot.enemies = d.enemies.map(e => ({
-            name: e.name,
-            resources: (e.resources || []).map(r => ({ name: r.name, value: r.value, max: r.max })),
-            skills: (e.skills || []).map(sk => {
-                const skill = { name: sk.name };
-                if ((Number(sk.cooldown_left) || 0) > 0) skill.on_cooldown = true;
-                return skill;
-            }),
-            statuses: (e.statuses || []).map(x => ({ name: x.name, modifiers: x.modifiers || "" })),
-        }));
+        for (const e of d.enemies) {
+            const lines = [`  <enemy name="${escAttr(e.name)}">`];
+            for (const r of e.resources || []) lines.push(`    <resource name="${escAttr(r.name)}" value="${r.value}" max="${r.max}"/>`);
+            for (const sk of e.skills || []) {
+                const onCd = (Number(sk.cooldown_left) || 0) > 0;
+                lines.push(`    <skill name="${escAttr(sk.name)}"${onCd ? ' on_cooldown="true"' : ""}/>`);
+            }
+            for (const st of e.statuses || []) lines.push(`    <status name="${escAttr(st.name)}"${st.modifiers ? ` modifiers="${escAttr(st.modifiers)}"` : ""}/>`);
+            lines.push("  </enemy>");
+            parts.push(...lines);
+        }
     }
+    parts.push("</state>");
 
     const blocks = [
-        "TRACKED STATE (JSON):",
-        JSON.stringify(snapshot),
+        "TRACKED STATE (XML):",
+        parts.join("\n"),
         "",
         "RECENT SCENE:",
         ...history,

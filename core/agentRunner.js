@@ -18,7 +18,7 @@ import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { progression } from "./progression.js";
-import { parseToolBlocks, applyToolBlocks } from "./toolParser.js";
+import { parseToolBlocks, applyToolBlocks, escAttr } from "./toolParser.js";
 import { captureSnapshot } from "./snapshots.js";
 import { sendRequestViaProfile, resolveConnectionProfile, getProfileNameById } from "../util/connectionService.js";
 import { swapProfile } from "../util/profileSwapper.js";
@@ -27,53 +27,57 @@ import { buildDeepContext } from "../util/loreContext.js";
 const MAX_CONTEXT_MESSAGES = 6;
 let _running = false;
 
-function buildStateSummary() {
+// Renders the tracked state as a compact XML snapshot — same shape and
+// visibility rules the JSON version had, in the same XML dialect the agent
+// is asked to answer in.
+function buildStateSummaryXml() {
     const d = stateManager.getData();
     const s = extension_settings[extensionName];
     // Progression tracks are only exposed when the feature is on — otherwise
     // the agent never sees (and never grants) EXP.
     const prog = progression.isEnabled();
-    const charSummary = c => {
-        const out = {
-            name: c.name,
-            resources: c.resources.map(r => ({ name: r.name, value: r.value, min: r.min, max: r.max })),
-        attributes: c.attributes.map(a => ({ name: a.name, value: a.value })),
-        inventory: c.inventory.map(i => ({ name: i.name, qty: i.qty })),
-        // on_cooldown is a code-computed boolean — the agent never sees (and
-        // never computes) remaining cooldown counts.
-        skills: (c.skills || []).map(s => {
-            const skill = { name: s.name };
-            if ((Number(s.cooldown_left) || 0) > 0) skill.on_cooldown = true;
-            return skill;
-        }),
-        statuses: (c.statuses || []).map(s => ({ name: s.name, modifiers: s.modifiers || "" })),
-        };
+
+    const actorXml = (c, tag) => {
+        const attrs = [`name="${escAttr(c.name)}"`];
         // The agent must see deaths so it never "heals" a corpse or keeps
         // treating the dead as actors.
-        if (c.dead === true) {
-            out.dead = true;
-            if (c.death_reason) out.death_reason = c.death_reason;
-        }
+        if (c.dead === true) attrs.push('dead="true"');
+        if (c.dead === true && c.death_reason) attrs.push(`death_reason="${escAttr(c.death_reason)}"`);
         if (prog) {
             const track = progression.trackOf(c);
-            out.level = track.level;
-            out.exp = track.exp;
-            out.exp_to_next = progression.expToNext(track.level);
-            out.skill_points = track.skill_points;
+            attrs.push(`level="${track.level}" exp="${track.exp}" exp_to_next="${progression.expToNext(track.level)}" skill_points="${track.skill_points}"`);
         }
-        return out;
+        const lines = [`  <${tag} ${attrs.join(" ")}>`];
+        for (const r of c.resources) lines.push(`    <resource name="${escAttr(r.name)}" value="${r.value}" min="${r.min}" max="${r.max}"/>`);
+        for (const a of c.attributes) lines.push(`    <attribute name="${escAttr(a.name)}" value="${a.value}"/>`);
+        for (const i of c.inventory) lines.push(`    <item name="${escAttr(i.name)}" qty="${i.qty}"/>`);
+        // on_cooldown is a code-computed boolean — the agent never sees (and
+        // never computes) remaining cooldown counts.
+        for (const sk of c.skills || []) {
+            const onCd = (Number(sk.cooldown_left) || 0) > 0;
+            lines.push(`    <skill name="${escAttr(sk.name)}"${onCd ? ' on_cooldown="true"' : ""}/>`);
+        }
+        for (const st of c.statuses || []) lines.push(`    <status name="${escAttr(st.name)}"${st.modifiers ? ` modifiers="${escAttr(st.modifiers)}"` : ""}/>`);
+        lines.push(`  </${tag}>`);
+        return lines.join("\n");
     };
-    return {
-        characters: d.characters.map(charSummary),
-        // Enemies only when the feature is on AND some exist — otherwise the
-        // agent never sees (and never invents) enemy state.
-        enemies: (s.feature_enemies ? d.enemies : []).map(charSummary),
-        customFeatures: d.custom.map(c => ({ name: c.name, value: c.value })),
-        // Open threads: untracked/unfinished things + secrets the agent left
-        // for itself (also visible to the pre-pass, never to the story prompt).
-        openThreads: (d.threads || []).map(t => ({ name: t.name, text: t.text, ref: t.ref || "" })),
-        // Shared party resources are intentionally excluded: AI never touches them.
-    };
+
+    const parts = ["<state>"];
+    for (const c of d.characters) parts.push(actorXml(c, "character"));
+    // Enemies only when the feature is on AND some exist — otherwise the
+    // agent never sees (and never invents) enemy state.
+    if (s.feature_enemies) {
+        for (const e of d.enemies) parts.push(actorXml(e, "enemy"));
+    }
+    for (const c of d.custom) parts.push(`  <custom name="${escAttr(c.name)}" value="${escAttr(c.value)}"/>`);
+    // Open threads: untracked/unfinished things + secrets the agent left
+    // for itself (also visible to the pre-pass, never to the story prompt).
+    for (const t of d.threads || []) {
+        parts.push(`  <thread name="${escAttr(t.name)}"${t.ref ? ` ref="${escAttr(t.ref)}"` : ""}>${escAttr(t.text)}</thread>`);
+    }
+    // Shared party resources are intentionally excluded: AI never touches them.
+    parts.push("</state>");
+    return parts.join("\n");
 }
 
 function collectRecentMessages() {
@@ -100,7 +104,7 @@ async function buildSystemPrompt(exchange = []) {
     }
     const lines = [
         "You are the game-state engine of a tabletop-style roleplay session.",
-        "You will receive the recent exchange and a JSON snapshot of the tracked state.",
+        "You will receive the recent exchange and an XML snapshot of the tracked state.",
         "Report ONLY the concrete state changes that logically follow from the exchange (damage, spent resources, resolved rolls, items gained or consumed, attribute milestones, evolving custom features).",
         "Respond with ONLY the XML blocks below — no prose, no explanations. If nothing changed, respond with nothing.",
         "Never invent characters or tracked values that are not in the state snapshot. Never modify shared party resources.",
@@ -158,8 +162,8 @@ async function buildSystemPrompt(exchange = []) {
 
 function buildUserPrompt(exchange) {
     const blocks = [
-        "STATE SNAPSHOT (JSON):",
-        JSON.stringify(buildStateSummary()),
+        "STATE SNAPSHOT (XML):",
+        buildStateSummaryXml(),
         "",
         "RECENT EXCHANGE:",
         ...exchange.map(m => `${m.role}: ${m.text}`),

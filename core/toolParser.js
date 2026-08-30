@@ -47,6 +47,16 @@ export function decodeEntities(str) {
         .replace(/&amp;/g, "&");
 }
 
+// Escapes a value for use inside a double-quoted XML attribute (or as text
+// content — the extra " escaping is harmless there).
+export function escAttr(v) {
+    return String(v ?? "")
+        .replace(/&/g, "&")
+        .replace(/</g, "<")
+        .replace(/>/g, ">")
+        .replace(/"/g, """);
+}
+
 export function parseAttrs(raw) {
     const out = {};
     const re = /([a-zA-Z_][\w-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g;
