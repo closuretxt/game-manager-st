@@ -839,6 +839,8 @@ class MainPanel {
             btn.on("click", () => {
                 this.activeCharTab = tab.id;
                 this.render();
+                // The tree lives in a fullscreen popup — open it on tab click.
+                if (tab.id === "skilltree") skillTreeView.open(char, edit);
             });
             bar.append(btn);
         }

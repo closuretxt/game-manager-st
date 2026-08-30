@@ -913,7 +913,8 @@ textarea.gm_input {
 .gm_modal_overlay {
     position: fixed;
     inset: 0;
-    z-index: 10010;
+    /* Above the skill tree popup (10020) — wish/refine dialogs open from it. */
+    z-index: 10030;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1299,99 +1300,17 @@ textarea.gm_input {
     margin-bottom: 8px;
 }
 
-/* Tier columns, left (tier 1) to right (frontier). */
-.gm_tree_cols {
-    display: flex;
-    gap: 10px;
-    align-items: stretch;
-    overflow-x: auto;
-    padding-bottom: 4px;
-}
-
-.gm_tree_tier {
-    flex: 1 0 150px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    min-width: 150px;
-}
-
-.gm_tree_tier_label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    opacity: var(--gm-muted, 0.55);
-    text-align: center;
-}
-
-/* Node card states: unlocked / available (affordable + requirements met) /
-   locked (dark — missing points or requirements). */
-.gm_tree_node {
-    border: 1px solid var(--gm-line, #33333c);
-    border-radius: var(--gm-radius, 8px);
-    padding: 7px 9px;
-    cursor: pointer;
-    background: rgba(0, 0, 0, 0.2);
-    transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-.gm_tree_node_top {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.gm_tree_node_top i {
-    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b8912f));
+/* Tab launcher summary line. */
+.gm_tree_summary {
     font-size: 12px;
-    flex: 0 0 auto;
-}
-
-.gm_tree_node_name {
-    font-weight: 600;
-    font-size: 12px;
-    flex: 1 1 auto;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.gm_tree_node_cost {
-    font-size: 11px;
     opacity: var(--gm-muted, 0.55);
-    white-space: nowrap;
+    margin-bottom: 8px;
 }
 
-.gm_tree_node_desc {
-    font-size: 11px;
-    opacity: var(--gm-muted, 0.55);
-    margin-top: 4px;
-}
-
-.gm_tree_node_reqs {
-    font-size: 10px;
-    opacity: var(--gm-muted, 0.55);
-    margin-top: 4px;
-    font-style: italic;
-}
-
-.gm_tree_available:hover {
-    border-color: var(--gm-accent, var(--SmartThemeQuoteColor, #b8912f));
-}
-
-.gm_tree_unlocked {
-    border-color: color-mix(in srgb, var(--gm-ok, #4caf7d) 45%, transparent);
-    background: color-mix(in srgb, var(--gm-ok, #4caf7d) 8%, transparent);
-}
-
-.gm_tree_unlocked .gm_tree_node_top i {
-    color: var(--gm-ok, #4caf7d);
-}
-
-.gm_tree_locked {
+/* Generic disabled menu button (locked unlock button, generating, ...). */
+.menu_button.disabled {
     opacity: 0.45;
-    background: rgba(0, 0, 0, 0.45);
-    cursor: not-allowed;
+    pointer-events: none;
 }
 
 /* Inline feedback line for unlock attempts (why a node is locked). */
@@ -1400,4 +1319,390 @@ textarea.gm_input {
     color: var(--gm-warn, #ffc107);
     min-height: 14px;
     margin-top: 6px;
+}
+
+/* ---------- Skill Tree popup ---------- */
+
+.gm_stree_overlay {
+    z-index: 10020;
+}
+
+.gm_stree {
+    display: flex;
+    flex-direction: column;
+    width: min(960px, 96vw);
+    height: min(680px, 90vh);
+    border-radius: var(--gm-radius, 10px);
+    border: 1px solid color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 40%, transparent);
+    background: var(--SmartThemeBlurTintColor, var(--SmartThemeBodyColor, #1a1a1a));
+    color: var(--SmartThemeBodyColor, #ccc);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+.gm_stree_header {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--gm-line, #33333c);
+}
+
+.gm_stree_header_row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.gm_stree_title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+}
+
+.gm_stree_title i {
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b8912f));
+}
+
+.gm_stree_spacer {
+    flex: 1 1 auto;
+}
+
+.gm_stree_close {
+    opacity: 0.7;
+}
+
+.gm_stree_close:hover {
+    opacity: 1;
+}
+
+.gm_stree_tools {
+    margin-bottom: 0;
+}
+
+/* Scrollable canvas holding the SVG links and the node orbs. */
+.gm_stree_canvas_wrap {
+    flex: 1 1 auto;
+    overflow: auto;
+    position: relative;
+    background:
+        radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 6%, transparent), transparent 60%),
+        rgba(0, 0, 0, 0.25);
+}
+
+.gm_stree_canvas {
+    position: relative;
+    margin: 0 auto;
+}
+
+.gm_stree_links {
+    position: absolute;
+    inset: 0;
+}
+
+/* Inheritance lines are drawn rim to rim as SVG <line> elements with the
+   child's branch hue and state opacity set inline (see _renderTree). */
+
+/* Tier label in the left gutter. */
+.gm_stree_tier_label {
+    position: absolute;
+    left: 2px;
+    width: 52px;
+    transform: translateY(-50%);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: var(--gm-muted, 0.55);
+    text-align: center;
+}
+
+/* Node balls: circular orbs (sized by cost) centered in an invisible wrapper
+   that also carries the cost pill, lock badge and name label. --bc holds the
+   branch hue, inherited from the node's tier-1 root. */
+.gm_stree_node {
+    position: absolute;
+    width: 150px;
+    height: 134px;
+    cursor: pointer;
+}
+
+.gm_stree_orb {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 2px solid var(--bc, #5a5a66);
+    background: #23232b;
+    color: var(--bc, #8a8a95);
+    font-size: 15px;
+    transition: box-shadow 0.15s ease, transform 0.15s ease, background 0.15s ease;
+}
+
+.gm_stree_node:hover .gm_stree_orb {
+    transform: scale(1.06);
+}
+
+/* States: unlocked = filled with the branch hue, available = glowing rim,
+   locked = dimmed gray. */
+.gm_stree_available .gm_stree_orb {
+    box-shadow: 0 0 12px color-mix(in srgb, var(--bc) 40%, transparent);
+}
+
+.gm_stree_unlocked .gm_stree_orb {
+    background: var(--bc);
+    color: #16161c;
+    box-shadow: 0 0 16px color-mix(in srgb, var(--bc) 55%, transparent);
+}
+
+.gm_stree_locked .gm_stree_orb {
+    border-color: #3c3c46;
+    color: #6a6a75;
+}
+
+.gm_stree_selected .gm_stree_orb {
+    box-shadow: 0 0 0 2px #fff, 0 0 14px color-mix(in srgb, var(--bc) 45%, transparent);
+}
+
+/* Cost pill sitting on the bottom rim of the orb. */
+.gm_stree_node_cost {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 999px;
+    border: 1px solid var(--bc, #5a5a66);
+    background: #16161c;
+    color: var(--bc, #8a8a95);
+    z-index: 2;
+}
+
+.gm_stree_unlocked .gm_stree_node_cost {
+    background: var(--bc);
+    color: #16161c;
+}
+
+/* Lock badge on the top-left rim of locked orbs. */
+.gm_stree_node_lock {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #16161c;
+    border: 1px solid #3c3c46;
+    color: #8a8a95;
+    font-size: 8px;
+    z-index: 2;
+}
+
+/* Name label under the orb. */
+.gm_stree_node_name {
+    position: absolute;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 10px;
+    line-height: 1.15;
+    color: var(--SmartThemeBodyColor, #ccc);
+    opacity: 0.75;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+/* Cost chip inside the detail panel head (plain, non-positioned). */
+.gm_stree_detail_cost {
+    font-size: 10px;
+    border: 1px solid var(--gm-line, #33333c);
+    border-radius: 999px;
+    padding: 1px 6px;
+    opacity: 0.8;
+    white-space: nowrap;
+}
+
+/* Unlock button: pill with a green gradient, glow on hover. */
+.gm_stree_unlock_btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--gm-ok, #4caf7d) 60%, transparent);
+    background: linear-gradient(180deg,
+        color-mix(in srgb, var(--gm-ok, #4caf7d) 28%, transparent),
+        color-mix(in srgb, var(--gm-ok, #4caf7d) 12%, transparent));
+    color: var(--gm-ok, #4caf7d);
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: box-shadow 0.15s ease, transform 0.15s ease, background 0.15s ease;
+}
+
+.gm_stree_unlock_btn:hover {
+    background: linear-gradient(180deg,
+        color-mix(in srgb, var(--gm-ok, #4caf7d) 42%, transparent),
+        color-mix(in srgb, var(--gm-ok, #4caf7d) 20%, transparent));
+    box-shadow: 0 0 14px color-mix(in srgb, var(--gm-ok, #4caf7d) 35%, transparent);
+    transform: translateY(-1px);
+}
+
+.gm_stree_unlock_btn.disabled {
+    opacity: 0.4;
+    pointer-events: none;
+    filter: grayscale(0.6);
+}
+
+/* Footer: selected-node detail + hint + extend button. */
+.gm_stree_footer {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    border-top: 1px solid color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 30%, var(--gm-line, #33333c));
+    background: rgba(0, 0, 0, 0.4);
+}
+
+.gm_stree_detail {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 56px;
+    padding: 10px 12px;
+    border: 1px solid var(--gm-line, #33333c);
+    border-radius: var(--gm-radius, 8px);
+    background: rgba(255, 255, 255, 0.03);
+    /* Centered to line up with the tree canvas above (also centered). */
+    width: 100%;
+    max-width: 760px;
+    margin: 0 auto;
+}
+
+.gm_stree_detail_empty {
+    font-size: 12px;
+    opacity: 0.75;
+}
+
+.gm_stree_detail_info {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.gm_stree_detail_head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.gm_stree_detail_head i {
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b8912f));
+}
+
+.gm_stree_detail_type {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: var(--gm-muted, 0.55);
+    border: 1px solid var(--gm-line, #33333c);
+    border-radius: 999px;
+    padding: 1px 6px;
+}
+
+.gm_stree_detail_desc {
+    font-size: 12px;
+    opacity: 0.92;
+}
+
+.gm_stree_detail_meta {
+    font-size: 11px;
+    opacity: var(--gm-muted, 0.55);
+    font-style: italic;
+}
+
+.gm_stree_detail_action {
+    flex: 0 0 auto;
+}
+
+.gm_stree_detail_done {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--gm-ok, #4caf7d);
+}
+
+.gm_stree_bottom {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    max-width: 760px;
+    margin: 0 auto;
+}
+
+.gm_stree_bottom .gm_tree_hint {
+    flex: 1 1 auto;
+    margin-top: 0;
+    font-size: 12px;
+    opacity: 1;
+}
+
+/* Empty state (no tree yet). */
+.gm_stree_empty {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    text-align: center;
+    padding: 20px;
+}
+
+.gm_stree_empty > i {
+    font-size: 36px;
+    opacity: 0.4;
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b8912f));
+}
+
+/* Unlock burst: pop + expanding ring on the freshly unlocked orb (the node
+   gets .gm_stree_just for ~2s after unlocking). */
+.gm_stree_just .gm_stree_orb {
+    animation: gm_stree_pop 0.5s ease;
+}
+
+.gm_stree_just::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 58px;
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--bc, #fff);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    animation: gm_stree_ring 0.7s ease-out forwards;
+}
+
+@keyframes gm_stree_pop {
+    0% { transform: scale(0.6); }
+    55% { transform: scale(1.18); }
+    100% { transform: scale(1); }
+}
+
+@keyframes gm_stree_ring {
+    from { opacity: 0.9; width: 24px; height: 24px; }
+    to { opacity: 0; width: 160px; height: 160px; }
 }
