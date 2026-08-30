@@ -21,7 +21,7 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "../core/constants.js";
 import { logDebug } from "../core/debug.js";
 import { stateManager } from "../core/stateManager.js";
-import { restoreSnapshot, restoreLastDeleted } from "../core/snapshots.js";
+import { restoreSnapshot, restoreLastDeleted, hasSnapshot } from "../core/snapshots.js";
 import { handlePreTurn, setPendingAction } from "../core/triggerWatcher.js";
 import { clearHigh, clearLow } from "../core/injection.js";
 
@@ -84,11 +84,15 @@ export function initPreTurn() {
 
     // SWIPED — the current last message is being re-rolled; restore its
     // baseline (if any) so the new swipe starts from the pre-message state.
-    st.eventSource.on(st.event_types.SWIPED, async () => {
+    st.eventSource.on(st.event_types.SWIPED, async (mesId) => {
         try {
-            const mesId = st.chat.length - 1;
-            if (mesId >= 0 && restoreSnapshot(mesId)) {
-                logDebug(`SWIPED: state rolled back for message ${mesId}`);
+            const id = Number.isFinite(mesId) ? Number(mesId) : st.chat.length - 1;
+            console.info(`[GM DIAG] SWIPED fired: mesId=${id} (chat.length-1=${st.chat.length - 1}) hasSnapshot=${hasSnapshot(id)}`);
+            if (id >= 0 && restoreSnapshot(id)) {
+                logDebug(`SWIPED: state rolled back for message ${id}`);
+                console.info(`[GM DIAG] SWIPED: state rolled back for message ${id}`);
+            } else {
+                console.info(`[GM DIAG] SWIPED: NO snapshot restored for message ${id}`);
             }
         } catch (e) {
             console.error("[Game Manager] snapshot restore on swipe failed:", e);

@@ -40,6 +40,10 @@ export const defaultSettings = {
     feature_rewrite: true,        // Pre-pass rewrites vague/contradictory actions (highlighted tag + high-priority injection).
     feature_progression: true,    // EXP/levels/skill points (per-scenario curve, <grant_exp> tool tag).
     feature_skill_tree: true,     // Per-character skill trees (LLM-generated segments, unlocked with skill points).
+    feature_combat: true,         // Combat Mode (Text): opposed resolution (ally AI + enemy AI + clash + dice).
+    feature_ally_ai: true,        // ALLY AI invents actions for party members the player didn't command.
+    combat_max_enemy_actions: 6,  // Sanity cap on enemy actions per combat round.
+    feature_death: true,          // Permadeath: the post-pass may kill characters (<deaths> tag); only the user revives.
 
     // Standing instructions injected verbatim into the specialists' prompt
     // contexts (summaries, clock times, chronograms, house rules...).
@@ -51,6 +55,7 @@ export const defaultSettings = {
     connection_profile: "", // Connection profile id for the extension's own AI calls ("" = same as current connection).
     premaster_profile: "",  // Connection profile id for pre-master calls (dice rolls / transactions). "" = same as connection_profile.
     wizard_profile: "",     // Connection profile id for the scenario build wizard (less agentic). "" = same as premaster chain.
+    combat_profile: "",     // Connection profile id for the combat passes (ally/enemy/clash). "" = same as premaster chain.
     legacy_api: false, // LEGACY: swap the active connection profile for extension AI calls instead of per-request profiles.
     edit_mode: false, // When off, all resource/entry mutation controls are hidden (view-only, hardcore feel).
     window_opacity: 95, // Floating window background opacity in percent.
@@ -89,6 +94,9 @@ export async function loadSettings() {
     $("#gm_setting_feat_rewrite").prop("checked", !!s.feature_rewrite);
     $("#gm_setting_feat_progression").prop("checked", !!s.feature_progression);
     $("#gm_setting_feat_skill_tree").prop("checked", !!s.feature_skill_tree);
+    $("#gm_setting_feat_combat").prop("checked", !!s.feature_combat);
+    $("#gm_setting_feat_ally_ai").prop("checked", !!s.feature_ally_ai);
+    $("#gm_setting_feat_death").prop("checked", !!s.feature_death);
     $("#gm_setting_bg_opacity").val(Number.isFinite(+s.window_opacity) ? +s.window_opacity : 95);
     $("#gm_bg_opacity_value").text(`${s.window_opacity}%`);
 
@@ -116,6 +124,9 @@ export function saveSettings() {
     s.feature_rewrite = $("#gm_setting_feat_rewrite").prop("checked");
     s.feature_progression = $("#gm_setting_feat_progression").prop("checked");
     s.feature_skill_tree = $("#gm_setting_feat_skill_tree").prop("checked");
+    s.feature_combat = $("#gm_setting_feat_combat").prop("checked");
+    s.feature_ally_ai = $("#gm_setting_feat_ally_ai").prop("checked");
+    s.feature_death = $("#gm_setting_feat_death").prop("checked");
     saveSettingsDebounced();
 }
 
@@ -123,6 +134,7 @@ export function initSettingsListeners() {
     $("#gm_setting_enabled, #gm_setting_auto_update, #gm_setting_debug_mode, #gm_setting_open_panel, #gm_setting_legacy, #gm_setting_pre_pass, " +
       "#gm_setting_feat_wizard, #gm_setting_feat_char_creator, #gm_setting_deep_context, #gm_setting_deep_context_engines, " +
       "#gm_setting_feat_warnings, #gm_setting_feat_dice, #gm_setting_feat_transactions, #gm_setting_feat_injection, " +
-      "#gm_setting_feat_enemies, #gm_setting_feat_rewrite, #gm_setting_feat_progression, #gm_setting_feat_skill_tree").on("change", saveSettings);
+      "#gm_setting_feat_enemies, #gm_setting_feat_rewrite, #gm_setting_feat_progression, #gm_setting_feat_skill_tree, " +
+      "#gm_setting_feat_combat, #gm_setting_feat_ally_ai, #gm_setting_feat_death").on("change", saveSettings);
 }
 

@@ -14,6 +14,7 @@ import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { captureSnapshot } from "./snapshots.js";
 import { queueHigh } from "./injection.js";
+import { parseAttrs } from "./toolParser.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 import { diceBubble, attachRollToMessage } from "../ui/diceBubble.js";
@@ -24,14 +25,15 @@ const SYSTEM_PROMPT = [
     "You are the game master's dice engine for a tabletop-style roleplay session.",
     "You receive the recent scene and the player's action. Decide if the action's outcome is uncertain enough to require a random roll.",
     "Routine, guaranteed, or purely narrative actions do NOT need a roll.",
-    "If a roll IS needed, respond with ONLY a JSON object (no markdown fences, no prose):",
-    '{"needsRoll": true, "title": "<short action title, e.g. Use Fireball on Goblin>", "tiers": [',
-    '  {"name": "Critical Failure", "chance": 10, "outcome": "<short outcome line>"},',
-    '  {"name": "Failure", "chance": 25, "outcome": "<short outcome line>"},',
-    '  {"name": "Success", "chance": 50, "outcome": "<short outcome line>"},',
-    '  {"name": "Critical Success", "chance": 15, "outcome": "<short outcome line>"}]}',
+    "If a roll IS needed, respond with ONLY XML (no markdown fences, no prose):",
+    '<roll title="<short action title, e.g. Use Fireball on Goblin>">',
+    '  <tier name="Critical Failure" chance="10">Fireball explodes in your face</tier>',
+    '  <tier name="Failure" chance="25">You launch and miss</tier>',
+    '  <tier name="Success" chance="50">The blast engulfs the target</tier>',
+    '  <tier name="Critical Success" chance="15">The goblin is vaporized instantly</tier>',
+    "</roll>",
     "Always provide exactly 4 tiers in that order. Chances are percentages of a 100% total. Outcome lines are short, vivid, second person (\"Fireball explodes in your face\").",
-    "If no roll is needed respond with ONLY: {\"needsRoll\": false}",
+    "If no roll is needed respond with ONLY: <roll needs=\"false\"/>",
 ].join("\n");
 
 function collectContext(playerAction) {
@@ -55,30 +57,46 @@ function collectContext(playerAction) {
     ].join("\n");
 }
 
-// Extracts complete tier objects from a partial JSON stream so the bubble can
-// render options as they arrive, one by one.
+// Extracts complete tier objects from a partial XML stream so the bubble can
+// render options as they arrive, one by one. Incomplete (unclosed) tiers are
+// skipped until their closing tag arrives.
 export function extractStreamedTiers(partialText) {
     const tiers = [];
     if (!partialText) return tiers;
-    const re = /{\s*"name"\s*:\s*"([^"]*?)"\s*,\s*"chance"\s*:\s*([\d.]+)\s*,\s*"outcome"\s*:\s*"((?:[^"\\]|\\.)*)"\s*}/g;
+    const re = /<tier\b([^>]*?)(?:\/>|>([\s\S]*?)<\/tier>)/gi;
     let m;
     while ((m = re.exec(partialText)) !== null) {
-        tiers.push({ name: m[1], chance: parseFloat(m[2]) || 0, outcome: m[3].replace(/\\n/g, " ") });
+        const a = parseAttrs(m[1]);
+        tiers.push({
+            name: String(a.name || ""),
+            chance: Number(a.chance) || 0,
+            outcome: String(m[2] || "").replace(/\s+/g, " ").trim(),
+        });
     }
     return tiers;
 }
 
-// Tolerant final parse: grabs the first {...} JSON object in the reply.
+// Tolerant final parse: the first <roll> block in the reply.
 function parseReply(text) {
-    const start = text.indexOf("{");
-    const end = text.lastIndexOf("}");
-    if (start === -1 || end <= start) return null;
-    try {
-        return JSON.parse(text.slice(start, end + 1));
-    } catch (e) {
-        logDebug("diceRoller: JSON parse failed:", e);
-        return null;
+    if (!text) return null;
+    const rollM = text.match(/<roll\b([^>]*?)(?:\/>|>([\s\S]*?)<\/roll>)/i);
+    if (!rollM) return null;
+    const attrs = parseAttrs(rollM[1]);
+    if (String(attrs.needs ?? attrs.needed ?? "true").toLowerCase() === "false") {
+        return { needsRoll: false };
     }
+    const tiers = [];
+    const tierRe = /<tier\b([^>]*?)(?:\/>|>([\s\S]*?)<\/tier>)/gi;
+    let m;
+    while ((m = tierRe.exec(rollM[2] || "")) !== null) {
+        const a = parseAttrs(m[1]);
+        tiers.push({
+            name: String(a.name || ""),
+            chance: Number(a.chance) || 0,
+            outcome: String(m[2] || "").replace(/\s+/g, " ").trim(),
+        });
+    }
+    return { needsRoll: true, title: String(attrs.title || "Roll"), tiers };
 }
 
 // Weighted random pick across the provided tiers (chances used as weights).
@@ -94,8 +112,8 @@ export function weightedRoll(tiers) {
 }
 
 function queueRollResult(title, tier) {
-    const pct = Math.round(Number(tier.chance) || 0);
-    queueHigh(`  <roll title="${title}" tier="${tier.name}" chance="${pct}">${tier.outcome}</roll>`);
+    // Minimal injection: the story engine needs the outcome, not the odds.
+    queueHigh(`  <roll title="${title}" tier="${tier.name}">${tier.outcome}</roll>`);
 }
 
 // Full dice flow for a player action on message `mesId`. `opts.title` comes

@@ -20,17 +20,21 @@
 //                       secrets; edit-mode-only UI, pre/post-pass see them)
 //   <enemies>         — add/update/remove context-based enemies (removed ones
 //                       are archived, not deleted, and restored on return)
+//   <deaths>          — report a party character's death (<death char="Name"
+//                       reason="..."/>); only the user (edit mode) revives
 // Every block may contain a <char>Name</char> (or <target>) tag to scope it;
 // when omitted the active character is used. <warnings> and <threads> are
 // party-level and <char> resolves party characters AND enemies.
 
+import { extension_settings } from "../../../../extensions.js";
+import { extensionName } from "./constants.js";
 import { stateManager } from "./stateManager.js";
 import { progression } from "./progression.js";
 import { logDebug } from "./debug.js";
 
-const BLOCK_TAGS = ["change_values", "set_attributes", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies"];
+const BLOCK_TAGS = ["change_values", "set_attributes", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies", "deaths"];
 const BLOCK_RE = new RegExp(`<(${BLOCK_TAGS.join("|")})>([\\s\\S]*?)<\\/\\1>`, "gi");
-const INNER_RE = /<(char|target|resource|item|attribute|entry|status|warning|warning_clear|thread|thread_clear|passive|skill|exp)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
+const INNER_RE = /<(char|target|resource|item|attribute|entry|status|warning|warning_clear|thread|thread_clear|passive|skill|exp|death)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const ENEMY_RE = /<enemy\b([^>]*?)(?:\/>|>([\s\S]*?)<\/enemy>)/gi;
 
 // Shared with the other LLM-output parsers (prePass, setupWizard).
@@ -241,6 +245,21 @@ export function applyToolBlocks(blocks, { autoCreateChars = false } = {}) {
         if (block.type === "threads") {
             for (const action of block.actions) {
                 if (applyAction(block.type, null, action)) applied++;
+            }
+            continue;
+        }
+        // Deaths are per-action scoped: <death char="Name" reason="..."/>.
+        // Party characters only — enemies die via <enemies action="remove">.
+        // Feature-gated: with permadeath off the block is ignored entirely.
+        if (block.type === "deaths") {
+            if (extension_settings[extensionName]?.feature_death === false) continue;
+            for (const action of block.actions) {
+                const target = stateManager.getCharacter(action.attrs.char || "");
+                if (!target) {
+                    logDebug("toolParser: skipping death for unknown character:", action.attrs.char || "(none)");
+                    continue;
+                }
+                if (stateManager.setDead(target.id, action.attrs.reason ?? action.content ?? "")) applied++;
             }
             continue;
         }

@@ -407,6 +407,7 @@ class MainPanel {
         const chars = stateManager.getCharacters();
         for (const c of chars) {
             const row = $("<div>").addClass("gm_entry_row gm_party_row");
+            row.toggleClass("gm_dead_row", c.dead === true);
             const top = $("<div>").addClass("gm_entry_top");
 
             const nameWrap = $("<div>").addClass("gm_entry_main");
@@ -415,6 +416,12 @@ class MainPanel {
             top.append(nameWrap);
 
             const chips = $("<div>").addClass("gm_party_summary");
+            // Death chip — skull with the cause on hover.
+            if (c.dead === true) {
+                chips.append($("<span>").addClass("gm_party_chip gm_death_chip")
+                    .attr("title", c.death_reason || "Dead")
+                    .append($("<i>").addClass("fa-solid fa-skull")));
+            }
             for (const r of c.resources.slice(0, 4)) {
                 chips.append($("<span>").addClass("gm_party_chip").text(`${r.name} ${r.value}/${r.max}`));
             }
@@ -788,6 +795,22 @@ class MainPanel {
         header.append($("<b>").addClass("gm_sheet_name").text(char.name));
         if (progression.isEnabled()) header.append(this._progBadges(char));
         content.append(header);
+
+        // Death banner — the character is dead; only edit mode can revive.
+        if (char.dead === true) {
+            const banner = $("<div>").addClass("gm_death_banner");
+            banner.append($("<i>").addClass("fa-solid fa-skull"));
+            const label = $("<span>").append($("<b>").text("DEAD"));
+            if (char.death_reason) label.append($("<span>").text(` — ${char.death_reason}`));
+            banner.append(label);
+            if (edit) {
+                const revive = $("<div>").addClass("menu_button gm_small_btn").append(
+                    $("<i>").addClass("fa-solid fa-heart-pulse"), $("<span>").text(" Revive"));
+                revive.on("click", () => stateManager.reviveChar(char.id));
+                banner.append(revive);
+            }
+            content.append(banner);
+        }
 
         const backRow = $("<div>").addClass("gm_sheet_top");
         const back = $("<div>").addClass("gm_back_btn").append(

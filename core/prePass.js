@@ -48,6 +48,7 @@ const SYSTEM_PROMPT = [
     "OUTPUT FORMAT:",
     "Respond with ONLY XML tags — no markdown fences, no prose, no explanations. Every tag is OPTIONAL; emit only what applies:",
     '  <roll needed="true" title="<short action title, e.g. Use Fireball on Goblin>"/>',
+    '  <combat engaged="true" speed="<initiative value, 0 if unknown>"/>',
     '  <transaction resource="<shared resource name>" delta="<signed number, negative = spending>" comparison="<plain-language note, under 12 words>"/>',
     '  <warning action="set" name="<short name>" text="<under 15 words>"/>  or  <warning action="clear" name="<short name>"/>',
     '  <relevant names="<comma-separated shared resource names whose value matters this turn>"/>',
@@ -56,7 +57,8 @@ const SYSTEM_PROMPT = [
     "  <nothing/>",
     "",
     "TAG RULES:",
-    "- <roll>: ONLY when the action's outcome is genuinely uncertain AND consequential — combat, risky stunts, contested attempts, unpredictable reactions. Routine, guaranteed, or purely narrative actions never roll. The dice engine will build the outcome tiers; you only decide IF and give the action a short title.",
+    "- <roll>: ONLY when the action's outcome is genuinely uncertain AND consequential — risky stunts, contested attempts, unpredictable reactions. Routine, guaranteed, or purely narrative actions never roll. The dice engine will build the outcome tiers; you only decide IF and give the action a short title.",
+    "- <combat>: INSTEAD of <roll>, when the action ENGAGES tracked enemies (attacking, defending under threat, fleeing from them, using a skill on one). Casual talk with an enemy present does NOT count. speed is the actor's initiative judged from their attributes/statuses (Dexterity, Haste...), 0 when unknown. The combat engine runs the opposed resolution (enemy AI + clash + dice); you only decide IF and the speed. Never emit <roll> together with <combat>.",
     "- <transaction>: ONLY for the party-wide shared resources listed in the snapshot, when the action implies spending or gaining. delta is negative when spending, positive when gaining; the transaction engine validates amounts against the current value. Use delta=\"0\" only when the action involves the resource but the amount is unclear — the engine will judge it. The comparison is a plain-language sense of scale (\"Could buy a week's worth of food\").",
     "- <warning>: ONLY for imminent, concrete needs the player should prepare for (supplies running out, deadlines, approaching dangers). action=\"set\" adds or updates one; action=\"clear\" removes one whose cause is resolved. Never re-emit a warning that is already true and unchanged.",
     "- <relevant>: shared resources whose CURRENT VALUE the story engine needs to know this turn even though nothing was spent (haggling, showing off wealth, checking supplies). Resources flagged always-inject are already visible — never list them.",
@@ -86,17 +88,21 @@ async function collectContext(playerAction) {
     const d = stateManager.getData();
     const s = extension_settings[extensionName];
     const snapshot = {
-        party: (d.characters || []).map(c => ({
-            name: c.name,
-            // on_cooldown is a code-computed boolean — the router never sees
-            // (and never computes) remaining cooldown counts.
-            skills: (c.skills || []).map(s => {
-                const skill = { name: s.name };
-                if ((Number(s.cooldown_left) || 0) > 0) skill.on_cooldown = true;
-                return skill;
-            }),
-            statuses: (c.statuses || []).map(s => ({ name: s.name, modifiers: s.modifiers || "" })),
-        })),
+        party: (d.characters || []).map(c => {
+            // The dead have nothing left to judge — collapse their entry.
+            if (c.dead === true) return { name: c.name, dead: true };
+            return {
+                name: c.name,
+                // on_cooldown is a code-computed boolean — the router never sees
+                // (and never computes) remaining cooldown counts.
+                skills: (c.skills || []).map(s => {
+                    const skill = { name: s.name };
+                    if ((Number(s.cooldown_left) || 0) > 0) skill.on_cooldown = true;
+                    return skill;
+                }),
+                statuses: (c.statuses || []).map(s => ({ name: s.name, modifiers: s.modifiers || "" })),
+            };
+        }),
         sharedResources: (d.sharedResources || []).map(r => ({ name: r.name, qty: r.qty })),
         warnings: (d.warnings || []).map(w => w.name),
         // Open threads: untracked/unfinished things + secrets left by the
@@ -153,7 +159,7 @@ async function collectContext(playerAction) {
 // fast path. Returns a raw plan or null when no recognizable tag is present.
 function parseReply(text) {
     if (!text) return null;
-    const plan = { roll: null, transactions: [], warnings: [], relevant: [], notes: [], rewrite: null, nothing: /<nothing\b/i.test(text) };
+    const plan = { roll: null, combat: null, transactions: [], warnings: [], relevant: [], notes: [], rewrite: null, nothing: /<nothing\b/i.test(text) };
     let m;
 
     const rollM = text.match(/<roll\b([^>]*?)(?:\/>|>[\s\S]*?<\/roll>)/i);
@@ -161,6 +167,14 @@ function parseReply(text) {
         const attrs = parseAttrs(rollM[1]);
         if (String(attrs.needed ?? "").toLowerCase() === "true") {
             plan.roll = { needed: true, title: String(attrs.title || "Roll") };
+        }
+    }
+
+    const combatM = text.match(/<combat\b([^>]*?)(?:\/>|>[\s\S]*?<\/combat>)/i);
+    if (combatM) {
+        const attrs = parseAttrs(combatM[1]);
+        if (String(attrs.engaged ?? "").toLowerCase() === "true") {
+            plan.combat = { engaged: true, speed: Math.max(0, Math.trunc(Number(attrs.speed) || 0)) };
         }
     }
 
@@ -196,7 +210,7 @@ function parseReply(text) {
         if (rewrite) plan.rewrite = rewrite;
     }
 
-    const empty = !plan.roll && !plan.transactions.length && !plan.warnings.length && !plan.relevant.length && !plan.notes.length && !plan.rewrite;
+    const empty = !plan.roll && !plan.combat && !plan.transactions.length && !plan.warnings.length && !plan.relevant.length && !plan.notes.length && !plan.rewrite;
     if (empty && !plan.nothing) {
         logDebug("prePass: no recognizable plan tags in reply");
         return null;
@@ -209,7 +223,7 @@ function parseReply(text) {
 function sanitizePlan(parsed) {
     if (!parsed || typeof parsed !== "object") return null;
     if (parsed.nothing === true) {
-        return { roll: null, transactions: [], warnings: [], relevant: [], notes: [], rewrite: null, nothing: true };
+        return { roll: null, combat: null, transactions: [], warnings: [], relevant: [], notes: [], rewrite: null, nothing: true };
     }
 
     const d = stateManager.getData();
@@ -217,7 +231,13 @@ function sanitizePlan(parsed) {
         r => r.name && String(r.name).toLowerCase() === String(name ?? "").toLowerCase()
     );
 
-    const roll = (parsed.roll && parsed.roll.needed === true)
+    // Combat and a plain roll are mutually exclusive: combat takes over the
+    // opposed resolution entirely.
+    const combat = (parsed.combat && parsed.combat.engaged === true)
+        ? { engaged: true, speed: Math.max(0, Math.trunc(Number(parsed.combat.speed) || 0)) }
+        : null;
+
+    const roll = (!combat && parsed.roll && parsed.roll.needed === true)
         ? { needed: true, title: String(parsed.roll.title || "Roll").slice(0, 80) }
         : null;
 
@@ -251,8 +271,8 @@ function sanitizePlan(parsed) {
 
     const rewrite = parsed.rewrite ? String(parsed.rewrite).trim().slice(0, 300) : null;
 
-    const nothing = !roll && !transactions.length && !warnings.length && !relevant.length && !notes.length && !rewrite;
-    return { roll, transactions, warnings, relevant, notes, rewrite, nothing };
+    const nothing = !roll && !combat && !transactions.length && !warnings.length && !relevant.length && !notes.length && !rewrite;
+    return { roll, combat, transactions, warnings, relevant, notes, rewrite, nothing };
 }
 
 //
@@ -298,7 +318,7 @@ export async function runPrePass(playerAction) {
             logDebug("prePass: malformed reply — caller will fall back to keyword triggers");
             return null;
         }
-        logDebug(`prePass: plan — roll=${!!plan.roll} tx=${plan.transactions.length} warn=${plan.warnings.length} relevant=${plan.relevant.length} notes=${plan.notes.length} rewrite=${!!plan.rewrite} nothing=${plan.nothing}`);
+        logDebug(`prePass: plan — combat=${!!plan.combat} roll=${!!plan.roll} tx=${plan.transactions.length} warn=${plan.warnings.length} relevant=${plan.relevant.length} notes=${plan.notes.length} rewrite=${!!plan.rewrite} nothing=${plan.nothing}`);
         return plan;
     } catch (e) {
         console.error("[GM DIAG] pre-pass failed (exception):", e);

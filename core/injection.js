@@ -15,6 +15,7 @@
 
 import { extension_settings } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
+import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 
 let _pendingHigh = [];
@@ -40,6 +41,35 @@ function esc(v) {
 export function queueHigh(xmlBlock) {
     if (!xmlBlock) return;
     _pendingHigh.push(xmlBlock);
+}
+
+// Stash of this turn's queued high-priority payload, keyed by the id of the
+// AI message it belongs to. Swipes/regenerates never re-run the pre-pass,
+// and the previous generation's macro already consumed the buffer — so the
+// re-generated prompt would lose the roll / combat round / transaction
+// results. stashHigh keeps them; replayHigh re-queues them.
+const _stashedHigh = new Map();
+const STASH_LIMIT = 10;
+
+export function stashHigh(mesId) {
+    const id = Number(mesId);
+    if (!Number.isFinite(id) || _pendingHigh.length === 0) return;
+    _stashedHigh.set(id, _pendingHigh.join("\n"));
+    for (const k of _stashedHigh.keys()) {
+        if (k < id - STASH_LIMIT) _stashedHigh.delete(k);
+    }
+    console.info(`[GM DIAG] stashHigh: key=${id} payloadChars=${_stashedHigh.get(id).length} keys=[${[..._stashedHigh.keys()]}]`);
+}
+
+export function replayHigh(mesId) {
+    const stored = _stashedHigh.get(Number(mesId));
+    if (!stored) {
+        console.info(`[GM DIAG] replayHigh: MISS for message ${mesId} (stashed keys=[${[..._stashedHigh.keys()]}])`);
+        return;
+    }
+    logDebug(`injection: replaying stashed high-priority results for message ${mesId} (swipe/regenerate)`);
+    console.info(`[GM DIAG] replayHigh: HIT for message ${mesId} (${stored.length} chars re-queued)`);
+    _pendingHigh.push(stored);
 }
 
 // Queues a ONE-SHOT high-priority action rewrite produced by the pre-pass.
@@ -81,6 +111,7 @@ export function consumeHigh() {
 
 export function clearHigh() {
     _pendingHigh = [];
+    _stashedHigh.clear();
 }
 
 // ---------- low priority (persistent context) ----------
@@ -98,6 +129,13 @@ export function buildLowPriority() {
     for (const r of d.sharedResources || []) {
         if (r.always_inject) {
             parts.push(`  <resource name="${esc(r.name)}" value="${esc(r.qty)}"/>`);
+        }
+    }
+
+    // Dead party members: the story engine must never use them again.
+    for (const c of d.characters || []) {
+        if (c.dead === true) {
+            parts.push(`  <character name="${esc(c.name)}" status="dead"${c.death_reason ? ` reason="${esc(c.death_reason)}"` : ""}/>`);
         }
     }
 

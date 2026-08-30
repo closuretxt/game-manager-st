@@ -48,6 +48,12 @@ function buildStateSummary() {
         }),
         statuses: (c.statuses || []).map(s => ({ name: s.name, modifiers: s.modifiers || "" })),
         };
+        // The agent must see deaths so it never "heals" a corpse or keeps
+        // treating the dead as actors.
+        if (c.dead === true) {
+            out.dead = true;
+            if (c.death_reason) out.death_reason = c.death_reason;
+        }
         if (prog) {
             const track = progression.trackOf(c);
             out.level = track.level;
@@ -111,12 +117,16 @@ async function buildSystemPrompt(exchange = []) {
         '  <warnings><warning name="Food" text="You have about two days of food left."/><warning_clear name="Food"/></warnings>',
         '  <threads><thread name="Fuel trip" text="Left town with 40L fuel; ~120 km driven so far" ref="started when leaving town"/><thread_clear name="Fuel trip"/></threads>',
         '  <enemies><enemy action="add" name="Goblin"><resource name="HP" value="30" max="30"/><passive name="Brutal" description="+2 damage below half HP"/></enemy><enemy action="update" name="Goblin"><resource name="HP" delta="-7"/><status name="Wounded" modifiers="Aim -2"/></enemy><enemy action="remove" name="Goblin" reason="defeated"/></enemies>',
+        ...(s.feature_death !== false ? ['  <deaths><death char="Name" reason="short cause of death"/></deaths>'] : []),
         ...(prog ? ['  <grant_exp><char>Name</char><exp amount="25"/></grant_exp>'] : []),
         "",
         "Use <warnings> ONLY for imminent, concrete needs the player should prepare for (supplies running out, deadlines, approaching dangers). Keep warning text under 15 words. Clear a warning when its cause is resolved. Do not re-emit unchanged warnings every turn.",
         "Use <threads> to leave notes to yourself about UNTRACKED or UNFINISHED things the formal containers cannot hold: ongoing trips (fuel/money spent so far), half-done actions, unresolved behavior, or secrets that must stay hidden from the player. ALWAYS record where/when it started (ref) so you can compare progress later (\"started when leaving town\", \"day 2 of the siege\"). Update the thread as things progress; clear it (thread_clear) as soon as it is finished or irrelevant. Threads are invisible to the player and never injected into the story prompt — the pre-pass decides what the story needs to know.",
         "Use <enemies> when enemies or threats appear in the scene: action=\"add\" to introduce one (with its HP resource and notable passives/skills), nested <resource>/<status> tags or hp_delta to update it, and action=\"remove\" AS SOON AS an enemy stops being relevant (defeated, fled, scene moved on) — removed enemies are archived and automatically restored with their last state if they return. You may also damage enemies with <change_values><char>EnemyName</char>.",
         "Use <set_statuses> for TEMPORARY per-character conditions (Dazed, Drunk, Inspired...). When a status lands, also apply its listed stat modifiers through <change_values>; when the condition ends, remove the modifiers with a matching <change_values> and clear the status with <clear_statuses>. Do not use statuses for permanent traits (passives) or party-wide gimmicks (custom).",
+        ...(s.feature_death !== false ? [
+            "LETHALITY — be realistic about damage and health. Do NOT soften outcomes to protect characters: wounds have consequences, and a resource reaching its minimum (or a clearly unsurvivable blow shown in the exchange) means DEATH. When a character or ally dies, report it with <deaths><death char=\"Name\" reason=\"short cause\"/></deaths>. A character survives a lethal hit ONLY if one of their listed skills or passives (not on cooldown) explicitly says otherwise (a revive, an undying passive). Never invent a rescue the scene and sheets do not support. Enemies die via <enemies action=\"remove\" reason=\"slain\">. A character marked dead in the snapshot stays dead — never report actions, healing or EXP for them.",
+        ] : []),
         "Use <use_skills> whenever a character ACTIVELY used one of their listed skills during the exchange: one <skill name=\"...\"/> per skill used, scoped with <char>. The system starts cooldowns automatically — NEVER report or compute cooldowns yourself, and NEVER report a skill marked on_cooldown (it could not have been used). Passives are always active: never report them.",
         ...(prog ? [
             "Use <grant_exp> when a character clearly EARNED experience during the exchange (overcoming a challenge, a victory, a meaningful accomplishment) — one <exp amount=\"...\"/> per character, scoped with <char>. The system computes level-ups and skill points automatically — NEVER report or compute levels yourself. Grant EXP by your own accord, at a pace calibrated by the EXP GUIDELINES below; skip the block when nothing noteworthy happened.",
@@ -204,7 +214,9 @@ export async function runAgentPass(reason = "manual", mesId = null) {
         }
         // Baseline for rollback: the state before this message's first changes.
         const st2 = getContext();
-        captureSnapshot(mesId ?? Math.max(0, st2.chat.length - 1));
+        const snapId = mesId ?? Math.max(0, st2.chat.length - 1);
+        console.info(`[GM DIAG] agent pass: capturing baseline snapshot for message ${snapId} (chat.length=${st2.chat.length})`);
+        captureSnapshot(snapId);
         const applied = applyToolBlocks(blocks);
         logDebug(`agent pass (${reason}): applied ${applied} change(s)`);
         return applied;

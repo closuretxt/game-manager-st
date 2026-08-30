@@ -112,6 +112,10 @@ export const stateManager = {
             }
             _normalizeProgression(c);
             _normalizeSkillTree(c);
+            // Death flag: absent/false = alive (keeps old chats clean). The
+            // reason only exists while dead.
+            c.dead = c.dead === true;
+            if (!c.dead) delete c.death_reason;
             // Migration: custom features used to be per-character, now party-wide.
             if (Array.isArray(c.custom) && c.custom.length) {
                 d.custom.push(...c.custom);
@@ -310,6 +314,34 @@ export const stateManager = {
         if (!entry) return null;
         d.roster = d.roster.filter(x => x.id !== id);
         return this.addCharacter(entry.name, entry.sheet || null);
+    },
+
+    // ---------- death (permadeath) ----------
+    // Death is a flag, not a container: the LLM reports it via <deaths>,
+    // only the user (edit mode) can reverse it.
+    isDead(idOrName) {
+        const c = this.getCharacter(idOrName);
+        return !!c?.dead;
+    },
+
+    setDead(idOrName, reason = "") {
+        const c = this.getCharacter(idOrName);
+        if (!c || c.dead === true) return null;
+        c.dead = true;
+        c.death_reason = String(reason || "").slice(0, 160);
+        // The dead hold no cooldowns.
+        for (const skill of c.skills || []) skill.cooldown_left = 0;
+        this.emitChange("char_death");
+        return c;
+    },
+
+    reviveChar(idOrName) {
+        const c = this.getCharacter(idOrName);
+        if (!c || c.dead !== true) return null;
+        c.dead = false;
+        delete c.death_reason;
+        this.emitChange("char_revive");
+        return c;
     },
 
     // ---------- enemies (context-based, AI-managed) ----------

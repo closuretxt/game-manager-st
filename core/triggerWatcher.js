@@ -4,8 +4,11 @@
 //   player sends action
 //     └─ GENERATION_AFTER_COMMANDS (awaited — prompt assembly waits for us)
 //          ├─ PRE-PASS router LLM (core/prePass.js) judges EVERY fresh action
-//          │    └─ plan: roll? / transactions? / warnings? / relevant values?
+//          │    └─ plan: combat? / roll? / transactions? / warnings? / relevant?
 //          └─ specialists execute only the plan's entries
+//               ├─ plan.combat      -> opposed combat resolution
+//               │                      (core/combatEngine.js: ally AI + enemy AI
+//               │                      + clash resolver + per-group dice)
 //               ├─ plan.roll        -> dice roll (core/diceRoller.js)
 //               ├─ plan.transactions-> transaction (core/transactions.js)
 //               ├─ plan.warnings    -> stateManager warnings
@@ -29,9 +32,10 @@ import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { rollDice } from "./diceRoller.js";
+import { runCombatTurn } from "./combatEngine.js";
 import { runTransaction } from "./transactions.js";
 import { runPrePass } from "./prePass.js";
-import { queueLowOnce, queueLowNote, queueRewrite } from "./injection.js";
+import { queueLowOnce, queueLowNote, queueRewrite, replayHigh, stashHigh } from "./injection.js";
 import { attachRewriteToMessage } from "../ui/rewriteTag.js";
 import { statusBubble } from "../ui/statusBubble.js";
 
@@ -169,6 +173,13 @@ export async function handlePreTurn(type = "normal") {
         console.info(`[GM DIAG] pre-pass returned: ${plan ? `roll=${!!plan.roll} tx=${plan.transactions.length} warn=${plan.warnings.length} relevant=${plan.relevant.length} notes=${plan.notes.length} rewrite=${!!plan.rewrite} nothing=${plan.nothing}` : "NULL (fell back to keywords)"}`);
         if (!plan) plan = planFromTriggers(detectTriggers(action));
     }
+    // Swipes/regenerates never re-run the pre-pass (the plan was already
+    // judged when the action was first sent), but the re-generated prompt
+    // still needs THIS turn's results — the previous generation's macro
+    // already consumed the high-priority buffer. Re-queue the stashed
+    // payload for the message being re-generated.
+    if (!isPlayerAction) replayHigh(targetMsgId);
+
     if (!plan || plan.nothing) {
         console.info("[GM DIAG] plan empty/nothing — no specialists will run");
         statusBubble.done("Nothing to track this turn.");
@@ -181,8 +192,16 @@ export async function handlePreTurn(type = "normal") {
         // Specialist flows — only on a fresh player action, only for what the
         // plan contains.
         if (action && plan && !plan.nothing) {
-            // Dice — the pre-pass decided IF, the roller decides HOW.
-            if (s.feature_dice && plan.roll?.needed) {
+            // Combat Mode — the pre-pass judged the action ENGAGES tracked
+            // enemies: the opposed resolution (ally AI + enemy AI + clash +
+            // dice) replaces the plain dice path entirely. Requires the
+            // enemies feature and at least one tracked enemy.
+            if (s.feature_combat && plan.combat?.engaged && (stateManager.getData().enemies || []).length) {
+                logDebug("pre-turn: combat planned — running opposed resolution");
+                statusBubble.close(true); // the combat bubble takes over visually
+                await runCombatTurn(action, plan, targetMsgId);
+            } else if (s.feature_dice && plan.roll?.needed) {
+                // Dice — the pre-pass decided IF, the roller decides HOW.
                 logDebug(`pre-turn: roll planned "${plan.roll.title}"`);
                 statusBubble.close(true); // the dice bubble takes over visually
                 await rollDice(action, targetMsgId, { title: plan.roll.title });
@@ -245,6 +264,9 @@ export async function handlePreTurn(type = "normal") {
         console.error("[Game Manager] pre-turn handling failed:", e);
     } finally {
         _running = false;
+        // Keep this turn's queued results for swipes/regenerates of the
+        // upcoming AI message (keyed by its id) — replayHigh re-queues them.
+        stashHigh(snapshotId);
         statusBubble.done("All set.");
     }
 }

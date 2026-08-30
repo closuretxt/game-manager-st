@@ -73,7 +73,10 @@ export function restoreSnapshot(mesId) {
     if (!gm) return false;
     const key = String(mesId);
     const snap = gm.snapshots[key];
-    if (!snap) return false;
+    if (!snap) {
+        console.info(`[GM DIAG] restoreSnapshot: no snapshot for message ${key} (have keys=[${Object.keys(gm.snapshots)}])`);
+        return false;
+    }
     stateManager.replaceData(snap.state);
 
     if (typeof snap.messageText === "string") {

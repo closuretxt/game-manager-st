@@ -602,7 +602,13 @@ textarea.gm_input {
     padding: 10px 14px;
     border-radius: var(--gm-radius, 10px);
     border: 1px solid color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 40%, transparent);
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #1a1a1a) 85%, transparent);
+    /* Layered: theme tint on top, opaque dark layer underneath — readable
+       even when the theme's BlurTintColor is nearly transparent. */
+    background:
+        var(--SmartThemeBlurTintColor, rgba(23, 23, 28, 0.97)),
+        rgba(15, 15, 18, 0.92);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
     animation: gm_dice_in 0.25s ease-out both;
 }
@@ -670,7 +676,13 @@ textarea.gm_input {
     z-index: 39999;
     min-width: 260px;
     max-width: 380px;
-    background: var(--SmartThemeBlurTintColor, rgba(23, 23, 28, 0.97));
+    /* Layered: theme tint on top, opaque dark layer underneath — readable
+       even when the theme's BlurTintColor is nearly transparent. */
+    background:
+        var(--SmartThemeBlurTintColor, rgba(23, 23, 28, 0.97)),
+        rgba(15, 15, 18, 0.92);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     border: 1px solid var(--gm-line, rgba(255, 255, 255, 0.1));
     border-radius: 12px;
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
@@ -1331,7 +1343,10 @@ textarea.gm_input {
     display: flex;
     flex-direction: column;
     width: min(960px, 96vw);
-    height: min(680px, 90vh);
+    /* Hug the content: the footer sits right under the tree, and the canvas
+       scrolls only when the tree outgrows the viewport. */
+    height: auto;
+    max-height: min(680px, 90vh);
     border-radius: var(--gm-radius, 10px);
     border: 1px solid color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 40%, transparent);
     background: var(--SmartThemeBlurTintColor, var(--SmartThemeBodyColor, #1a1a1a));
@@ -1383,7 +1398,8 @@ textarea.gm_input {
 
 /* Scrollable canvas holding the SVG links and the node orbs. */
 .gm_stree_canvas_wrap {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
+    min-height: 0;
     overflow: auto;
     position: relative;
     background:
@@ -1580,10 +1596,6 @@ textarea.gm_input {
     border: 1px solid var(--gm-line, #33333c);
     border-radius: var(--gm-radius, 8px);
     background: rgba(255, 255, 255, 0.03);
-    /* Centered to line up with the tree canvas above (also centered). */
-    width: 100%;
-    max-width: 760px;
-    margin: 0 auto;
 }
 
 .gm_stree_detail_empty {
@@ -1646,9 +1658,6 @@ textarea.gm_input {
     display: flex;
     align-items: center;
     gap: 10px;
-    width: 100%;
-    max-width: 760px;
-    margin: 0 auto;
 }
 
 .gm_stree_bottom .gm_tree_hint {
@@ -1660,7 +1669,7 @@ textarea.gm_input {
 
 /* Empty state (no tree yet). */
 .gm_stree_empty {
-    height: 100%;
+    min-height: 320px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1705,4 +1714,183 @@ textarea.gm_input {
 @keyframes gm_stree_ring {
     from { opacity: 0.9; width: 24px; height: 24px; }
     to { opacity: 0; width: 160px; height: 160px; }
+}
+
+/* ---------- combat mode (text) — side-by-side clash bubble + message tag ---------- */
+
+#gm_combat_bubble {
+    position: fixed;
+    z-index: 99999;
+    min-width: 300px;
+    max-width: 460px;
+    max-height: 70vh;
+    overflow-y: auto;
+    padding: 12px 14px;
+    border-radius: var(--gm-radius, 12px);
+    border: 1px solid color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 40%, transparent);
+    /* Layered background: the theme tint sits on top, but an opaque dark
+       layer underneath guarantees readability even when the theme's
+       BlurTintColor is nearly transparent. */
+    background:
+        var(--SmartThemeBlurTintColor, rgba(23, 23, 28, 0.97)),
+        rgba(15, 15, 18, 0.92);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    font-size: 12px;
+    animation: gm_dice_in 0.25s ease-out;
+}
+
+#gm_combat_bubble.gm_dice_fadeout {
+    opacity: 0;
+    transition: opacity 0.4s ease;
+}
+
+.gm_combat_groups {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.gm_combat_group {
+    padding: 8px;
+    border-radius: var(--gm-radius, 8px);
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor, #ccc) 15%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBodyColor, #ccc) 4%, transparent);
+}
+
+.gm_combat_group_resolved {
+    border-color: color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 45%, transparent);
+}
+
+.gm_combat_group_title {
+    font-weight: 700;
+    color: var(--SmartThemeBodyColor, #ccc);
+    margin-bottom: 6px;
+}
+
+.gm_combat_sides {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.gm_combat_side {
+    flex: 1;
+    min-width: 0;
+    padding: 5px 7px;
+    border-radius: var(--gm-radius, 8px);
+    border: 1px solid transparent;
+}
+
+.gm_combat_side_party {
+    border-color: color-mix(in srgb, var(--gm-ok, #4caf7d) 40%, transparent);
+    background: color-mix(in srgb, var(--gm-ok, #4caf7d) 8%, transparent);
+}
+
+.gm_combat_side_enemy {
+    border-color: color-mix(in srgb, var(--gm-danger, #d9534f) 40%, transparent);
+    background: color-mix(in srgb, var(--gm-danger, #d9534f) 8%, transparent);
+}
+
+.gm_combat_actor {
+    font-weight: 700;
+    color: var(--SmartThemeBodyColor, #ccc);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.gm_combat_action {
+    color: var(--SmartThemeEmColor, #aaa);
+    font-style: italic;
+    margin: 2px 0;
+}
+
+.gm_combat_speed {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--SmartThemeEmColor, #aaa);
+}
+
+/* Permanent record tag on the player's message (DOM-only). */
+
+.gm_combat_tag {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 6px 0 2px;
+    padding: 6px 10px;
+    font-size: 12px;
+    border-radius: var(--gm-radius, 8px);
+    border: 1px solid color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 45%, transparent);
+    background: color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 7%, transparent);
+    animation: gm_dice_in 0.3s ease-out both;
+}
+
+.gm_combat_tag > i {
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
+    font-size: 13px;
+    margin-top: 2px;
+}
+
+.gm_combat_tag_body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.gm_combat_tag_line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    align-items: baseline;
+}
+
+/* ---------- death (permadeath) ---------- */
+
+.gm_death_banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 0;
+    padding: 7px 10px;
+    font-size: 12px;
+    border-radius: var(--gm-radius, 8px);
+    border: 1px solid color-mix(in srgb, var(--gm-danger, #d9534f) 50%, transparent);
+    background: color-mix(in srgb, var(--gm-danger, #d9534f) 12%, transparent);
+    animation: gm_dice_in 0.3s ease-out both;
+}
+
+.gm_death_banner > i {
+    color: var(--gm-danger, #d9534f);
+    font-size: 14px;
+}
+
+.gm_death_banner b {
+    color: var(--gm-danger, #d9534f);
+    letter-spacing: 1px;
+}
+
+.gm_death_banner span {
+    color: var(--SmartThemeBodyColor, #ccc);
+}
+
+.gm_death_banner .menu_button {
+    margin-left: auto;
+}
+
+.gm_death_chip {
+    color: var(--gm-danger, #d9534f);
+}
+
+.gm_dead_row {
+    opacity: 0.55;
+}
+
+.gm_dead_row .gm_entry_name {
+    text-decoration: line-through;
 }
