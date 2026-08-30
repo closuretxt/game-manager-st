@@ -16,6 +16,17 @@ function settings() {
     return extension_settings[extensionName];
 }
 
+// Normalizes a character's progression track (level/exp/skill points). Present
+// on every sheet; only meaningful when the progression feature is on.
+function _normalizeProgression(c) {
+    const p = c.progression && typeof c.progression === "object" && !Array.isArray(c.progression) ? c.progression : {};
+    c.progression = {
+        level: Math.max(1, Math.trunc(Number(p.level) || 1)),
+        exp: Math.max(0, Math.trunc(Number(p.exp) || 0)),
+        skill_points: Math.max(0, Math.trunc(Number(p.skill_points) || 0)),
+    };
+}
+
 // Returns the per-chat storage bucket (creating it if needed), or null when no chat is open.
 function chatStore() {
     const st = getContext();
@@ -78,12 +89,18 @@ export const stateManager = {
         if (!Array.isArray(d.custom)) d.custom = [];
         if (!Array.isArray(d.warnings)) d.warnings = [];
         if (!Array.isArray(d.threads)) d.threads = [];
+        // Per-scenario progression config (EXP curve, skill points). Absent
+        // until the wizard proposes it or the user sets it by hand.
+        if (d.progression !== null && (typeof d.progression !== "object" || Array.isArray(d.progression))) {
+            delete d.progression;
+        }
         for (const c of d.characters) {
             c.id = c.id || genId();
             c.name = c.name || "Unnamed";
             for (const key of CHARACTER_CONTAINERS) {
                 if (!Array.isArray(c[key])) c[key] = [];
             }
+            _normalizeProgression(c);
             // Migration: custom features used to be per-character, now party-wide.
             if (Array.isArray(c.custom) && c.custom.length) {
                 d.custom.push(...c.custom);
@@ -97,6 +114,7 @@ export const stateManager = {
             for (const key of CHARACTER_CONTAINERS) {
                 if (!Array.isArray(c[key])) c[key] = [];
             }
+            _normalizeProgression(c);
         }
         if (!d.characters.some(c => c.id === d.activeCharacterId)) {
             d.activeCharacterId = d.characters[0]?.id ?? null;

@@ -38,6 +38,7 @@ export const defaultSettings = {
     feature_injection: true,      // {{gamemaster-*}} macros inject warnings/context into prompts.
     feature_enemies: true,        // Context-based enemies (AI-managed sheets, archived when irrelevant).
     feature_rewrite: true,        // Pre-pass rewrites vague/contradictory actions (highlighted tag + high-priority injection).
+    feature_progression: true,    // EXP/levels/skill points (per-scenario curve, <grant_exp> tool tag).
 
     // Standing instructions injected verbatim into the specialists' prompt
     // contexts (summaries, clock times, chronograms, house rules...).
@@ -85,6 +86,7 @@ export async function loadSettings() {
     $("#gm_setting_feat_injection").prop("checked", !!s.feature_injection);
     $("#gm_setting_feat_enemies").prop("checked", !!s.feature_enemies);
     $("#gm_setting_feat_rewrite").prop("checked", !!s.feature_rewrite);
+    $("#gm_setting_feat_progression").prop("checked", !!s.feature_progression);
     $("#gm_setting_bg_opacity").val(Number.isFinite(+s.window_opacity) ? +s.window_opacity : 95);
     $("#gm_bg_opacity_value").text(`${s.window_opacity}%`);
 
@@ -110,6 +112,7 @@ export function saveSettings() {
     s.feature_injection = $("#gm_setting_feat_injection").prop("checked");
     s.feature_enemies = $("#gm_setting_feat_enemies").prop("checked");
     s.feature_rewrite = $("#gm_setting_feat_rewrite").prop("checked");
+    s.feature_progression = $("#gm_setting_feat_progression").prop("checked");
     saveSettingsDebounced();
 }
 
@@ -117,6 +120,6 @@ export function initSettingsListeners() {
     $("#gm_setting_enabled, #gm_setting_auto_update, #gm_setting_debug_mode, #gm_setting_open_panel, #gm_setting_legacy, #gm_setting_pre_pass, " +
       "#gm_setting_feat_wizard, #gm_setting_feat_char_creator, #gm_setting_deep_context, #gm_setting_deep_context_engines, " +
       "#gm_setting_feat_warnings, #gm_setting_feat_dice, #gm_setting_feat_transactions, #gm_setting_feat_injection, " +
-      "#gm_setting_feat_enemies, #gm_setting_feat_rewrite").on("change", saveSettings);
+      "#gm_setting_feat_enemies, #gm_setting_feat_rewrite, #gm_setting_feat_progression").on("change", saveSettings);
 }
 

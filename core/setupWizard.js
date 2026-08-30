@@ -37,6 +37,7 @@ const RESPONSE_SHAPE = [
     '  <ally name="..." note="<one line: who they are, why they matter>"/>',
     '  <shared name="Dinheiro" qty="150" description="..." always_inject="false"/>',
     '  <custom name="Seeds" value="Pouch" description="..."/>',
+    '  <progression enabled="true" exp_base="100" exp_growth="1.25" skill_points="1" bonus_every="5">EXP guidelines: how much EXP trivial actions, minor victories and major challenges give</progression>',
     '  <warning name="Food" text="<under 15 words, imminent need>"/>',
     "</setup>",
 ].join("\n");
@@ -59,6 +60,7 @@ const SYSTEM_PROMPT_HEADER = [
     "- warnings are minimalist imminent-need remarks about the PARTY AS A WHOLE (food, water, approaching danger), under 15 words. They never describe one character's personal state.",
     "- OWNERSHIP TEST — apply to EVERY shared/custom/warning entry: if it is about ONE named character (their hunger, health, mood, condition, stats), it belongs on THAT character's sheet as a resource/attribute/status — NEVER in a party-wide section. Party-wide entries must be true for the whole group and must not name a single character. 'Hunger — Cerberos is starving' is WRONG: it is a Hunger resource on Cerberos's sheet (or, only if the ENTIRE party shares the need, a nameless party-wide warning).",
     "- If the scenario implies survival pressure (food, water, enemies, territory), make it tangible through sharedResources + warnings for the group, and per-character resources/statuses for individual states. If it is purely casual, keep the setup minimal.",
+    "- PROGRESSION: include <progression> ONLY when the scenario implies growth over time (combat, leveling, long campaigns). Calibrate exp_base (EXP for the first level-up) and exp_growth (multiplier per level) to the world's pace, set skill_points per level (bonus_every: +1 extra point every N levels, 0 = off), and write plain-language EXP guidelines as the tag's text (how much EXP trivial actions, minor victories and major challenges give). Omit the tag for purely casual scenarios.",
     "- Omit tags that do not apply (an empty <setup> is valid). Never invent entries outside the given shapes.",
 ].join("\n");
 
@@ -77,6 +79,7 @@ const REFINE_PROMPT_HEADER = [
     "- Preserve everything the feedback does not ask to change — especially names and entries the user may have edited by hand.",
     "- PARTY vs ROSTER: only active companions get full sheets; everyone else stays a roster one-liner. Respect the party cap.",
     "- sharedResources stay party-wide and user-managed (money, food, expendables); custom features stay AI-managed PARTY-WIDE gimmicks (seeds, alert levels, ongoing effects) — never relationship/intimacy meters or per-character stats; warnings stay minimalist imminent-need remarks about the whole party, under 15 words.",
+    "- Preserve the <progression> block exactly as given unless the feedback asks to change it.",
     "- OWNERSHIP TEST — apply to EVERY shared/custom/warning entry: if it is about ONE named character (their hunger, health, mood, condition, stats), MOVE it onto that character's sheet as a resource/attribute/status. Party-wide entries must be true for the whole group and must not name a single character.",
     "- Omit tags that do not apply (an empty <setup> is valid). Never invent entries outside the given shapes.",
 ].join("\n");
@@ -192,6 +195,24 @@ export function sanitizeProposal(parsed) {
         .filter(Boolean)
         .slice(0, MAX_LIST);
 
+    // Per-scenario progression config (optional; null when not proposed).
+    let progression = null;
+    if (parsed.progression && typeof parsed.progression === "object") {
+        const raw = parsed.progression;
+        const num = (v, def, min) => {
+            const n = Number(v);
+            return Number.isFinite(n) ? Math.max(min, n) : def;
+        };
+        progression = {
+            enabled: raw.enabled !== false,
+            exp_base: num(raw.exp_base, 100, 1),
+            exp_growth: num(raw.exp_growth, 1.25, 1),
+            skill_points_per_level: num(raw.skill_points ?? raw.skill_points_per_level, 1, 0),
+            bonus_every: num(raw.bonus_every, 5, 0),
+            exp_guidelines: String(raw.exp_guidelines || "").slice(0, 600),
+        };
+    }
+
     return {
         scenarioName: String(parsed.scenario_name || "Scenario").slice(0, 80),
         party,
@@ -199,6 +220,7 @@ export function sanitizeProposal(parsed) {
         sharedResources,
         custom,
         warnings,
+        progression,
     };
 }
 
@@ -248,6 +270,20 @@ export function parseSetupXml(text) {
     for (const [tag, key] of [["ally", "roster"], ["shared", "sharedResources"], ["custom", "custom"], ["warning", "warnings"]]) {
         const re = new RegExp(`<${tag}\\b([^>]*?)(?:\\/>|>[\\s\\S]*?<\\/${tag}>)`, "gi");
         while ((m = re.exec(stripped)) !== null) parsed[key].push(parseAttrs(m[1]));
+    }
+
+    // Optional per-scenario progression config (guidelines live in the body).
+    const progMatch = /<progression\b([^>]*?)(?:\/>|>([\s\S]*?)<\/progression>)/i.exec(stripped);
+    if (progMatch) {
+        const pa = parseAttrs(progMatch[1] || "");
+        parsed.progression = {
+            enabled: pa.enabled !== undefined ? String(pa.enabled).toLowerCase() === "true" : true,
+            exp_base: pa.exp_base,
+            exp_growth: pa.exp_growth,
+            skill_points: pa.skill_points ?? pa.skill_points_per_level,
+            bonus_every: pa.bonus_every,
+            exp_guidelines: (progMatch[2] ?? "").trim(),
+        };
     }
 
     return parsed;
@@ -342,6 +378,10 @@ function proposalToPromptXml(p) {
     for (const r of p.sharedResources || []) lines.push(`  <shared name="${escAttr(r.name)}" qty="${escAttr(r.qty)}" description="${escAttr(r.description)}" always_inject="${r.always_inject ? "true" : "false"}"/>`);
     for (const c of p.custom || []) lines.push(`  <custom name="${escAttr(c.name)}" value="${escAttr(c.value)}" description="${escAttr(c.description)}"/>`);
     for (const w of p.warnings || []) lines.push(`  <warning name="${escAttr(w.name)}" text="${escAttr(w.text)}"/>`);
+    if (p.progression) {
+        const g = p.progression;
+        lines.push(`  <progression enabled="${g.enabled !== false ? "true" : "false"}" exp_base="${escAttr(g.exp_base)}" exp_growth="${escAttr(g.exp_growth)}" skill_points="${escAttr(g.skill_points_per_level)}" bonus_every="${escAttr(g.bonus_every)}">${escAttr(g.exp_guidelines || "")}</progression>`);
+    }
     lines.push("</setup>");
     return lines.join("\n");
 }
@@ -436,6 +476,15 @@ export function applyProposal(proposal, mode = "replace") {
     }
     for (const w of proposal.warnings || []) {
         stateManager.setWarning({ name: w.name, text: w.text });
+    }
+
+    // Per-scenario progression config: replace resets it (absent = no
+    // progression in this scenario); merge only overwrites when proposed.
+    if (mode === "replace") {
+        delete d.progression;
+    }
+    if (proposal.progression) {
+        d.progression = { ...proposal.progression };
     }
 
     stateManager.emitChange(mode === "replace" ? "wizard_replace" : "wizard_merge");

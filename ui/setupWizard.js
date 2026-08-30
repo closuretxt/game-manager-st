@@ -344,6 +344,65 @@ export const setupWizard = {
         compact.append(compactList);
         body.append(compact);
 
+        // Progression — optional per-scenario EXP/level config.
+        const progWrap = $("<div>").addClass("gm_list");
+        progWrap.append($("<div>").addClass("gm_section_header").append(
+            $("<b>").text("Progression"),
+            $("<span>").addClass("gm_section_hint").text("Per-scenario EXP curve and skill points (optional)."),
+        ));
+        if (!p.progression) {
+            const addProg = $("<div>").addClass("menu_button gm_small_btn").append(
+                $("<i>").addClass("fa-solid fa-arrow-trend-up"), $("<span>").text(" Add progression"));
+            addProg.on("click", () => {
+                p.progression = { enabled: true, exp_base: 100, exp_growth: 1.25, skill_points_per_level: 1, bonus_every: 5, exp_guidelines: "" };
+                this._renderReview();
+            });
+            progWrap.append($("<div>").addClass("gm_empty").text("No progression proposed."), addProg);
+        } else {
+            const prog = p.progression;
+            const row = $("<div>").addClass("gm_wizard_compact");
+            const num = (key, title, min, step) => {
+                const input = $("<input>").addClass("gm_input gm_prog_input")
+                    .attr({ type: "number", min: String(min), step: String(step), title })
+                    .val(prog[key]);
+                input.on("input", () => {
+                    const n = Number(input.val());
+                    if (Number.isFinite(n)) prog[key] = n;
+                    this._sessionQueue();
+                });
+                return input;
+            };
+            const enabled = $("<input>").attr("type", "checkbox")
+                .prop("checked", prog.enabled !== false)
+                .attr("title", "Enabled for this scenario");
+            enabled.on("change", () => {
+                prog.enabled = enabled.prop("checked");
+                this._sessionQueue();
+            });
+            row.append($("<label>").append(enabled, $("<span>").text(" On")));
+            row.append(num("exp_base", "EXP base (first level-up)", 1, 1));
+            row.append(num("exp_growth", "EXP growth per level (multiplier)", 1, 0.01));
+            row.append(num("skill_points_per_level", "Skill points per level", 0, 1));
+            row.append(num("bonus_every", "Bonus point every N levels (0 = off)", 0, 1));
+            const del = iconBtn("fa-solid fa-trash").attr("title", "Remove progression");
+            del.on("click", () => {
+                delete p.progression;
+                this._renderReview();
+            });
+            row.append(del);
+            progWrap.append(row);
+
+            const guidelines = $("<textarea>").addClass("gm_input gm_wizard_scenario")
+                .attr("placeholder", "EXP guidelines for the post-pass LLM: how much EXP trivial actions, minor victories and major challenges give...")
+                .val(prog.exp_guidelines || "");
+            guidelines.on("input", () => {
+                prog.exp_guidelines = String(guidelines.val() || "");
+                this._sessionQueue();
+            });
+            progWrap.append(guidelines);
+        }
+        body.append(progWrap);
+
         // Refine — recursive self-improvement pass on the current proposal.
         const refineWrap = $("<div>").addClass("gm_list");
         refineWrap.append($("<div>").addClass("gm_section_header").append(

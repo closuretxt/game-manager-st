@@ -13,6 +13,8 @@
 //   <clear_statuses>  — remove statuses whose condition ended
 //   <use_skills>      — report active skills a character used; the CODE starts
 //                       their cooldowns (LLMs never manage cooldowns themselves)
+//   <grant_exp>       — report EXP a character earned; the CODE computes
+//                       level-ups and skill points (LLMs never do the math)
 //   <warnings>        — set/clear player warnings (imminent needs like food)
 //   <threads>         — set/clear open threads (untracked/unfinished things,
 //                       secrets; edit-mode-only UI, pre/post-pass see them)
@@ -23,11 +25,12 @@
 // party-level and <char> resolves party characters AND enemies.
 
 import { stateManager } from "./stateManager.js";
+import { progression } from "./progression.js";
 import { logDebug } from "./debug.js";
 
-const BLOCK_TAGS = ["change_values", "set_attributes", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "warnings", "threads", "enemies"];
+const BLOCK_TAGS = ["change_values", "set_attributes", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies"];
 const BLOCK_RE = new RegExp(`<(${BLOCK_TAGS.join("|")})>([\\s\\S]*?)<\\/\\1>`, "gi");
-const INNER_RE = /<(char|target|resource|item|attribute|entry|status|warning|warning_clear|thread|thread_clear|passive|skill)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
+const INNER_RE = /<(char|target|resource|item|attribute|entry|status|warning|warning_clear|thread|thread_clear|passive|skill|exp)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const ENEMY_RE = /<enemy\b([^>]*?)(?:\/>|>([\s\S]*?)<\/enemy>)/gi;
 
 // Shared with the other LLM-output parsers (prePass, setupWizard).
@@ -110,6 +113,13 @@ function applyAction(blockType, char, action) {
             // Skill USES reported by the post-pass — the code owns cooldowns.
             if (blockType === "use_skills") {
                 return stateManager.useSkill(char.id, name);
+            }
+            return false;
+        case "exp":
+            // EXP grants reported by the post-pass — the code owns level-ups
+            // and skill points. Counts as applied even without a level-up.
+            if (blockType === "grant_exp") {
+                return progression.grantExp(char.id, attrs.amount ?? content).applied;
             }
             return false;
         case "warning":

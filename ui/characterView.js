@@ -4,6 +4,7 @@
 
 import { GM_SCHEMA } from "../core/schemas.js";
 import { stateManager } from "../core/stateManager.js";
+import { progression } from "../core/progression.js";
 
 export function iconBtn(icon) {
     return $("<div>").addClass("gm_icon_btn").append($("<i>").addClass(icon));
@@ -61,11 +62,16 @@ export function buildEditor(type, entry, onSave, onCancel) {
     return editor;
 }
 
-// Generic list row: name + meta on top, optional description, action buttons.
+// Generic list row: name (+ optional badge right after it) + meta on top,
+// optional description, action buttons.
 export function buildEntryRow(type, entry, handlers = {}) {
     const row = $("<div>").addClass("gm_entry_row");
     const main = $("<div>").addClass("gm_entry_main");
     main.append($("<span>").addClass("gm_entry_name").text(entry.name || "(unnamed)"));
+    if (handlers.nameBadge) {
+        const badge = handlers.nameBadge(entry);
+        if (badge) main.append(badge);
+    }
     const meta = handlers.metaText ? handlers.metaText(entry) : "";
     if (meta) main.append($("<span>").addClass("gm_entry_meta").text(meta));
     const top = $("<div>").addClass("gm_entry_top").append(main);
@@ -103,9 +109,63 @@ function startInlineEdit(charId, type, entry, row) {
 }
 
 export const characterView = {
+    // ---------- Progression: EXP bar + skill points (feature-gated) ----------
+    _expBar(char, edit = false) {
+        if (!progression.isEnabled()) return null;
+        const track = progression.trackOf(char);
+        const toNext = progression.expToNext(track.level);
+        const pct = Math.min(100, Math.max(0, (track.exp / toNext) * 100));
+
+        const wrap = $("<div>").addClass("gm_list");
+        wrap.append($("<div>").addClass("gm_section_header").append(
+            $("<b>").text(`Level ${track.level}`),
+            $("<span>").addClass("gm_section_hint").text("Experience and unspent skill points."),
+        ));
+
+        const row = $("<div>").addClass("gm_res_row");
+        row.append($("<div>").addClass("gm_res_name").text("EXP"));
+        row.append($("<div>").addClass("gm_res_track").append(
+            $("<div>").addClass("gm_res_fill gm_prog_fill").css("width", pct + "%")));
+        row.append($("<div>").addClass("gm_res_text").text(`${track.exp}/${toNext}`));
+        if (track.skill_points > 0) {
+            row.append($("<span>").addClass("gm_points_chip")
+                .attr("title", "Unspent skill points")
+                .text(`${track.skill_points} SP`));
+        }
+
+        if (edit) {
+            const actions = $("<div>").addClass("gm_entry_actions");
+            const expMinus = iconBtn("fa-solid fa-minus").attr("title", "Remove 10 EXP (Shift: 50)");
+            expMinus.on("click", e => {
+                progression.grantExp(char.id, e.shiftKey ? -50 : -10);
+                stateManager.emitChange("progression_edit");
+            });
+            const expPlus = iconBtn("fa-solid fa-plus").attr("title", "Grant 10 EXP (Shift: 50)");
+            expPlus.on("click", e => {
+                progression.grantExp(char.id, e.shiftKey ? 50 : 10);
+                stateManager.emitChange("progression_edit");
+            });
+            const spMinus = iconBtn("fa-solid fa-circle-minus").attr("title", "Spend 1 skill point");
+            spMinus.on("click", () => {
+                if (progression.spendPoints(char.id, 1)) stateManager.emitChange("progression_edit");
+            });
+            const spPlus = iconBtn("fa-solid fa-circle-plus").attr("title", "Refund 1 skill point");
+            spPlus.on("click", () => {
+                if (progression.refundPoints(char.id, 1)) stateManager.emitChange("progression_edit");
+            });
+            actions.append(expMinus, expPlus, spMinus, spPlus);
+            row.append(actions);
+        }
+
+        wrap.append($("<div>").addClass("gm_entry_row").append(row));
+        return wrap;
+    },
+
     // ---------- Basic Stats: resources as bars + attributes grid ----------
     renderStats(container, char, edit = false) {
         const resDef = GM_SCHEMA.resource;
+        const progBar = this._expBar(char, edit);
+        if (progBar) container.append(progBar);
 
         const resWrap = $("<div>").addClass("gm_list");
         const resHeader = $("<div>").addClass("gm_section_header").append(
@@ -214,6 +274,22 @@ export const characterView = {
         for (const entry of char[def.container]) {
             list.append(buildEntryRow(type, entry, {
                 metaText: e => metaFor(type, e),
+                // Skill cooldown badge: clock + number after the name. Red
+                // while under cooldown (number = messages left), neutral when
+                // ready (number = configured cooldown length).
+                nameBadge: type === "skill" ? e => {
+                    const cd = Math.trunc(Number(e.cooldown) || 0);
+                    if (cd <= 0) return null;
+                    const left = Math.trunc(Number(e.cooldown_left) || 0);
+                    const on = left > 0;
+                    return $("<span>")
+                        .addClass("gm_cd" + (on ? " gm_cd_on" : ""))
+                        .attr("title", on ? `On cooldown: ${left} message(s) left` : `Cooldown: ${cd} message(s)`)
+                        .append(
+                            $("<i>").addClass("fa-regular fa-clock"),
+                            $("<span>").text(String(on ? left : cd)),
+                        );
+                } : null,
                 showActions: edit,
                 onEdit: (e, row) => startInlineEdit(char.id, type, e, row),
                 onDelete: e => stateManager.removeEntry(char.id, type, e.id),

@@ -17,6 +17,7 @@ import { generateRaw, substituteParams } from "../../../../../script.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
+import { progression } from "./progression.js";
 import { parseToolBlocks, applyToolBlocks } from "./toolParser.js";
 import { captureSnapshot } from "./snapshots.js";
 import { sendRequestViaProfile, resolveConnectionProfile, getProfileNameById } from "../util/connectionService.js";
@@ -29,9 +30,13 @@ let _running = false;
 function buildStateSummary() {
     const d = stateManager.getData();
     const s = extension_settings[extensionName];
-    const charSummary = c => ({
-        name: c.name,
-        resources: c.resources.map(r => ({ name: r.name, value: r.value, min: r.min, max: r.max })),
+    // Progression tracks are only exposed when the feature is on — otherwise
+    // the agent never sees (and never grants) EXP.
+    const prog = progression.isEnabled();
+    const charSummary = c => {
+        const out = {
+            name: c.name,
+            resources: c.resources.map(r => ({ name: r.name, value: r.value, min: r.min, max: r.max })),
         attributes: c.attributes.map(a => ({ name: a.name, value: a.value })),
         inventory: c.inventory.map(i => ({ name: i.name, qty: i.qty })),
         // on_cooldown is a code-computed boolean — the agent never sees (and
@@ -42,7 +47,16 @@ function buildStateSummary() {
             return skill;
         }),
         statuses: (c.statuses || []).map(s => ({ name: s.name, modifiers: s.modifiers || "" })),
-    });
+        };
+        if (prog) {
+            const track = progression.trackOf(c);
+            out.level = track.level;
+            out.exp = track.exp;
+            out.exp_to_next = progression.expToNext(track.level);
+            out.skill_points = track.skill_points;
+        }
+        return out;
+    };
     return {
         characters: d.characters.map(charSummary),
         // Enemies only when the feature is on AND some exist — otherwise the
@@ -72,6 +86,7 @@ function collectRecentMessages() {
 // action does in the pre-pass.
 async function buildSystemPrompt(exchange = []) {
     const s = extension_settings[extensionName];
+    const prog = progression.isEnabled();
     let deep = "";
     if (s.deep_context) {
         const extraText = exchange.length ? exchange[exchange.length - 1].text : "";
@@ -96,12 +111,19 @@ async function buildSystemPrompt(exchange = []) {
         '  <warnings><warning name="Food" text="You have about two days of food left."/><warning_clear name="Food"/></warnings>',
         '  <threads><thread name="Fuel trip" text="Left town with 40L fuel; ~120 km driven so far" ref="started when leaving town"/><thread_clear name="Fuel trip"/></threads>',
         '  <enemies><enemy action="add" name="Goblin"><resource name="HP" value="30" max="30"/><passive name="Brutal" description="+2 damage below half HP"/></enemy><enemy action="update" name="Goblin"><resource name="HP" delta="-7"/><status name="Wounded" modifiers="Aim -2"/></enemy><enemy action="remove" name="Goblin" reason="defeated"/></enemies>',
+        ...(prog ? ['  <grant_exp><char>Name</char><exp amount="25"/></grant_exp>'] : []),
         "",
         "Use <warnings> ONLY for imminent, concrete needs the player should prepare for (supplies running out, deadlines, approaching dangers). Keep warning text under 15 words. Clear a warning when its cause is resolved. Do not re-emit unchanged warnings every turn.",
         "Use <threads> to leave notes to yourself about UNTRACKED or UNFINISHED things the formal containers cannot hold: ongoing trips (fuel/money spent so far), half-done actions, unresolved behavior, or secrets that must stay hidden from the player. ALWAYS record where/when it started (ref) so you can compare progress later (\"started when leaving town\", \"day 2 of the siege\"). Update the thread as things progress; clear it (thread_clear) as soon as it is finished or irrelevant. Threads are invisible to the player and never injected into the story prompt — the pre-pass decides what the story needs to know.",
         "Use <enemies> when enemies or threats appear in the scene: action=\"add\" to introduce one (with its HP resource and notable passives/skills), nested <resource>/<status> tags or hp_delta to update it, and action=\"remove\" AS SOON AS an enemy stops being relevant (defeated, fled, scene moved on) — removed enemies are archived and automatically restored with their last state if they return. You may also damage enemies with <change_values><char>EnemyName</char>.",
         "Use <set_statuses> for TEMPORARY per-character conditions (Dazed, Drunk, Inspired...). When a status lands, also apply its listed stat modifiers through <change_values>; when the condition ends, remove the modifiers with a matching <change_values> and clear the status with <clear_statuses>. Do not use statuses for permanent traits (passives) or party-wide gimmicks (custom).",
         "Use <use_skills> whenever a character ACTIVELY used one of their listed skills during the exchange: one <skill name=\"...\"/> per skill used, scoped with <char>. The system starts cooldowns automatically — NEVER report or compute cooldowns yourself, and NEVER report a skill marked on_cooldown (it could not have been used). Passives are always active: never report them.",
+        ...(prog ? [
+            "Use <grant_exp> when a character clearly EARNED experience during the exchange (overcoming a challenge, a victory, a meaningful accomplishment) — one <exp amount=\"...\"/> per character, scoped with <char>. The system computes level-ups and skill points automatically — NEVER report or compute levels yourself. Grant EXP by your own accord, at a pace calibrated by the EXP GUIDELINES below; skip the block when nothing noteworthy happened.",
+            ...(String(progression.getConfig().exp_guidelines || "").trim()
+                ? [`EXP GUIDELINES (calibration for <grant_exp> amounts): ${progression.getConfig().exp_guidelines.trim()}`]
+                : []),
+        ] : []),
     ];
     if (deep) {
         lines.push("", "DEEP CONTEXT (card / persona / lore):", deep);

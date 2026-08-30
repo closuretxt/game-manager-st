@@ -272,6 +272,24 @@
     font-size: 12px;
 }
 
+/* Skill cooldown badge: clock + number right after the skill name. Neutral
+   when ready (shows the configured length), red while under cooldown
+   (shows the messages left). */
+.gm_cd {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: 6px;
+    font-size: 11px;
+    opacity: 0.55;
+}
+
+.gm_cd_on {
+    opacity: 1;
+    color: #e5484d;
+    font-weight: 600;
+}
+
 .gm_entry_desc {
     opacity: 0.7;
     font-size: 12px;
@@ -1202,4 +1220,55 @@ textarea.gm_input {
 
 .gm_field_inline input[type="range"] {
     flex: 1;
+}
+
+/* ---------- Progression (EXP / levels / skill points) ---------- */
+/* EXP bar reuses the resource-row track; the fill gets a golden tint. */
+.gm_prog_fill {
+    background: linear-gradient(90deg, #b8860b, #ffd700);
+}
+
+/* Unspent skill-points chip: glows while there are points to spend. */
+.gm_points_chip {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 8px;
+    padding: 1px 7px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #ffd700;
+    background: rgba(255, 215, 0, 0.12);
+    box-shadow: 0 0 6px rgba(255, 215, 0, 0.35);
+    white-space: nowrap;
+}
+
+/* Sheet-header badges: level + points, next to the character name. */
+.gm_prog_badges {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 10px;
+}
+
+.gm_level_badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.08);
+    white-space: nowrap;
+}
+
+/* Party-list level chip: accented variant of gm_party_chip. */
+.gm_prog_chip {
+    color: #ffd700;
+    font-weight: 600;
+}
+
+/* Wizard review: compact number inputs for the progression config row. */
+.gm_prog_input {
+    width: 70px;
 }

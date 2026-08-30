@@ -10,6 +10,7 @@ import { saveSettingsDebounced } from "../../../../../script.js";
 import { extensionName } from "../core/constants.js";
 import { gmNotify, logDebug } from "../core/debug.js";
 import { stateManager } from "../core/stateManager.js";
+import { progression } from "../core/progression.js";
 import { manualRun } from "../inject/postTurn.js";
 import { getCharacterAvatar, clearAvatarCache } from "../util/avatars.js";
 import { settingsUI } from "./settingsUI.js";
@@ -389,6 +390,14 @@ class MainPanel {
             });
             capWrap.append(capInput);
             header.append(capWrap);
+
+            // Progression config — per-scenario EXP curve + skill points.
+            if (s.feature_progression) {
+                const progBtn = $("<div>").addClass("menu_button gm_add_btn").append(
+                    $("<i>").addClass("fa-solid fa-arrow-trend-up"), $("<span>").text(" Progression"));
+                progBtn.on("click", () => this._openProgressionConfig());
+                header.append(progBtn);
+            }
         }
 
         const list = $("<div>").addClass("gm_entry_list");
@@ -405,6 +414,14 @@ class MainPanel {
             const chips = $("<div>").addClass("gm_party_summary");
             for (const r of c.resources.slice(0, 4)) {
                 chips.append($("<span>").addClass("gm_party_chip").text(`${r.name} ${r.value}/${r.max}`));
+            }
+            // Progression: level badge + unspent skill-points chip.
+            if (progression.isEnabled()) {
+                const track = progression.trackOf(c);
+                chips.append($("<span>").addClass("gm_party_chip gm_prog_chip").text(`Lv ${track.level}`));
+                if (track.skill_points > 0) {
+                    chips.append($("<span>").addClass("gm_party_chip gm_points_chip").text(`${track.skill_points} SP`));
+                }
             }
             top.append(chips);
             row.append(top);
@@ -619,11 +636,77 @@ class MainPanel {
         content.append(wrap);
     }
 
+    // Per-scenario progression config modal (EXP curve + skill points).
+    // Lives here (not in the settings drawer) because the config is per-chat.
+    _openProgressionConfig() {
+        const cfg = progression.getConfig();
+        const overlay = $("<div>").addClass("gm_modal_overlay");
+        const dialog = $("<div>").addClass("gm_modal");
+
+        const numInput = (val, min, step) => $("<input>").addClass("gm_input")
+            .attr({ type: "number", min: String(min), step: String(step) }).val(val);
+        const enabled = $("<input>").attr("type", "checkbox").prop("checked", !!cfg.enabled);
+        const expBase = numInput(cfg.exp_base, 1, 1);
+        const expGrowth = numInput(cfg.exp_growth, 1, 0.01);
+        const spPerLevel = numInput(cfg.skill_points_per_level, 0, 1);
+        const bonusEvery = numInput(cfg.bonus_every, 0, 1);
+        const guidelines = $("<textarea>").addClass("gm_modal_textarea").val(cfg.exp_guidelines || "")
+            .attr("placeholder", "e.g. Trivial task ~5 EXP, minor victory ~25 EXP, boss ~120 EXP...");
+
+        const close = () => overlay.remove();
+        const save = () => {
+            progression.setConfig({
+                enabled: enabled.prop("checked"),
+                exp_base: Math.max(1, Math.trunc(Number(expBase.val()) || 100)),
+                exp_growth: Math.max(1, Number(expGrowth.val()) || 1.25),
+                skill_points_per_level: Math.max(0, Math.trunc(Number(spPerLevel.val()) || 0)),
+                bonus_every: Math.max(0, Math.trunc(Number(bonusEvery.val()) || 0)),
+                exp_guidelines: String(guidelines.val() || ""),
+            });
+            gmNotify("Progression config saved.", "success");
+            close();
+        };
+
+        dialog.append(
+            $("<b>").text("Progression (this scenario)"),
+            $("<div>").addClass("gm_modal_hint").text("EXP curve and skill points for every character in this chat. The post-pass grants EXP via <grant_exp>; level-ups are computed automatically."),
+            $("<label>").append(enabled, $("<span>").text(" Enabled for this scenario")),
+            $("<label>").text("EXP base (first level-up)"),
+            expBase,
+            $("<label>").text("EXP growth per level (multiplier)"),
+            expGrowth,
+            $("<label>").text("Skill points per level"),
+            spPerLevel,
+            $("<label>").text("Bonus point every N levels (0 = off)"),
+            bonusEvery,
+            $("<label>").text("EXP guidelines for the post-pass LLM"),
+            guidelines,
+            $("<div>").addClass("gm_modal_actions").append(
+                $("<div>").addClass("menu_button").text("Cancel").on("click", close),
+                $("<div>").addClass("menu_button gm_modal_save").text("Save").on("click", save),
+            ),
+        );
+        overlay.append(dialog).appendTo("body");
+        overlay.on("mousedown", e => { if (e.target === overlay[0]) close(); });
+    }
+
+    // Level badge + unspent skill-points chip for a sheet header.
+    _progBadges(char) {
+        const track = progression.trackOf(char);
+        const wrap = $("<span>").addClass("gm_prog_badges");
+        wrap.append($("<span>").addClass("gm_level_badge").text(`Lv ${track.level}`));
+        if (track.skill_points > 0) {
+            wrap.append($("<span>").addClass("gm_points_chip").text(`${track.skill_points} SP`));
+        }
+        return wrap;
+    }
+
     // ---------- Enemies tab: enemy sheet (with its own sub-tabs) ----------
     _renderEnemySheet(content, enemy, edit) {
         const header = $("<div>").addClass("gm_sheet_header");
         header.append($("<i>").addClass("fa-solid fa-skull").css({ fontSize: "1.4em", opacity: 0.85 }));
         header.append($("<b>").addClass("gm_sheet_name").text(enemy.name));
+        if (progression.isEnabled()) header.append(this._progBadges(enemy));
         content.append(header);
 
         const backRow = $("<div>").addClass("gm_sheet_top");
@@ -698,6 +781,7 @@ class MainPanel {
         const header = $("<div>").addClass("gm_sheet_header");
         header.append(this._buildAvatar(char.name, true));
         header.append($("<b>").addClass("gm_sheet_name").text(char.name));
+        if (progression.isEnabled()) header.append(this._progBadges(char));
         content.append(header);
 
         const backRow = $("<div>").addClass("gm_sheet_top");
