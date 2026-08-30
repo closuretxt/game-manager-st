@@ -83,7 +83,7 @@ export const settingsUI = {
 
         dialog.append(
             $("<b>").text("Custom instructions"),
-            $("<div>").addClass("gm_modal_hint").text("Injected verbatim as a <custom> block into the respective LLM's prompt context on every call."),
+            $("<div>").addClass("gm_modal_hint").text("Injected as a <custom> block into the respective LLM's prompt context on every call. Full SillyTavern macros are supported ({{char}}, {{user}}, {{time}}...)."),
             $("<label>").text("Pre-pass (router)"),
             preArea,
             $("<label>").text("Post-pass (tracker)"),

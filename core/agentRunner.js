@@ -13,7 +13,7 @@
 // Gated behind the "Agentic resource updates" setting — OFF by default.
 
 import { extension_settings, getContext } from "../../../../extensions.js";
-import { generateRaw } from "../../../../../script.js";
+import { generateRaw, substituteParams } from "../../../../../script.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
@@ -86,7 +86,7 @@ function buildSystemPrompt() {
 
 function buildUserPrompt(exchange) {
     const s = extension_settings[extensionName];
-    const custom = String(s.custom_instructions?.post || "").trim();
+    let custom = String(s.custom_instructions?.post || "").trim();
     const blocks = [
         "STATE SNAPSHOT (JSON):",
         JSON.stringify(buildStateSummary()),
@@ -94,8 +94,19 @@ function buildUserPrompt(exchange) {
         "RECENT EXCHANGE:",
         ...exchange.map(m => `${m.role}: ${m.text}`),
     ];
-    // User's standing instructions for the post-pass, verbatim.
-    if (custom) blocks.push("", `<custom>\n${custom}\n</custom>`);
+    // User's standing instructions for the post-pass. Full ST macro parsing
+    // ({{char}}, {{user}}, {{time}}...) via substituteParams, like a normal
+    // generation would do.
+    if (custom) {
+        try {
+            const st = getContext();
+            const charName = st.characters?.[st.characterId]?.name;
+            custom = substituteParams(custom, { name2Override: charName });
+        } catch (e) {
+            console.warn("[Game Manager] custom instruction macro substitution failed:", e);
+        }
+        blocks.push("", `<custom>\n${custom}\n</custom>`);
+    }
     return blocks.join("\n");
 }
 

@@ -18,6 +18,7 @@
 // back to legacy keyword detection (detectTriggers in core/triggerWatcher.js).
 
 import { extension_settings, getContext } from "../../../../extensions.js";
+import { substituteParams } from "../../../../../script.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
@@ -123,9 +124,20 @@ async function collectContext(playerAction) {
         if (deep) blocks.push("", "DEEP CONTEXT (card / persona / lore):", deep);
     }
 
-    // User's standing instructions for the pre-pass, verbatim.
+    // User's standing instructions for the pre-pass. Full ST macro parsing
+    // ({{char}}, {{user}}, {{time}}...) via substituteParams, like a normal
+    // generation would do.
     const custom = String(s.custom_instructions?.pre || "").trim();
-    if (custom) blocks.push("", `<custom>\n${custom}\n</custom>`);
+    if (custom) {
+        let rendered = custom;
+        try {
+            const charName = st.characters?.[st.characterId]?.name;
+            rendered = substituteParams(rendered, { name2Override: charName });
+        } catch (e) {
+            console.warn("[Game Manager] custom instruction macro substitution failed:", e);
+        }
+        blocks.push("", `<custom>\n${rendered}\n</custom>`);
+    }
 
     return blocks.join("\n");
 }
