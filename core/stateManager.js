@@ -27,6 +27,16 @@ function _normalizeProgression(c) {
     };
 }
 
+// Normalizes a character's skill tree ({generated_tiers, nodes}). Party-only:
+// enemies can hold levels but never spend points or grow trees.
+function _normalizeSkillTree(c) {
+    const t = c.skillTree && typeof c.skillTree === "object" && !Array.isArray(c.skillTree) ? c.skillTree : {};
+    c.skillTree = {
+        generated_tiers: Math.max(0, Math.trunc(Number(t.generated_tiers) || 0)),
+        nodes: (Array.isArray(t.nodes) ? t.nodes : []).filter(n => n && typeof n === "object" && n.id),
+    };
+}
+
 // Returns the per-chat storage bucket (creating it if needed), or null when no chat is open.
 function chatStore() {
     const st = getContext();
@@ -101,6 +111,7 @@ export const stateManager = {
                 if (!Array.isArray(c[key])) c[key] = [];
             }
             _normalizeProgression(c);
+            _normalizeSkillTree(c);
             // Migration: custom features used to be per-character, now party-wide.
             if (Array.isArray(c.custom) && c.custom.length) {
                 d.custom.push(...c.custom);

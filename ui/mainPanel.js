@@ -11,6 +11,8 @@ import { extensionName } from "../core/constants.js";
 import { gmNotify, logDebug } from "../core/debug.js";
 import { stateManager } from "../core/stateManager.js";
 import { progression } from "../core/progression.js";
+import { skillTree } from "../core/skillTree.js";
+import { skillTreeView } from "./skillTree.js";
 import { manualRun } from "../inject/postTurn.js";
 import { getCharacterAvatar, clearAvatarCache } from "../util/avatars.js";
 import { settingsUI } from "./settingsUI.js";
@@ -33,6 +35,7 @@ const CHAR_TABS = [
     { id: "stats", label: "Basic Stats", icon: "fa-solid fa-heart-pulse" },
     { id: "inventory", label: "Inventory", icon: "fa-solid fa-box-open" },
     { id: "skills", label: "Skills", icon: "fa-solid fa-bolt" },
+    { id: "skilltree", label: "Skill Tree", icon: "fa-solid fa-sitemap" },
     { id: "passives", label: "Passives", icon: "fa-solid fa-shield-halved" },
     { id: "statuses", label: "Statuses", icon: "fa-solid fa-face-dizzy" },
 ];
@@ -742,6 +745,8 @@ class MainPanel {
 
         const bar = $("<div>").addClass("gm_tab_bar gm_char_tab_bar");
         for (const tab of CHAR_TABS) {
+            // Enemies never grow skill trees (they never spend points).
+            if (tab.id === "skilltree") continue;
             const btn = $("<div>")
                 .addClass("gm_tab")
                 .toggleClass("active", tab.id === this.activeEnemyTab)
@@ -825,6 +830,8 @@ class MainPanel {
 
         const bar = $("<div>").addClass("gm_tab_bar gm_char_tab_bar");
         for (const tab of CHAR_TABS) {
+            // Skill Tree tab only when the feature (and progression) is on.
+            if (tab.id === "skilltree" && !skillTree.isEnabled()) continue;
             const btn = $("<div>")
                 .addClass("gm_tab")
                 .toggleClass("active", tab.id === this.activeCharTab)
@@ -844,6 +851,9 @@ class MainPanel {
                 break;
             case "skills":
                 characterView.renderList(body, char, "skill", edit);
+                break;
+            case "skilltree":
+                skillTreeView.render(body, char, edit);
                 break;
             case "passives":
                 characterView.renderList(body, char, "passive", edit);
