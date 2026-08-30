@@ -16,6 +16,7 @@ import { stateManager } from "./stateManager.js";
 import { captureSnapshot } from "./snapshots.js";
 import { queueHigh } from "./injection.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
+import { buildDeepContext } from "../util/loreContext.js";
 import { statusBubble } from "../ui/statusBubble.js";
 
 const SYSTEM_PROMPT = [
@@ -70,8 +71,16 @@ export async function runTransaction(resource, playerAction, mesId = null, plan 
         } else {
             const st = getContext();
             const profileId = resolvePremasterProfile(st, s.premaster_profile, s.connection_profile);
+            // Deep context (setting-gated) goes into the system message, after
+            // the accountant instructions — plausible amounts depend on the
+            // setting's prices and economy.
+            let systemContent = SYSTEM_PROMPT;
+            if (s.deep_context) {
+                const deep = await buildDeepContext(String(playerAction || ""));
+                if (deep) systemContent += `\n\nDEEP CONTEXT (card / persona / lore):\n${deep}`;
+            }
             const messages = [
-                { role: "system", content: SYSTEM_PROMPT },
+                { role: "system", content: systemContent },
                 { role: "user", content: collectContext(resource, playerAction) },
             ];
             const reply = await sendRequestViaProfile(profileId, messages);
