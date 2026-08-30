@@ -138,22 +138,11 @@ async function buildSystemPrompt(exchange = []) {
     if (deep) {
         lines.push("", "DEEP CONTEXT (card / persona / lore):", deep);
     }
-    return lines.join("\n");
-}
-
-function buildUserPrompt(exchange) {
-    const s = extension_settings[extensionName];
-    let custom = String(s.custom_instructions?.post || "").trim();
-    const blocks = [
-        "STATE SNAPSHOT (JSON):",
-        JSON.stringify(buildStateSummary()),
-        "",
-        "RECENT EXCHANGE:",
-        ...exchange.map(m => `${m.role}: ${m.text}`),
-    ];
-    // User's standing instructions for the post-pass. Full ST macro parsing
+    // User's standing instructions for the post-pass — at the END of the
+    // system message, after the deep context. Full ST macro parsing
     // ({{char}}, {{user}}, {{time}}...) via substituteParams, like a normal
     // generation would do.
+    let custom = String(s.custom_instructions?.post || "").trim();
     if (custom) {
         try {
             const st = getContext();
@@ -162,8 +151,19 @@ function buildUserPrompt(exchange) {
         } catch (e) {
             console.warn("[Game Manager] custom instruction macro substitution failed:", e);
         }
-        blocks.push("", `<custom>\n${custom}\n</custom>`);
+        lines.push("", `<custom>\n${custom}\n</custom>`);
     }
+    return lines.join("\n");
+}
+
+function buildUserPrompt(exchange) {
+    const blocks = [
+        "STATE SNAPSHOT (JSON):",
+        JSON.stringify(buildStateSummary()),
+        "",
+        "RECENT EXCHANGE:",
+        ...exchange.map(m => `${m.role}: ${m.text}`),
+    ];
     return blocks.join("\n");
 }
 

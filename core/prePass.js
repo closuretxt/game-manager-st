@@ -135,21 +135,6 @@ async function collectContext(playerAction) {
         `PLAYER ACTION TO JUDGE: ${playerAction}`,
     ];
 
-    // User's standing instructions for the pre-pass. Full ST macro parsing
-    // ({{char}}, {{user}}, {{time}}...) via substituteParams, like a normal
-    // generation would do.
-    const custom = String(s.custom_instructions?.pre || "").trim();
-    if (custom) {
-        let rendered = custom;
-        try {
-            const charName = st.characters?.[st.characterId]?.name;
-            rendered = substituteParams(rendered, { name2Override: charName });
-        } catch (e) {
-            console.warn("[Game Manager] custom instruction macro substitution failed:", e);
-        }
-        blocks.push("", `<custom>\n${rendered}\n</custom>`);
-    }
-
     return blocks.join("\n");
 }
 
@@ -283,10 +268,28 @@ function sanitizePlan(parsed) {
 // anything in the user message.
 async function buildSystemContent(playerAction) {
     const s = extension_settings[extensionName];
-    if (!s.deep_context) return SYSTEM_PROMPT;
-    const deep = await buildDeepContext(String(playerAction || ""));
-    if (!deep) return SYSTEM_PROMPT;
-    return `${SYSTEM_PROMPT}\n\nDEEP CONTEXT (card / persona / lore):\n${deep}`;
+    let content = SYSTEM_PROMPT;
+    if (s.deep_context) {
+        const deep = await buildDeepContext(String(playerAction || ""));
+        if (deep) content += `\n\nDEEP CONTEXT (card / persona / lore):\n${deep}`;
+    }
+    // User's standing instructions for the pre-pass — at the END of the
+    // system message, after the deep context (same layout as the post-pass).
+    // Full ST macro parsing ({{char}}, {{user}}, {{time}}...) via
+    // substituteParams, like a normal generation would do.
+    const custom = String(s.custom_instructions?.pre || "").trim();
+    if (custom) {
+        let rendered = custom;
+        try {
+            const st = getContext();
+            const charName = st.characters?.[st.characterId]?.name;
+            rendered = substituteParams(rendered, { name2Override: charName });
+        } catch (e) {
+            console.warn("[Game Manager] custom instruction macro substitution failed:", e);
+        }
+        content += `\n\n<custom>\n${rendered}\n</custom>`;
+    }
+    return content;
 }
 
 // Runs the pre-pass router for a player action. Returns a sanitized plan, or
