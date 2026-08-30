@@ -26,6 +26,7 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "../core/constants.js";
 import { logDebug } from "../core/debug.js";
 import { runAgentPass } from "../core/agentRunner.js";
+import { restoreSnapshot } from "../core/snapshots.js";
 
 // Tiny replies ("...", "Ok.", short emotes) carry nothing worth tracking —
 // skip the tracker instead of paying a full LLM call for them.
@@ -36,9 +37,10 @@ function updatesEnabled() {
     return !!(s.enabled && s.auto_update);
 }
 
-// Manual run: reruns the tracker on the last AI message. If a snapshot
-// baseline already exists for it, the state is rolled back first so changes
-// don't stack on top of the previous run.
+// Manual run: reruns the tracker on the last AI message. The state is rolled
+// back to that message's pre-message baseline first (if one exists), so the
+// re-run starts clean instead of stacking on top of the previous tracker
+// changes; runAgentPass then captures a fresh baseline before applying.
 export async function manualRun() {
     const st = getContext();
     if (!updatesEnabled()) {
@@ -50,6 +52,9 @@ export async function manualRun() {
     if (!msg || msg.is_user) {
         logDebug("manual run skipped — no AI message found");
         return 0;
+    }
+    if (restoreSnapshot(mesId)) {
+        logDebug(`manual run: state rolled back to pre-message baseline of ${mesId}`);
     }
     return runAgentPass("manual", mesId);
 }

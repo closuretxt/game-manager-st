@@ -103,18 +103,26 @@ export function discardSnapshot(mesId) {
     return true;
 }
 
-// MESSAGE_DELETED does not report which message was removed. The common case
-// is deleting the last AI message, which occupied index `chat.length` after
-// removal — fall back to the newest snapshot at or above that index (covers
-// middle deletions shifting ids as well).
-export function restoreLastDeleted() {
+// Rolls back the newest snapshot at or above `minId`. Covers flows where the
+// target message's id has shifted upwards (middle deletions, regenerate flows
+// that pop the AI message before the generation event fires).
+export function restoreNewestFrom(minId) {
     const st = getContext();
     const gm = store();
     if (!gm) return false;
     const ids = Object.keys(gm.snapshots)
         .map(Number)
         .sort((a, b) => b - a);
-    const target = ids.find(id => id >= st.chat.length);
+    const target = ids.find(id => id >= minId);
     if (target === undefined) return false;
     return restoreSnapshot(target);
+}
+
+// MESSAGE_DELETED does not report which message was removed. The common case
+// is deleting the last AI message, which occupied index `chat.length` after
+// removal — fall back to the newest snapshot at or above that index (covers
+// middle deletions shifting ids as well).
+export function restoreLastDeleted() {
+    const st = getContext();
+    return restoreNewestFrom(st.chat.length);
 }
