@@ -120,19 +120,21 @@
     border-bottom: 1px solid var(--gm-line);
     flex: 0 0 auto;
     overflow-x: auto;
+    overflow-y: hidden;
 }
 
 .gm_tab {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 7px 2px;
+    padding: 7px 10px;
     cursor: pointer;
     color: inherit;
     opacity: var(--gm-muted);
     border-bottom: 2px solid transparent;
     margin-bottom: -1px;
     white-space: nowrap;
+    border-radius: 6px 6px 0 0;
     transition: opacity 0.15s;
 }
 
@@ -763,7 +765,10 @@ textarea.gm_input {
     position: fixed;
     inset: 0;
     z-index: 4000;
-    background: rgba(0, 0, 0, 0.55);
+    /* Strong dim + blur so the chat behind never bleeds through the modal. */
+    background: rgba(0, 0, 0, 0.72);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -774,11 +779,12 @@ textarea.gm_input {
     max-height: 86vh;
     display: flex;
     flex-direction: column;
-    background: var(--SmartThemeBlurTintColor, rgba(23, 23, 28, 0.97));
+    /* Opaque on purpose: theme tint vars are often semi-transparent. */
+    background: #1a1a20;
     color: var(--SmartThemeBodyColor, #dcdcdc);
     border: 1px solid var(--gm-line, #33333c);
     border-radius: 10px;
-    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.6);
     font-size: 13px;
 }
 
@@ -852,4 +858,131 @@ textarea.gm_input {
     align-items: center;
     gap: 6px;
     cursor: pointer;
+}
+
+/* Expandable proposal sheets in the review step. */
+.gm_wizard_sheet {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.gm_wizard_sheet_sec {
+    border: 1px dashed var(--gm-line, rgba(255, 255, 255, 0.12));
+    border-radius: 6px;
+    padding: 6px;
+}
+
+.gm_wizard_sheet_head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85em;
+    opacity: 0.85;
+}
+
+.gm_wizard_sheet_head i {
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b8912f));
+}
+
+.gm_wizard_sheet_list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.gm_wizard_sheet_row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.gm_wizard_sheet_row .gm_input {
+    flex: 1;
+    min-width: 0;
+    padding: 2px 6px;
+    font-size: 0.9em;
+}
+
+.gm_wizard_sheet_row input[type="number"] {
+    flex: 0 0 64px;
+}
+
+.gm_wizard_sheet_row input[type="checkbox"] {
+    flex: 0 0 auto;
+}
+
+.gm_wizard_sheet_entry {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.gm_wizard_sheet_desc {
+    font-size: 0.85em;
+    opacity: 0.85;
+}
+
+/* ---------- Settings drawer layout ---------- */
+.gm_settings_sep {
+    margin: 10px 0 4px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.6;
+}
+
+.gm_settings_grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 12px;
+}
+
+.gm_settings_grid .checkbox_label {
+    margin: 0;
+}
+
+.gm_cap_wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: auto;
+    font-size: 12px;
+    opacity: 0.85;
+    cursor: help;
+}
+
+.gm_cap_input {
+    width: 54px;
+    padding: 2px 6px;
+    text-align: center;
+}
+
+.gm_field_inline {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 6px 0 0;
+}
+
+.gm_field_inline label {
+    margin: 0;
+    white-space: nowrap;
+    cursor: help;
+}
+
+.gm_field_inline input[type="number"] {
+    width: 70px;
+}
+
+.gm_field_inline select {
+    flex: 1;
+}
+}
+
+.gm_field_inline input[type="range"] {
+    flex: 1;
 }

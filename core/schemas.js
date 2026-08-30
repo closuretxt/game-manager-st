@@ -20,6 +20,7 @@ export const GM_SCHEMA = {
             { key: "value", label: "Current", type: "number", default: 10 },
             { key: "min", label: "Min", type: "number", default: 0 },
             { key: "max", label: "Max", type: "number", default: 100 },
+            { key: "description", label: "Description", type: "textarea", default: "" },
         ],
     },
     attribute: {
@@ -31,6 +32,7 @@ export const GM_SCHEMA = {
         fields: [
             { key: "name", label: "Name", type: "text", default: "New Attribute" },
             { key: "value", label: "Value", type: "number", default: 5 },
+            { key: "description", label: "Description", type: "textarea", default: "" },
         ],
     },
     item: {
@@ -67,6 +69,19 @@ export const GM_SCHEMA = {
             { key: "name", label: "Name", type: "text", default: "New Passive" },
             { key: "ptype", label: "Type", type: "select", options: ["special", "stat"], default: "special" },
             { key: "description", label: "Description", type: "textarea", default: "" },
+        ],
+    },
+    status: {
+        label: "Status",
+        plural: "Statuses",
+        icon: "fa-solid fa-face-dizzy",
+        container: "statuses",
+        description: "Temporary condition (Dazed, Drunk, Inspired) with stat modifiers — removed when it ends.",
+        aiManaged: true,
+        fields: [
+            { key: "name", label: "Name", type: "text", default: "New Status" },
+            { key: "modifiers", label: "Modifiers", type: "text", default: "" },
+            { key: "effect", label: "Effect", type: "textarea", default: "" },
         ],
     },
     custom: {
@@ -112,7 +127,7 @@ export const GM_SCHEMA = {
 };
 
 // Containers that live on each character sheet.
-export const CHARACTER_CONTAINERS = ["resources", "attributes", "inventory", "skills", "passives"];
+export const CHARACTER_CONTAINERS = ["resources", "attributes", "inventory", "skills", "passives", "statuses"];
 
 // container name -> type key (reverse lookup, used by presets & parsers).
 export const CONTAINER_TYPES = Object.fromEntries(

@@ -17,10 +17,12 @@ import { characterView } from "./characterView.js";
 import { customTab } from "./customTab.js";
 import { resourceManager } from "./resourceManager.js";
 import { setupWizard } from "./setupWizard.js";
+import { characterCreator } from "./characterCreator.js";
 import { iconBtn } from "./characterView.js";
 
 const TABS = [
     { id: "party", label: "Party", icon: "fa-solid fa-users" },
+    { id: "enemies", label: "Enemies", icon: "fa-solid fa-skull" },
     { id: "shared", label: "Resource Manager", icon: "fa-solid fa-coins" },
     { id: "custom", label: "Custom", icon: "fa-solid fa-seedling" },
 ];
@@ -31,6 +33,7 @@ const CHAR_TABS = [
     { id: "inventory", label: "Inventory", icon: "fa-solid fa-box-open" },
     { id: "skills", label: "Skills", icon: "fa-solid fa-bolt" },
     { id: "passives", label: "Passives", icon: "fa-solid fa-shield-halved" },
+    { id: "statuses", label: "Statuses", icon: "fa-solid fa-face-dizzy" },
 ];
 
 class MainPanel {
@@ -39,6 +42,8 @@ class MainPanel {
         this.activeTab = "party";
         this.selectedCharacterId = null;
         this.activeCharTab = "stats";
+        this.selectedEnemyId = null;
+        this.activeEnemyTab = "stats";
         this._resizeTimer = null;
         this._resizeObserver = null;
     }
@@ -228,6 +233,13 @@ class MainPanel {
     // ---------- rendering ----------
     render() {
         if (!this.root) return;
+        // Enemies tab only exists when the feature is on AND there is something
+        // to show (active enemies, or edit mode to add/archive them).
+        const s = extension_settings[extensionName];
+        const enemyCount = (stateManager.getData().enemies || []).length;
+        if (this.activeTab === "enemies" && !(s.feature_enemies && (enemyCount || this.editMode))) {
+            this.activeTab = "party";
+        }
         this._refreshEditButton();
         this._renderWarnings();
         this._renderTabs();
@@ -260,7 +272,11 @@ class MainPanel {
 
     _renderTabs() {
         const bar = $("#gm_tab_bar").empty();
+        const s = extension_settings[extensionName];
+        const enemyCount = (stateManager.getData().enemies || []).length;
         for (const tab of TABS) {
+            // Enemies tab hidden entirely when unused — no trace in the UI.
+            if (tab.id === "enemies" && !(s.feature_enemies && (enemyCount || this.editMode))) continue;
             const btn = $("<div>")
                 .addClass("gm_tab")
                 .toggleClass("active", tab.id === this.activeTab)
@@ -283,6 +299,12 @@ class MainPanel {
             case "custom":
                 customTab.render(content, edit);
                 break;
+            case "enemies": {
+                const enemy = this.selectedEnemyId ? stateManager.getEnemy(this.selectedEnemyId) : null;
+                if (enemy) this._renderEnemySheet(content, enemy, edit);
+                else this._renderEnemyList(content, edit);
+                break;
+            }
             case "party":
             default: {
                 const char = this.selectedCharacterId ? stateManager.getCharacter(this.selectedCharacterId) : null;
@@ -332,6 +354,16 @@ class MainPanel {
             const addBtn = $("<div>").addClass("menu_button gm_add_btn").append(
                 $("<i>").addClass("fa-solid fa-plus"), $("<span>").text(" Add Character"));
             addBtn.on("click", () => {
+                // Character Creator modal (instant copy or LLM-generated sheet
+                // with review); legacy prompt flow when the feature is off.
+                if (s.feature_character_creator) {
+                    characterCreator.onApplied = (char) => {
+                        this.selectedCharacterId = char.id;
+                        this.render();
+                    };
+                    characterCreator.open();
+                    return;
+                }
                 const name = window.prompt("Character name:");
                 if (name?.trim()) {
                     const c = stateManager.addCharacter(name.trim(), settingsUI.getTemplateEntries());
@@ -339,6 +371,24 @@ class MainPanel {
                 }
             });
             header.append(addBtn);
+
+            // Party cap — max full sheets the Setup Wizard proposes; extra
+            // allies go to the roster. Lives here (edit mode only) instead of
+            // the settings drawer.
+            const capWrap = $("<div>").addClass("gm_cap_wrap")
+                .attr("title", "Max full character sheets the Setup Wizard proposes; extra allies go to the roster");
+            capWrap.append($("<span>").text("Cap"));
+            const capInput = $("<input>")
+                .addClass("gm_input gm_cap_input")
+                .attr({ type: "number", min: "1", max: "20", step: "1" })
+                .val(Math.max(1, Math.trunc(Number(s.max_party_size) || 6)));
+            capInput.on("change", () => {
+                s.max_party_size = Math.max(1, Math.trunc(Number(capInput.val()) || 6));
+                capInput.val(s.max_party_size);
+                saveSettingsDebounced();
+            });
+            capWrap.append(capInput);
+            header.append(capWrap);
         }
 
         const list = $("<div>").addClass("gm_entry_list");
@@ -388,18 +438,24 @@ class MainPanel {
             const chip = $("<div>").addClass("gm_roster_chip").attr("title", ally.note || ally.name);
             chip.append($("<span>").text(ally.name));
             if (edit) {
-                const promote = iconBtn("fa-solid fa-user-plus").attr("title", "Promote to Party");
+                const promote = iconBtn("fa-solid fa-user-plus")
+                    .attr("title", ally.sheet ? "Promote to Party (restores their last sheet)" : "Promote to Party");
                 promote.on("click", (e) => {
                     e.stopPropagation();
                     const c = stateManager.promoteRosterEntry(ally.id);
                     if (c) this.selectedCharacterId = c.id;
+                });
+                const toEnemy = iconBtn("fa-solid fa-skull").attr("title", "Move to Enemies (keeps their sheet)");
+                toEnemy.on("click", (e) => {
+                    e.stopPropagation();
+                    stateManager.rosterToEnemy(ally.id);
                 });
                 const del = iconBtn("fa-solid fa-xmark").attr("title", "Remove");
                 del.on("click", (e) => {
                     e.stopPropagation();
                     stateManager.removeRosterEntry(ally.id);
                 });
-                chip.append(promote, del);
+                chip.append(promote, toEnemy, del);
             }
             chips.append(chip);
         }
@@ -408,6 +464,230 @@ class MainPanel {
         }
         wrap.append(chips);
         content.append(wrap);
+    }
+
+    // ---------- Enemies tab: active enemy list ----------
+    // Not in edit mode each enemy is a collapsed flavor row ("2 resources,
+    // 1 passive, 1 status") that expands to the full read-only sheet; edit
+    // mode shows resource chips, conversion buttons and the archive.
+    _enemyFlavor(e) {
+        const parts = [];
+        if (e.resources?.length) parts.push(`${e.resources.length} resource${e.resources.length > 1 ? "s" : ""}`);
+        if (e.attributes?.length) parts.push(`${e.attributes.length} attribute${e.attributes.length > 1 ? "s" : ""}`);
+        if (e.skills?.length) parts.push(`${e.skills.length} skill${e.skills.length > 1 ? "s" : ""}`);
+        if (e.passives?.length) parts.push(`${e.passives.length} passive${e.passives.length > 1 ? "s" : ""}`);
+        if (e.statuses?.length) parts.push(`${e.statuses.length} status${e.statuses.length > 1 ? "es" : ""}`);
+        return parts.join(", ") || "No details yet";
+    }
+
+    _renderEnemyList(content, edit) {
+        const enemies = stateManager.getEnemies();
+        const wrap = $("<div>").addClass("gm_list");
+        const header = $("<div>").addClass("gm_section_header").append(
+            $("<b>").text("Enemies"),
+            $("<span>").addClass("gm_section_hint").text("Context-based threats. Removed ones are archived and return with their last state."),
+        );
+        if (edit) {
+            const addBtn = $("<div>").addClass("menu_button gm_add_btn").append(
+                $("<i>").addClass("fa-solid fa-plus"), $("<span>").text(" Add Enemy"));
+            addBtn.on("click", () => {
+                const name = window.prompt("Enemy name:");
+                if (name?.trim()) {
+                    const e = stateManager.addEnemy(name.trim(), settingsUI.getTemplateEntries());
+                    this.selectedEnemyId = e.id;
+                }
+            });
+            header.append(addBtn);
+        }
+
+        const list = $("<div>").addClass("gm_entry_list");
+        for (const e of enemies) {
+            list.append(this._buildEnemyRow(e, edit));
+        }
+        if (!enemies.length) {
+            list.append($("<div>").addClass("gm_empty")
+                .text("No enemies in the scene. They appear automatically when the story introduces threats."));
+        }
+        wrap.append(header, list);
+        content.append(wrap);
+
+        if (edit) this._renderEnemyArchive(content);
+    }
+
+    _buildEnemyRow(e, edit) {
+        const row = $("<div>").addClass("gm_entry_row gm_party_row");
+        const top = $("<div>").addClass("gm_entry_top");
+
+        const nameWrap = $("<div>").addClass("gm_entry_main");
+        nameWrap.append($("<i>").addClass("fa-solid fa-skull").css({ marginRight: "6px", opacity: 0.85 }));
+        nameWrap.append($("<span>").addClass("gm_entry_name").text(e.name));
+        top.append(nameWrap);
+
+        if (edit) {
+            const chips = $("<div>").addClass("gm_party_summary");
+            for (const r of (e.resources || []).slice(0, 4)) {
+                chips.append($("<span>").addClass("gm_party_chip").text(`${r.name} ${r.value}/${r.max}`));
+            }
+            top.append(chips);
+        } else {
+            // Flavor-only summary; the full sheet stays one click away.
+            top.append($("<span>").addClass("gm_section_hint").text(this._enemyFlavor(e)));
+        }
+        row.append(top);
+
+        if (edit) {
+            const actions = $("<div>").addClass("gm_entry_actions");
+            const toParty = iconBtn("fa-solid fa-user-plus").attr("title", "Move to Party (keeps their sheet)");
+            toParty.on("click", (ev) => {
+                ev.stopPropagation();
+                stateManager.enemyToCharacter(e.id);
+                this.selectedEnemyId = null;
+            });
+            const toRoster = iconBtn("fa-solid fa-user-group").attr("title", "Move to Roster (keeps their sheet)");
+            toRoster.on("click", (ev) => {
+                ev.stopPropagation();
+                stateManager.enemyToRoster(e.id);
+                this.selectedEnemyId = null;
+            });
+            const archive = iconBtn("fa-solid fa-box-archive").attr("title", "Archive (restored automatically if they return)");
+            archive.on("click", (ev) => {
+                ev.stopPropagation();
+                stateManager.removeEnemy(e.id);
+                this.selectedEnemyId = null;
+            });
+            actions.append(toParty, toRoster, archive);
+            top.append(actions);
+            row.on("click", () => {
+                this.selectedEnemyId = e.id;
+                this.activeEnemyTab = "stats";
+                this.render();
+            });
+        } else {
+            // View mode: expandable read-only detail (every stat visible).
+            const detail = $("<div>").addClass("gm_enemy_detail").hide();
+            row.append(detail);
+            row.on("click", () => {
+                if (detail.is(":visible")) {
+                    detail.hide();
+                    return;
+                }
+                detail.empty();
+                const body = $("<div>");
+                characterView.renderStats(body, e, false);
+                for (const container of ["inventory", "skills", "passives", "statuses"]) {
+                    if (e[container]?.length) {
+                        const type = { inventory: "item", skills: "skill", passives: "passive", statuses: "status" }[container];
+                        characterView.renderList(body, e, type, false);
+                    }
+                }
+                detail.append(body).show();
+            });
+        }
+        return row;
+    }
+
+    // Archived enemies: collapsed chip strip, edit mode only.
+    _renderEnemyArchive(content) {
+        const archive = stateManager.getData().enemyArchive || [];
+        const wrap = $("<div>").addClass("gm_list");
+        wrap.append($("<div>").addClass("gm_section_header").append(
+            $("<b>").text(`Archived (${archive.length})`),
+            $("<span>").addClass("gm_section_hint").text("Removed enemies — restored automatically if they return."),
+        ));
+
+        const chips = $("<div>").addClass("gm_roster_chips");
+        for (const e of archive) {
+            const chip = $("<div>").addClass("gm_roster_chip").attr("title", this._enemyFlavor(e));
+            chip.append($("<span>").text(e.name));
+            const restore = iconBtn("fa-solid fa-rotate-left").attr("title", "Restore to scene");
+            restore.on("click", (ev) => {
+                ev.stopPropagation();
+                stateManager.restoreEnemy(e.id);
+            });
+            const del = iconBtn("fa-solid fa-xmark").attr("title", "Delete permanently");
+            del.on("click", (ev) => {
+                ev.stopPropagation();
+                stateManager.purgeEnemy(e.id);
+            });
+            chip.append(restore, del);
+            chips.append(chip);
+        }
+        if (!archive.length) {
+            chips.append($("<div>").addClass("gm_empty").text("No archived enemies."));
+        }
+        wrap.append(chips);
+        content.append(wrap);
+    }
+
+    // ---------- Enemies tab: enemy sheet (with its own sub-tabs) ----------
+    _renderEnemySheet(content, enemy, edit) {
+        const header = $("<div>").addClass("gm_sheet_header");
+        header.append($("<i>").addClass("fa-solid fa-skull").css({ fontSize: "1.4em", opacity: 0.85 }));
+        header.append($("<b>").addClass("gm_sheet_name").text(enemy.name));
+        content.append(header);
+
+        const backRow = $("<div>").addClass("gm_sheet_top");
+        const back = $("<div>").addClass("gm_back_btn").append(
+            $("<i>").addClass("fa-solid fa-arrow-left"), $("<span>").text(" Enemies"));
+        back.on("click", () => {
+            this.selectedEnemyId = null;
+            this.activeEnemyTab = "stats";
+            this.render();
+        });
+        backRow.append(back);
+        if (edit) {
+            const toParty = $("<div>").addClass("gm_back_btn").append(
+                $("<i>").addClass("fa-solid fa-user-plus"), $("<span>").text(" To Party"));
+            toParty.on("click", () => {
+                stateManager.enemyToCharacter(enemy.id);
+                this.selectedEnemyId = null;
+            });
+            backRow.append(toParty);
+
+            const toRoster = $("<div>").addClass("gm_back_btn").append(
+                $("<i>").addClass("fa-solid fa-user-group"), $("<span>").text(" To Roster"));
+            toRoster.on("click", () => {
+                stateManager.enemyToRoster(enemy.id);
+                this.selectedEnemyId = null;
+            });
+            backRow.append(toRoster);
+        }
+        content.append(backRow);
+
+        const bar = $("<div>").addClass("gm_tab_bar gm_char_tab_bar");
+        for (const tab of CHAR_TABS) {
+            const btn = $("<div>")
+                .addClass("gm_tab")
+                .toggleClass("active", tab.id === this.activeEnemyTab)
+                .append($("<i>").addClass(tab.icon), $("<span>").text(tab.label));
+            btn.on("click", () => {
+                this.activeEnemyTab = tab.id;
+                this.render();
+            });
+            bar.append(btn);
+        }
+        content.append(bar);
+
+        const body = $("<div>");
+        switch (this.activeEnemyTab) {
+            case "inventory":
+                characterView.renderList(body, enemy, "item", edit);
+                break;
+            case "skills":
+                characterView.renderList(body, enemy, "skill", edit);
+                break;
+            case "passives":
+                characterView.renderList(body, enemy, "passive", edit);
+                break;
+            case "statuses":
+                characterView.renderList(body, enemy, "status", edit);
+                break;
+            case "stats":
+            default:
+                characterView.renderStats(body, enemy, edit);
+                break;
+        }
+        content.append(body);
     }
 
     // ---------- Party tab: character sheet (with its own sub-tabs) ----------
@@ -427,10 +707,29 @@ class MainPanel {
         });
         backRow.append(back);
         if (edit) {
+            // Defection: a party member moves to the enemy side, sheet intact.
+            const toEnemy = $("<div>").addClass("gm_back_btn").append(
+                $("<i>").addClass("fa-solid fa-skull"), $("<span>").text(" To Enemy"));
+            toEnemy.on("click", () => {
+                stateManager.characterToEnemy(char.id);
+                this.selectedCharacterId = null;
+            });
+            backRow.append(toEnemy);
+
             const applyPreset = $("<div>").addClass("gm_back_btn").append(
                 $("<i>").addClass("fa-solid fa-wand-magic-sparkles"), $("<span>").text(" Apply Preset"));
             applyPreset.on("click", () => settingsUI.applyTemplateToCharacter(char));
             backRow.append(applyPreset);
+
+            // Demote to roster — keeps the full sheet so a later promotion
+            // inherits the last state (mission-based party swaps).
+            const toRoster = $("<div>").addClass("gm_back_btn").append(
+                $("<i>").addClass("fa-solid fa-user-group"), $("<span>").text(" To Roster"));
+            toRoster.on("click", () => {
+                stateManager.demoteCharacter(char.id);
+                this.selectedCharacterId = null;
+            });
+            backRow.append(toRoster);
         }
         content.append(backRow);
 
@@ -458,6 +757,9 @@ class MainPanel {
                 break;
             case "passives":
                 characterView.renderList(body, char, "passive", edit);
+                break;
+            case "statuses":
+                characterView.renderList(body, char, "status", edit);
                 break;
             case "stats":
             default:

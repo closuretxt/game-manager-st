@@ -32,6 +32,11 @@ export const settingsUI = {
             extension_settings[extensionName].premaster_profile = $("#gm_premaster_profile_select").val();
             saveSettingsDebounced();
         });
+        $("#gm_wizard_profile_select").on("mousedown focus", () => this.populateProfiles());
+        $("#gm_wizard_profile_select").on("change", () => {
+            extension_settings[extensionName].wizard_profile = $("#gm_wizard_profile_select").val();
+            saveSettingsDebounced();
+        });
         $("#gm_profile_swap").on("click", async () => {
             const targetId = $("#gm_profile_select").val();
             const targetName = targetId ? getProfileNameById(getContext(), targetId) : null;
@@ -54,18 +59,23 @@ export const settingsUI = {
         const profiles = getConnectionProfiles();
         const agenticSel = $("#gm_profile_select").empty();
         const premasterSel = $("#gm_premaster_profile_select").empty();
+        const wizardSel = $("#gm_wizard_profile_select").empty();
         agenticSel.append($("<option>").val("").text("Same as Current"));
         premasterSel.append($("<option>").val("").text("Same as Agentic"));
+        wizardSel.append($("<option>").val("").text("Same as Pre-master"));
         for (const p of profiles) {
             agenticSel.append($("<option>").val(p.id).text(p.name));
             premasterSel.append($("<option>").val(p.id).text(p.name));
+            wizardSel.append($("<option>").val(p.id).text(p.name));
         }
         if (!profiles.length) {
             agenticSel.append($("<option>").val("").text("— connection manager not active —").prop("disabled", true));
             premasterSel.append($("<option>").val("").text("— connection manager not active —").prop("disabled", true));
+            wizardSel.append($("<option>").val("").text("— connection manager not active —").prop("disabled", true));
         }
         agenticSel.val(profiles.some(p => p.id === s.connection_profile) ? s.connection_profile : "");
         premasterSel.val(profiles.some(p => p.id === s.premaster_profile) ? s.premaster_profile : "");
+        wizardSel.val(profiles.some(p => p.id === s.wizard_profile) ? s.wizard_profile : "");
         logDebug("connection profiles populated:", profiles.map(p => p.name));
     },
 

@@ -83,6 +83,20 @@ export function buildLowPriority() {
         }
     }
 
+    // Context-based enemies: compact state summary, only when the feature is
+    // on AND enemies exist — zero tokens otherwise.
+    const s = extension_settings[extensionName];
+    if (s.feature_enemies && (d.enemies || []).length) {
+        parts.push(`<enemies note="Active enemies in the scene; their state is ground truth.">`);
+        for (const e of d.enemies) {
+            const res = (e.resources || []).map(r => `${r.name} ${r.value}/${r.max}`).join(", ");
+            const st = (e.statuses || []).map(x => x.name).join(", ");
+            const state = [res, st].filter(Boolean).join("; ");
+            parts.push(`  <enemy name="${esc(e.name)}"${state ? ` state="${esc(state)}"` : ""}/>`);
+        }
+        parts.push(`</enemies>`);
+    }
+
     // One-shot lines queued by the pre-pass for THIS turn only.
     if (_pendingLow.length) {
         parts.push(..._pendingLow.splice(0, _pendingLow.length));

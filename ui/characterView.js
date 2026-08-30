@@ -89,6 +89,7 @@ function metaFor(type, entry) {
         case "item": return `×${entry.qty ?? 1}`;
         case "skill": return entry.cost ? `Cost: ${entry.cost}` : "";
         case "passive": return `[${entry.ptype ?? "special"}]`;
+        case "status": return entry.modifiers || "";
         case "custom": return entry.value ?? "";
         default: return "";
     }

@@ -27,13 +27,19 @@ let _running = false;
 
 function buildStateSummary() {
     const d = stateManager.getData();
+    const s = extension_settings[extensionName];
+    const charSummary = c => ({
+        name: c.name,
+        resources: c.resources.map(r => ({ name: r.name, value: r.value, min: r.min, max: r.max })),
+        attributes: c.attributes.map(a => ({ name: a.name, value: a.value })),
+        inventory: c.inventory.map(i => ({ name: i.name, qty: i.qty })),
+        statuses: (c.statuses || []).map(s => ({ name: s.name, modifiers: s.modifiers || "" })),
+    });
     return {
-        characters: d.characters.map(c => ({
-            name: c.name,
-            resources: c.resources.map(r => ({ name: r.name, value: r.value, min: r.min, max: r.max })),
-            attributes: c.attributes.map(a => ({ name: a.name, value: a.value })),
-            inventory: c.inventory.map(i => ({ name: i.name, qty: i.qty })),
-        })),
+        characters: d.characters.map(charSummary),
+        // Enemies only when the feature is on AND some exist — otherwise the
+        // agent never sees (and never invents) enemy state.
+        enemies: (s.feature_enemies ? d.enemies : []).map(charSummary),
         customFeatures: d.custom.map(c => ({ name: c.name, value: c.value })),
         // Shared party resources are intentionally excluded: AI never touches them.
     };
@@ -62,9 +68,14 @@ function buildSystemPrompt() {
         '  <add_items><char>Name</char><item name="Rope" qty="1" description="..."/></add_items>',
         '  <remove_items><char>Name</char><item name="Ammo" qty="3"/></remove_items>',
         '  <update_custom><entry name="Seeds" value="Sprouting" description="..."/></update_custom>',
+        '  <set_statuses><char>Name</char><status name="Dazed" modifiers="Aim -2" effect="..."/></set_statuses>',
+        '  <clear_statuses><char>Name</char><status name="Dazed"/></clear_statuses>',
         '  <warnings><warning name="Food" text="You have about two days of food left."/><warning_clear name="Food"/></warnings>',
+        '  <enemies><enemy action="add" name="Goblin"><resource name="HP" value="30" max="30"/><passive name="Brutal" description="+2 damage below half HP"/></enemy><enemy action="update" name="Goblin"><resource name="HP" delta="-7"/><status name="Wounded" modifiers="Aim -2"/></enemy><enemy action="remove" name="Goblin" reason="defeated"/></enemies>',
         "",
         "Use <warnings> ONLY for imminent, concrete needs the player should prepare for (supplies running out, deadlines, approaching dangers). Keep warning text under 15 words. Clear a warning when its cause is resolved. Do not re-emit unchanged warnings every turn.",
+        "Use <enemies> when enemies or threats appear in the scene: action=\"add\" to introduce one (with its HP resource and notable passives/skills), nested <resource>/<status> tags or hp_delta to update it, and action=\"remove\" AS SOON AS an enemy stops being relevant (defeated, fled, scene moved on) — removed enemies are archived and automatically restored with their last state if they return. You may also damage enemies with <change_values><char>EnemyName</char>.",
+        "Use <set_statuses> for TEMPORARY per-character conditions (Dazed, Drunk, Inspired...). When a status lands, also apply its listed stat modifiers through <change_values>; when the condition ends, remove the modifiers with a matching <change_values> and clear the status with <clear_statuses>. Do not use statuses for permanent traits (passives) or party-wide gimmicks (custom).",
     ].join("\n");
 }
 

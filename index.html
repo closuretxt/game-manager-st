@@ -15,8 +15,7 @@
     </div>
     <div id="gm_window_body">
         <div id="gm_warning_strip"></div>
-        <div id="gm_party_bar"></div>
-        <div id="gm_tab_bar"></div>
+        <div id="gm_tab_bar" class="gm_tab_bar"></div>
         <div id="gm_tab_content"></div>
     </div>
 </div>
@@ -29,94 +28,111 @@
             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
         </div>
         <div class="inline-drawer-content">
-            <label class="checkbox_label" for="gm_setting_enabled">
+            <label class="checkbox_label" for="gm_setting_enabled" title="Master switch for every Game Manager feature">
                 <input id="gm_setting_enabled" type="checkbox" />
-                <span>Enable extension</span>
+                <span>Enabled</span>
             </label>
-            <label class="checkbox_label" for="gm_setting_pre_pass">
-                <input id="gm_setting_pre_pass" type="checkbox" />
-                <span>Pre-pass router (LLM judges every action instead of keyword triggers)</span>
-            </label>
-            <label class="checkbox_label" for="gm_setting_feat_wizard">
-                <input id="gm_setting_feat_wizard" type="checkbox" />
-                <span>Scenario Setup Wizard (one-button LLM setup of party, roster and resources)</span>
-            </label>
-            <div class="gm_field">
-                <label for="gm_setting_party_cap">Wizard party cap (extra allies go to the roster)</label>
-                <input id="gm_setting_party_cap" type="number" min="1" max="20" step="1" />
+
+            <div class="gm_settings_sep">LLM</div>
+            <div class="gm_settings_grid">
+                <label class="checkbox_label" for="gm_setting_pre_pass" title="An LLM judges every action (rolls, transactions, warnings) instead of keyword matching">
+                    <input id="gm_setting_pre_pass" type="checkbox" />
+                    <span>Pre-pass router</span>
+                </label>
+                <label class="checkbox_label" for="gm_setting_feat_wizard" title="One-button LLM setup of party, roster and resources from a scenario description">
+                    <input id="gm_setting_feat_wizard" type="checkbox" />
+                    <span>Setup Wizard</span>
+                </label>
+                <label class="checkbox_label" for="gm_setting_feat_char_creator" title="Add Character modal: instant copy from an existing character or preset, or an LLM-generated sheet with review">
+                    <input id="gm_setting_feat_char_creator" type="checkbox" />
+                    <span>Character Creator</span>
+                </label>
+                <label class="checkbox_label" for="gm_setting_deep_context" title="Send character card, persona, author's note and activated World Info to the extension's LLMs. Higher token cost.">
+                    <input id="gm_setting_deep_context" type="checkbox" />
+                    <span>Deep context</span>
+                </label>
+                <label class="checkbox_label" for="gm_setting_auto_update" title="Post-pass: an LLM analyses each exchange and applies tool-tag state changes">
+                    <input id="gm_setting_auto_update" type="checkbox" />
+                    <span>Agentic updates</span>
+                </label>
             </div>
-            <label class="checkbox_label" for="gm_setting_deep_context">
-                <input id="gm_setting_deep_context" type="checkbox" />
-                <span>Deep context (send character card, persona, author's note and activated World Info to the extension's LLMs — higher token cost)</span>
-            </label>
-            <label class="checkbox_label" for="gm_setting_auto_update">
-                <input id="gm_setting_auto_update" type="checkbox" />
-                <span>Agentic resource updates (AI analyses each exchange) — experimental</span>
-            </label>
-            <b>Agentic Features</b>
-            <label class="checkbox_label" for="gm_setting_feat_warnings">
-                <input id="gm_setting_feat_warnings" type="checkbox" />
-                <span>Warnings (AI notes on imminent needs, e.g. food running out)</span>
-            </label>
-            <label class="checkbox_label" for="gm_setting_feat_dice">
-                <input id="gm_setting_feat_dice" type="checkbox" />
-                <span>Dice rolls (pre-master LLM on skill mentions)</span>
-            </label>
-            <label class="checkbox_label" for="gm_setting_feat_transactions">
-                <input id="gm_setting_feat_transactions" type="checkbox" />
-                <span>Transactions (fair-use checks when spending shared resources)</span>
-            </label>
-            <label class="checkbox_label" for="gm_setting_feat_injection">
-                <input id="gm_setting_feat_injection" type="checkbox" />
-                <span>Context injection via {{gamemaster-low-priority}} / {{gamemaster-high-priority}}</span>
-            </label>
-            <label class="checkbox_label" for="gm_setting_open_panel">
-                <input id="gm_setting_open_panel" type="checkbox" />
-                <span>Open panel on startup</span>
-            </label>
-            <div class="gm_field">
-                <label for="gm_setting_bg_opacity">Window background opacity — <span id="gm_bg_opacity_value"></span>%</label>
+            <div class="gm_settings_sep">Features</div>
+            <div class="gm_settings_grid">
+                <label class="checkbox_label" for="gm_setting_feat_warnings" title="AI notes on imminent needs (e.g. food running out) — panel strip + low-priority injection">
+                    <input id="gm_setting_feat_warnings" type="checkbox" />
+                    <span>Warnings</span>
+                </label>
+                <label class="checkbox_label" for="gm_setting_feat_dice" title="Dice rolls with animated tier bubbles on uncertain actions">
+                    <input id="gm_setting_feat_dice" type="checkbox" />
+                    <span>Dice rolls</span>
+                </label>
+                <label class="checkbox_label" for="gm_setting_feat_transactions" title="Fair-use checks when spending shared resources (money, food...)">
+                    <input id="gm_setting_feat_transactions" type="checkbox" />
+                    <span>Transactions</span>
+                </label>
+                <label class="checkbox_label" for="gm_setting_feat_injection" title="Inject state via {{gamemaster-low-priority}} / {{gamemaster-high-priority}}">
+                    <input id="gm_setting_feat_injection" type="checkbox" />
+                    <span>Injection</span>
+                </label>
+                <label class="checkbox_label" for="gm_setting_feat_enemies" title="Context-based enemies: AI-tracked sheets, archived when irrelevant, restored on return. Hidden entirely when unused.">
+                    <input id="gm_setting_feat_enemies" type="checkbox" />
+                    <span>Enemies</span>
+                </label>
+            </div>
+
+            <div class="gm_settings_sep">Interface</div>
+            <div class="gm_settings_grid">
+                <label class="checkbox_label" for="gm_setting_open_panel">
+                    <input id="gm_setting_open_panel" type="checkbox" />
+                    <span>Open on startup</span>
+                </label>
+                <label class="checkbox_label" for="gm_setting_debug_mode">
+                    <input id="gm_setting_debug_mode" type="checkbox" />
+                    <span>Debug logging</span>
+                </label>
+            </div>
+            <div class="gm_field gm_field_inline">
+                <label for="gm_setting_bg_opacity">Opacity</label>
                 <input id="gm_setting_bg_opacity" type="range" min="10" max="100" step="5" />
+                <span id="gm_bg_opacity_value"></span>
             </div>
-            <label class="checkbox_label" for="gm_setting_debug_mode">
-                <input id="gm_setting_debug_mode" type="checkbox" />
-                <span>Debug logging</span>
-            </label>
-            <hr class="sysHR" />
+
+            <div class="gm_settings_sep">Presets</div>
+            <div class="gm_preset_row">
+                <select id="gm_preset_select"></select>
+                <div id="gm_preset_save" class="menu_button menu_button_icon" title="Save current state as a preset"><i class="fa-solid fa-floppy-disk"></i></div>
+                <div id="gm_preset_load" class="menu_button menu_button_icon" title="Load preset (shared resources + character template)"><i class="fa-solid fa-folder-open"></i></div>
+                <div id="gm_preset_delete" class="menu_button menu_button_icon" title="Delete preset"><i class="fa-solid fa-trash"></i></div>
+            </div>
             <div class="gm_preset_row">
                 <div id="gm_open_panel" class="menu_button"><i class="fa-solid fa-window-restore"></i>&nbsp;Open Panel</div>
             </div>
+
             <div class="inline-drawer">
                 <div class="inline-drawer-toggle inline-drawer-header">
                     <b>Advanced</b>
                     <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
                 </div>
                 <div class="inline-drawer-content">
-                    <label class="checkbox_label" for="gm_setting_legacy">
-                        <input id="gm_setting_legacy" type="checkbox" />
-                        <span>Legacy connection profile swapping (swaps your active connection instead of per-request profiles)</span>
-                    </label>
-                    <b>Connection Profile (agentic pass)</b>
+                    <div class="gm_settings_sep">Agentic profile</div>
                     <div class="gm_preset_row">
                         <select id="gm_profile_select"></select>
-                        <div id="gm_profile_swap" class="menu_button menu_button_icon"><i class="fa-solid fa-right-left"></i></div>
+                        <div id="gm_profile_swap" class="menu_button menu_button_icon" title="Swap active connection now (legacy mode only)"><i class="fa-solid fa-right-left"></i></div>
                     </div>
-                    <div class="gm_hint">Profile used for the extension's own AI calls (agentic updates). "Same as Current" uses the active connection. The switch icon swaps immediately (legacy mode only).</div>
-                    <b>Connection Profile (pre-master)</b>
+                    <div class="gm_settings_sep">Pre-master profile</div>
                     <div class="gm_preset_row">
                         <select id="gm_premaster_profile_select"></select>
                     </div>
-                    <div class="gm_hint">Profile for dice rolls and transaction checks — pick a fast/cheap model here. "Same as Agentic" follows the profile above.</div>
+                    <div class="gm_settings_sep">Scenario Build Wizard profile</div>
+                    <div class="gm_preset_row">
+                        <select id="gm_wizard_profile_select"></select>
+                    </div>
+                    <label class="checkbox_label" for="gm_setting_legacy" title="Swap the active connection profile for extension AI calls instead of per-request profiles">
+                        <input id="gm_setting_legacy" type="checkbox" />
+                        <span>Legacy profile swapping</span>
+                    </label>
                 </div>
             </div>
-            <b>Presets</b>
-            <div class="gm_preset_row">
-                <select id="gm_preset_select"></select>
-                <div id="gm_preset_save" class="menu_button menu_button_icon" title="Save current state as a preset"><i class="fa-solid fa-floppy-disk"></i></div>
-                <div id="gm_preset_load" class="menu_button menu_button_icon" title="Load preset (shared resources + template)"><i class="fa-solid fa-folder-open"></i></div>
-                <div id="gm_preset_delete" class="menu_button menu_button_icon" title="Delete preset"><i class="fa-solid fa-trash"></i></div>
-            </div>
-            <div class="gm_hint">Presets store a character template (resources, attributes, etc.) and the party-wide shared resources. Loading one replaces the shared resources and becomes the template for new characters.</div>
             <hr class="sysHR" />
         </div>
     </div>

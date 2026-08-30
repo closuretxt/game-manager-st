@@ -1,0 +1,175 @@
+// Single-character generator — the "Generate" side of the Add Character flow.
+// One setup-LLM call proposes a full sheet for ONE character, given a name,
+// free-form details and optional REFERENCE characters whose stat structure
+// and ranges the proposal should mirror. NOTHING touches state: the sanitized
+// character (same shape as a wizard party entry) is returned for the review
+// page (ui/characterCreator.js), which applies it through stateManager.
+
+import { extension_settings, getContext } from "../../../../extensions.js";
+import { extensionName } from "./constants.js";
+import { logDebug } from "./debug.js";
+import { stateManager } from "./stateManager.js";
+import { CHARACTER_CONTAINERS } from "./schemas.js";
+import { parseSetupXml, sanitizeProposal, characterToXml, fieldKeysFor, recentChatLines } from "./setupWizard.js";
+import { sendRequestViaProfile, resolveWizardProfile } from "../util/connectionService.js";
+import { buildDeepContext } from "../util/loreContext.js";
+
+const CHAR_RESPONSE_SHAPE = [
+    '<setup name="<short source/title>">',
+    "  <party>",
+    '    <char name="...">  <!-- exactly ONE char; give only the containers that matter for them -->',
+    '      <resource name="Health" value="80" min="0" max="100" description="..."/>',
+    '      <attribute name="Strength" value="5" description="..."/>',
+    '      <item name="Rope" qty="1" description="..."/>',
+    '      <skill name="Fireball" cost="10 Mana" description="..."/>',
+    '      <passive name="Tough" ptype="stat" description="..."/>  <!-- ptype: special|stat -->',
+    '      <status name="Dazed" modifiers="Aim -2" effect="..."/>  <!-- TEMPORARY conditions only, removed when they end -->',
+    "    </char>",
+    "  </party>",
+    "</setup>",
+].join("\n");
+
+const CHAR_PROMPT_HEADER = [
+    "You are the character engine of a tabletop-style roleplay tracker.",
+    "You receive a character name, optional details, the recent chat and optional REFERENCE characters, and propose a full tracked sheet for that ONE character.",
+    "Respond with ONLY the <setup> XML block (no markdown fences, no prose), with this shape:",
+    CHAR_RESPONSE_SHAPE,
+    "",
+    "Rules:",
+    "- Exactly ONE <char> inside <party>, named exactly as requested.",
+    "- REFERENCE CHARACTERS, when given, are the template: mirror their stat structure, resource names, ranges and granularity so similar characters stay comparable (an SSM with Ammo 0-36 stays Ammo 0-36), while adapting values, skills and descriptions to THIS character's role and details.",
+    "- Without references, YOU decide which systems the character uses: give containers ONLY when they matter for THEM (a brute: resources+attributes; a mage: skills+passives; a quartermaster: inventory). Empty containers are correct when a system does not apply.",
+    "- Stats, ranges and quantities must be deliberate — reflect the character's role and the scenario's pressure. No filler.",
+    "- Every entry gets a short, IN-WORLD description — a fact about the thing itself, never meta commentary ('tracks', 'resource for', 'important for this character'). Never leave descriptions empty.",
+    "- Resources are turn-to-turn meters updated during play (Health, Stamina, Ammo, Sanity, Stress) with sensible custom ranges (Health 0-100, Ammo 0-36 = one revolver loadout). Attributes are milestone stats (Strength, Fortitude, Dexterity, Charisma) without hard caps, changed rarely.",
+    "- CALIBRATE NUMBERS to the world: starting quantities and ranges must imply real scale. Anchor non-obvious scales in the description (e.g. 'a meal costs about 15').",
+    "- Omit tags that do not apply. Never invent entries outside the given shapes.",
+].join("\n");
+
+const CHAR_REFINE_PROMPT_HEADER = [
+    "You are the character engine of a tabletop-style roleplay tracker, running a REFINEMENT pass on an earlier character proposal.",
+    "You receive the CURRENT proposal (XML), the character brief, optional references and refinement feedback, and return an IMPROVED proposal.",
+    "Respond with ONLY the <setup> XML block (no markdown fences, no prose), with this shape:",
+    CHAR_RESPONSE_SHAPE,
+    "",
+    "Rules:",
+    "- DEPTH OVER BREADTH: replace generic/shallow entries with concrete, grounded ones. Every value must be deliberate.",
+    "- Preserve everything the feedback does not ask to change — especially entries the user may have edited by hand.",
+    "- Keep the character's name exactly as proposed.",
+    "- Every entry carries a short, IN-WORLD description — a fact about the thing itself, never meta commentary. Fill any that are missing, vague or meta.",
+    "- Omit tags that do not apply. Never invent entries outside the given shapes.",
+].join("\n");
+
+//
+
+// Shared tail of both calls: system prompt + user content -> sanitized char.
+// The user's requested name always wins over whatever the LLM replied.
+async function runCharLLM(systemPrompt, userContent, name) {
+    const s = extension_settings[extensionName];
+    const st = getContext();
+    const profileId = resolveWizardProfile(st, s.wizard_profile, s.premaster_profile, s.connection_profile);
+    const reply = await sendRequestViaProfile(profileId, [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userContent },
+    ]);
+    const proposal = sanitizeProposal(parseSetupXml(String(reply || "")));
+    const char = proposal?.party?.[0] || null;
+    if (!char) {
+        logDebug("characterGenerator: no <char> in reply");
+        return null;
+    }
+    char.name = name;
+    return char;
+}
+
+// Brief blocks shared by generation and refinement: field shapes, existing
+// names, recent chat and the character brief (+ references when given).
+function briefBlocks({ name, details, references }) {
+    const s = extension_settings[extensionName];
+    const d = stateManager.getData();
+    const existing = {
+        party: (d.characters || []).map(c => c.name),
+        roster: (d.roster || []).map(r => r.name),
+    };
+    const blocks = [
+        `ENTRY FIELD SHAPES: resource {${fieldKeysFor("resource")}}, attribute {${fieldKeysFor("attribute")}}, item {${fieldKeysFor("item")}}, skill {${fieldKeysFor("skill")}}, passive {${fieldKeysFor("passive")}} (ptype: special|stat), status {${fieldKeysFor("status")}}.`,
+        "",
+        `EXISTING SETUP (names only — the new character must not duplicate them): ${JSON.stringify(existing)}`,
+        "",
+        "RECENT CHAT (context):",
+        ...recentChatLines(s.wizard_chat_messages),
+        "",
+        "NEW CHARACTER BRIEF:",
+        `name: ${name}`,
+        `details: ${String(details || "").trim() || "(none — infer from the recent chat and references)"}`,
+    ];
+    if (references.length) {
+        blocks.push(
+            "",
+            "REFERENCE CHARACTERS (mirror their stat structure, names and ranges; adapt values to THIS character):",
+            ...references.map(characterToXml),
+        );
+    }
+    return blocks;
+}
+
+// Deep context (setting-gated): character card, persona, author's note and
+// activated World Info — same gate as the scenario wizard.
+async function deepContextBlocks(details) {
+    const s = extension_settings[extensionName];
+    if (!s.deep_context) return [];
+    const deep = await buildDeepContext(String(details || ""));
+    return deep ? ["", "DEEP CONTEXT (card / persona / lore):", deep] : [];
+}
+
+//
+
+// Runs the generation call. Returns a sanitized character (wizard party-entry
+// shape) or null on failure.
+export async function generateCharacterProposal({ name, details, references = [] } = {}) {
+    const s = extension_settings[extensionName];
+    if (!s.enabled) return null;
+    try {
+        const blocks = [
+            ...briefBlocks({ name, details, references }),
+            ...(await deepContextBlocks(details)),
+        ];
+        const char = await runCharLLM(CHAR_PROMPT_HEADER, blocks.join("\n"), name);
+        if (char) {
+            logDebug(`characterGenerator: proposal for "${name}" — ` +
+                CHARACTER_CONTAINERS.map(k => `${k}=${(char[k] || []).length}`).join(" "));
+        }
+        return char;
+    } catch (e) {
+        console.error("[Game Manager] character generation failed:", e);
+        return null;
+    }
+}
+
+//
+
+// Recursive refinement: feeds the (possibly user-edited) character back
+// through the LLM. Returns a NEW sanitized character or null (the caller
+// keeps the current one).
+export async function refineCharacterProposal(char, feedback, { name, details, references = [] } = {}) {
+    const s = extension_settings[extensionName];
+    if (!s.enabled || !char) return null;
+    try {
+        const blocks = [
+            ...briefBlocks({ name, details, references }),
+            ...(await deepContextBlocks(details)),
+            "",
+            "CURRENT PROPOSAL (improve THIS — keep what works, deepen what is shallow):",
+            characterToXml(char),
+            "",
+            "REFINEMENT FEEDBACK:",
+            String(feedback || "(none — deepen the sheet on your own judgment: richer entries, deliberate values, no filler)"),
+        ];
+        const refined = await runCharLLM(CHAR_REFINE_PROMPT_HEADER, blocks.join("\n"), name);
+        if (refined) logDebug(`characterGenerator: refined proposal for "${name}"`);
+        return refined;
+    } catch (e) {
+        console.error("[Game Manager] character refinement failed:", e);
+        return null;
+    }
+}

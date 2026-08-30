@@ -16,6 +16,11 @@ export const defaultSettings = {
     // Scenario Setup Wizard — one-button LLM bootstrap of the tracked setup.
     feature_setup_wizard: true,
     max_party_size: 6, // Full character sheets the wizard may propose; extra allies go to the roster.
+    wizard_chat_messages: 1, // Recent chat messages included as wizard context.
+
+    // Character Creator — Add Character modal: instant copy from a reference
+    // character or preset, or an LLM-generated sheet with a review page.
+    feature_character_creator: true,
 
     // Deep context — send character card, persona, author's note and activated
     // World Info to the extension's LLMs (wizard + pre-pass). Off by default:
@@ -27,12 +32,14 @@ export const defaultSettings = {
     feature_dice: true,           // Dice rolls (pre-master LLM on skill mentions).
     feature_transactions: true,   // Fair-use transactions (pre-master LLM on shared resource mentions).
     feature_injection: true,      // {{gamemaster-*}} macros inject warnings/context into prompts.
+    feature_enemies: true,        // Context-based enemies (AI-managed sheets, archived when irrelevant).
 
     presets: structuredClone(defaultPresets),
     active_preset: "Default Preset",
 
     connection_profile: "", // Connection profile id for the extension's own AI calls ("" = same as current connection).
     premaster_profile: "",  // Connection profile id for pre-master calls (dice rolls / transactions). "" = same as connection_profile.
+    wizard_profile: "",     // Connection profile id for the scenario build wizard (less agentic). "" = same as premaster chain.
     legacy_api: false, // LEGACY: swap the active connection profile for extension AI calls instead of per-request profiles.
     edit_mode: false, // When off, all resource/entry mutation controls are hidden (view-only, hardcore feel).
     window_opacity: 95, // Floating window background opacity in percent.
@@ -60,12 +67,13 @@ export async function loadSettings() {
     $("#gm_setting_legacy").prop("checked", !!s.legacy_api);
     $("#gm_setting_pre_pass").prop("checked", !!s.pre_pass);
     $("#gm_setting_feat_wizard").prop("checked", !!s.feature_setup_wizard);
-    $("#gm_setting_party_cap").val(Math.max(1, Math.trunc(Number(s.max_party_size) || 6)));
+    $("#gm_setting_feat_char_creator").prop("checked", !!s.feature_character_creator);
     $("#gm_setting_deep_context").prop("checked", !!s.deep_context);
     $("#gm_setting_feat_warnings").prop("checked", !!s.feature_warnings);
     $("#gm_setting_feat_dice").prop("checked", !!s.feature_dice);
     $("#gm_setting_feat_transactions").prop("checked", !!s.feature_transactions);
     $("#gm_setting_feat_injection").prop("checked", !!s.feature_injection);
+    $("#gm_setting_feat_enemies").prop("checked", !!s.feature_enemies);
     $("#gm_setting_bg_opacity").val(Number.isFinite(+s.window_opacity) ? +s.window_opacity : 95);
     $("#gm_bg_opacity_value").text(`${s.window_opacity}%`);
 
@@ -82,18 +90,20 @@ export function saveSettings() {
     s.legacy_api = $("#gm_setting_legacy").prop("checked");
     s.pre_pass = $("#gm_setting_pre_pass").prop("checked");
     s.feature_setup_wizard = $("#gm_setting_feat_wizard").prop("checked");
-    s.max_party_size = Math.max(1, Math.trunc(Number($("#gm_setting_party_cap").val()) || 6));
+    s.feature_character_creator = $("#gm_setting_feat_char_creator").prop("checked");
     s.deep_context = $("#gm_setting_deep_context").prop("checked");
     s.feature_warnings = $("#gm_setting_feat_warnings").prop("checked");
     s.feature_dice = $("#gm_setting_feat_dice").prop("checked");
     s.feature_transactions = $("#gm_setting_feat_transactions").prop("checked");
     s.feature_injection = $("#gm_setting_feat_injection").prop("checked");
+    s.feature_enemies = $("#gm_setting_feat_enemies").prop("checked");
     saveSettingsDebounced();
 }
 
 export function initSettingsListeners() {
     $("#gm_setting_enabled, #gm_setting_auto_update, #gm_setting_debug_mode, #gm_setting_open_panel, #gm_setting_legacy, #gm_setting_pre_pass, " +
-      "#gm_setting_feat_wizard, #gm_setting_party_cap, #gm_setting_deep_context, " +
-      "#gm_setting_feat_warnings, #gm_setting_feat_dice, #gm_setting_feat_transactions, #gm_setting_feat_injection").on("change", saveSettings);
+      "#gm_setting_feat_wizard, #gm_setting_feat_char_creator, #gm_setting_deep_context, " +
+      "#gm_setting_feat_warnings, #gm_setting_feat_dice, #gm_setting_feat_transactions, #gm_setting_feat_injection, " +
+      "#gm_setting_feat_enemies").on("change", saveSettings);
 }
 

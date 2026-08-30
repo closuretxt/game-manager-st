@@ -10,24 +10,22 @@
 import { getContext } from "../../../../extensions.js";
 import { logDebug } from "../core/debug.js";
 
-const MAX_CARD_FIELD = 1200;
-const MAX_NOTE = 600;
-const MAX_WI_CHARS = 4000;
+const MAX_CARD_FIELD = 5000;
+const MAX_NOTE = 6000;
+const MAX_WI_CHARS = 40000;
 
-// Activates World Info against `text`. Dynamic import + guards so a changed
+// Activates World Info via getWorldInfoPrompt — the same call as the reference
+// implementation (setup/AnotherExtensionIndex.js runPass): chat strings
+// newest-first + max context + dry run. Dynamic import + guards so a changed
 // world-info.js API never breaks the extension.
-async function activateWorldInfo(text) {
+async function activateWorldInfo(chatStrings) {
     try {
         const wi = await import("../../../../world-info.js");
-        const st = getContext();
-        const settings = st?.worldInfoSettings;
-        if (!wi?.checkWorldInfo || !settings) return "";
+        if (typeof wi?.getWorldInfoPrompt !== "function") return "";
 
-        const budget = typeof wi.getWorldInfoBudget === "function"
-            ? wi.getWorldInfoBudget(settings)
-            : { worldInfoBudget: MAX_WI_CHARS, worldInfoBudgetPadding: 0 };
-        const result = await wi.checkWorldInfo(text, settings, budget);
-        const parts = [...(result?.worldInfoBefore || []), ...(result?.worldInfoAfter || [])];
+        const result = await wi.getWorldInfoPrompt(chatStrings, 100000, true);
+        const toText = v => Array.isArray(v) ? v.join("\n") : String(v || "");
+        const parts = [toText(result?.worldInfoBefore), toText(result?.worldInfoAfter)].filter(Boolean);
         return parts.join("\n").slice(0, MAX_WI_CHARS);
     } catch (e) {
         logDebug("loreContext: world info activation unavailable:", e?.message || e);
@@ -42,15 +40,18 @@ export async function buildDeepContext(extraText = "") {
     const st = getContext();
     const parts = [];
 
-    // Character card — the character the chat is playing with.
-    const char = st?.characters?.[st?.characterId];
+    // Character card — same access pattern as the reference implementation
+    // (setup/AnotherExtensionIndex.js runPass): st.characters[st.characterId].
+    const char = st.characters?.[st.characterId];
+    logDebug(`loreContext: character lookup — characterId=${st.characterId}, found=${!!char}, `
+        + `name=${char?.name || "(none)"}, description=${char?.description ? `${String(char.description).length} chars` : "empty"}`);
     if (char) {
-        const card = [
-            char.description && `Description: ${String(char.description).slice(0, MAX_CARD_FIELD)}`,
-            char.personality && `Personality: ${String(char.personality).slice(0, MAX_NOTE)}`,
-            char.scenario && `Scenario: ${String(char.scenario).slice(0, MAX_NOTE)}`,
+        const cardLines = [
+            char.name ? `<name>${char.name}</name>` : "",
+            char.description ? `<description>${String(char.description).slice(0, MAX_CARD_FIELD)}</description>` : "",
+            char.scenario ? `<scenario>${String(char.scenario).slice(0, MAX_NOTE)}</scenario>` : "",
         ].filter(Boolean);
-        if (card.length) parts.push(`CHARACTER CARD (${char.name || "unknown"}):\n${card.join("\n")}`);
+        if (cardLines.length) parts.push(`CHARACTER CARD:\n${cardLines.join("\n")}`);
     }
 
     // User persona.
@@ -60,14 +61,20 @@ export async function buildDeepContext(extraText = "") {
     const note = st?.chatMetadata?.note_prompt;
     if (note) parts.push(`AUTHOR'S NOTE: ${String(note).slice(0, MAX_NOTE)}`);
 
-    // World Info — activated against recent chat + the extra text.
-    const chat = Array.isArray(st?.chat) ? st.chat : [];
-    const activationText = [
-        ...chat.slice(-6).map(m => String(m.mes ?? "").slice(0, 500)),
-        String(extraText || "").slice(0, 2000),
-    ].join("\n");
-    const wi = await activateWorldInfo(activationText);
+    // World Info — activated against the recent chat (newest first, exactly
+    // like the reference implementation) plus the scenario/extra text.
+    const chatStrings = (Array.isArray(st?.chat) ? st.chat : [])
+        .slice()
+        .reverse()
+        .map(m => String(m.mes ?? ""));
+    if (extraText) chatStrings.push(String(extraText).slice(0, 2000));
+    const wi = await activateWorldInfo(chatStrings);
     if (wi) parts.push(`WORLD INFO (activated):\n${wi}`);
 
+    logDebug(`loreContext: deep context parts — card=${parts.some(p => p.startsWith("CHARACTER CARD"))}, `
+        + `persona=${parts.some(p => p.startsWith("USER PERSONA"))}, `
+        + `note=${parts.some(p => p.startsWith("AUTHOR'S NOTE"))}, `
+        + `worldInfo=${wi ? `${wi.length} chars` : "none"} `
+        + `(characterId=${st?.characterId}, name1=${st?.name1 || "(none)"})`);
     return parts.join("\n\n");
 }

@@ -4,5 +4,6 @@
 /.vscode
 /scripts
 /docs
+/.tests
 *.log
 *.txt

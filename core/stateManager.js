@@ -71,6 +71,8 @@ export const stateManager = {
     _normalize() {
         const d = this.getData();
         if (!Array.isArray(d.characters)) d.characters = [];
+        if (!Array.isArray(d.enemies)) d.enemies = [];
+        if (!Array.isArray(d.enemyArchive)) d.enemyArchive = [];
         if (!Array.isArray(d.sharedResources)) d.sharedResources = [];
         if (!Array.isArray(d.roster)) d.roster = [];
         if (!Array.isArray(d.custom)) d.custom = [];
@@ -86,6 +88,14 @@ export const stateManager = {
                 d.custom.push(...c.custom);
             }
             delete c.custom;
+        }
+        // Enemies share the party sheet shape (active + archived).
+        for (const c of [...d.enemies, ...d.enemyArchive]) {
+            c.id = c.id || genId();
+            c.name = c.name || "Unnamed";
+            for (const key of CHARACTER_CONTAINERS) {
+                if (!Array.isArray(c[key])) c[key] = [];
+            }
         }
         if (!d.characters.some(c => c.id === d.activeCharacterId)) {
             d.activeCharacterId = d.characters[0]?.id ?? null;
@@ -187,7 +197,7 @@ export const stateManager = {
 
     // ---------- per-character entries ----------
     addEntry(characterId, type, overrides = {}) {
-        const char = this.getCharacter(characterId);
+        const char = this.getSheet(characterId);
         if (!char) return null;
         const entry = defaultEntry(type, overrides);
         char[GM_SCHEMA[type].container].push(entry);
@@ -196,7 +206,7 @@ export const stateManager = {
     },
 
     updateEntry(characterId, type, entryId, patch) {
-        const char = this.getCharacter(characterId);
+        const char = this.getSheet(characterId);
         if (!char) return;
         const entry = char[GM_SCHEMA[type].container].find(e => e.id === entryId);
         if (!entry) return;
@@ -206,7 +216,7 @@ export const stateManager = {
     },
 
     removeEntry(characterId, type, entryId) {
-        const char = this.getCharacter(characterId);
+        const char = this.getSheet(characterId);
         if (!char) return;
         const container = char[GM_SCHEMA[type].container];
         const idx = container.findIndex(e => e.id === entryId);
@@ -241,13 +251,168 @@ export const stateManager = {
         this.emitChange("remove_roster");
     },
 
-    // Promotes a roster ally to a fully tracked party character.
+    // Demotes a party character to the roster, KEEPING their full sheet so a
+    // later promotion inherits the last state (mission-based party swaps:
+    // mission -> demote -> weeks later -> promote -> same HP, items, skills).
+    demoteCharacter(characterId) {
+        const d = this.getData();
+        const char = d.characters.find(c => c.id === characterId);
+        if (!char) return null;
+        const sheet = {};
+        for (const key of CHARACTER_CONTAINERS) sheet[key] = structuredClone(char[key] || []);
+        d.characters = d.characters.filter(c => c.id !== characterId);
+        if (d.activeCharacterId === characterId) {
+            d.activeCharacterId = d.characters[0]?.id ?? null;
+        }
+        const entry = defaultEntry("roster", { name: char.name, note: "" });
+        entry.sheet = sheet;
+        d.roster.push(entry);
+        this.emitChange("demote_character");
+        return entry;
+    },
+
+    // Promotes a roster ally to a fully tracked party character. Restores the
+    // saved sheet when the ally was demoted from the party before; fresh
+    // wizard/roster allies start with an empty sheet.
     promoteRosterEntry(id) {
         const d = this.getData();
         const entry = d.roster.find(x => x.id === id);
         if (!entry) return null;
         d.roster = d.roster.filter(x => x.id !== id);
-        return this.addCharacter(entry.name);
+        return this.addCharacter(entry.name, entry.sheet || null);
+    },
+
+    // ---------- enemies (context-based, AI-managed) ----------
+    // Enemies are full sheets like party characters, but their lifecycle is
+    // driven by the scene: the AI adds/updates them via tool tags and removes
+    // them when they become irrelevant (defeated, fled, scene moved on).
+    // Removal ARCHIVES the sheet instead of deleting it, so a later
+    // reappearance (recurring rival, respawning boss) inherits the last state.
+    getEnemies() {
+        return this.getData().enemies;
+    },
+
+    getEnemy(idOrName) {
+        const list = this.getEnemies();
+        const needle = String(idOrName ?? "").toLowerCase();
+        return list.find(c => c.id === idOrName)
+            || list.find(c => c.name.toLowerCase() === needle)
+            || null;
+    },
+
+    // Resolves any sheet holder (party character OR enemy) by id or name —
+    // used by the entry helpers and tool-tag scoping.
+    getSheet(idOrName) {
+        return this.getCharacter(idOrName) || this.getEnemy(idOrName);
+    },
+
+    // Creates an enemy, or restores its archived sheet when an enemy with the
+    // same name reappears.
+    addEnemy(name, templateEntries = null) {
+        const d = this.getData();
+        const needle = String(name ?? "").toLowerCase();
+        const archivedIdx = d.enemyArchive.findIndex(e => String(e.name).toLowerCase() === needle);
+        if (archivedIdx !== -1) {
+            const enemy = d.enemyArchive.splice(archivedIdx, 1)[0];
+            d.enemies.push(enemy);
+            this.emitChange("restore_enemy");
+            return enemy;
+        }
+        const enemy = { id: genId(), name };
+        for (const key of CHARACTER_CONTAINERS) enemy[key] = [];
+        if (templateEntries) {
+            for (const key of CHARACTER_CONTAINERS) {
+                enemy[key] = (templateEntries[key] || []).map(e => structuredClone(e));
+            }
+        }
+        d.enemies.push(enemy);
+        this.emitChange("add_enemy");
+        return enemy;
+    },
+
+    // Removes an enemy from the active scene — archived, never deleted.
+    removeEnemy(id) {
+        const d = this.getData();
+        const enemy = d.enemies.find(c => c.id === id);
+        if (!enemy) return null;
+        d.enemies = d.enemies.filter(c => c.id !== id);
+        // Keep only the newest archive entry per enemy.
+        d.enemyArchive = d.enemyArchive.filter(e => e.id !== id);
+        d.enemyArchive.push(enemy);
+        this.emitChange("remove_enemy");
+        return enemy;
+    },
+
+    // Manually restores an archived enemy to the active scene (edit mode).
+    restoreEnemy(id) {
+        const d = this.getData();
+        const entry = d.enemyArchive.find(e => e.id === id);
+        if (!entry) return null;
+        d.enemyArchive = d.enemyArchive.filter(e => e.id !== id);
+        d.enemies.push(entry);
+        this.emitChange("restore_enemy");
+        return entry;
+    },
+
+    // Hard-deletes an archived enemy (edit mode only).
+    purgeEnemy(id) {
+        const d = this.getData();
+        d.enemyArchive = d.enemyArchive.filter(e => e.id !== id);
+        this.emitChange("purge_enemy");
+    },
+
+    // ---------- conversions (full sheet preserved in every direction) ----------
+    // Roster ally -> enemy (restores their saved sheet when they had one).
+    rosterToEnemy(id) {
+        const d = this.getData();
+        const entry = d.roster.find(x => x.id === id);
+        if (!entry) return null;
+        d.roster = d.roster.filter(x => x.id !== id);
+        return this.addEnemy(entry.name, entry.sheet || null);
+    },
+
+    // Enemy joins the party (recruited) — keeps their full sheet.
+    enemyToCharacter(id) {
+        const d = this.getData();
+        const enemy = d.enemies.find(c => c.id === id);
+        if (!enemy) return null;
+        const sheet = {};
+        for (const key of CHARACTER_CONTAINERS) sheet[key] = structuredClone(enemy[key] || []);
+        d.enemies = d.enemies.filter(c => c.id !== id);
+        return this.addCharacter(enemy.name, sheet);
+    },
+
+    // Party member defects to the enemy side — keeps their full sheet.
+    characterToEnemy(id) {
+        const d = this.getData();
+        const char = d.characters.find(c => c.id === id);
+        if (!char) return null;
+        const sheet = {};
+        for (const key of CHARACTER_CONTAINERS) sheet[key] = structuredClone(char[key] || []);
+        d.characters = d.characters.filter(c => c.id !== id);
+        if (d.activeCharacterId === id) {
+            d.activeCharacterId = d.characters[0]?.id ?? null;
+        }
+        const enemy = { id: genId(), name: char.name };
+        for (const key of CHARACTER_CONTAINERS) enemy[key] = sheet[key];
+        d.enemies.push(enemy);
+        this.emitChange("character_to_enemy");
+        return enemy;
+    },
+
+    // Enemy demoted to a lightweight roster ally — keeps their full sheet.
+    enemyToRoster(id) {
+        const d = this.getData();
+        const enemy = d.enemies.find(c => c.id === id);
+        if (!enemy) return null;
+        const sheet = {};
+        for (const key of CHARACTER_CONTAINERS) sheet[key] = structuredClone(enemy[key] || []);
+        d.enemies = d.enemies.filter(c => c.id !== id);
+        const entry = defaultEntry("roster", { name: enemy.name, note: "" });
+        entry.sheet = sheet;
+        d.roster.push(entry);
+        this.emitChange("enemy_to_roster");
+        return entry;
     },
 
     // ---------- party-level shared resources ----------
@@ -284,7 +449,7 @@ export const stateManager = {
 
     // Change a resource/attribute by delta or to an absolute value. Matches by name (case-insensitive).
     applyDelta(characterId, type, name, { delta, value } = {}) {
-        const char = this.getCharacter(characterId);
+        const char = this.getSheet(characterId);
         if (!char) return false;
         const needle = String(name ?? "").toLowerCase();
         const entry = char[GM_SCHEMA[type].container].find(e => String(e.name).toLowerCase() === needle);
@@ -303,7 +468,7 @@ export const stateManager = {
     },
 
     addItem(characterId, { name, qty = 1, description = "" } = {}) {
-        const char = this.getCharacter(characterId);
+        const char = this.getSheet(characterId);
         if (!char || !name) return false;
         const needle = String(name).toLowerCase();
         const existing = char.inventory.find(e => String(e.name).toLowerCase() === needle);
@@ -317,7 +482,7 @@ export const stateManager = {
     },
 
     removeItem(characterId, name, qty = null) {
-        const char = this.getCharacter(characterId);
+        const char = this.getSheet(characterId);
         if (!char || !name) return false;
         const needle = String(name).toLowerCase();
         const entry = char.inventory.find(e => String(e.name).toLowerCase() === needle);
@@ -367,6 +532,37 @@ export const stateManager = {
         if (value !== undefined && value !== "") entry.value = value;
         if (description !== undefined && description !== "") entry.description = description;
         this.emitChange("update_custom");
+        return true;
+    },
+
+    // AI-facing: create/update a TEMPORARY per-character status by name
+    // (Dazed, Drunk, Inspired...). Removed via removeStatusByName when it ends.
+    updateStatus(characterId, { name, modifiers, effect } = {}) {
+        if (!name) return false;
+        const char = this.getSheet(characterId);
+        if (!char) return false;
+        if (!Array.isArray(char.statuses)) char.statuses = [];
+        const needle = String(name).toLowerCase();
+        let entry = char.statuses.find(e => String(e.name).toLowerCase() === needle);
+        if (!entry) {
+            entry = defaultEntry("status", { name });
+            char.statuses.push(entry);
+        }
+        if (modifiers !== undefined && modifiers !== "") entry.modifiers = modifiers;
+        if (effect !== undefined && effect !== "") entry.effect = effect;
+        this.emitChange("update_status");
+        return true;
+    },
+
+    // AI-facing: remove a status by name (when the condition ends).
+    removeStatusByName(characterId, name) {
+        const char = this.getSheet(characterId);
+        if (!char || !name || !Array.isArray(char.statuses)) return false;
+        const needle = String(name).toLowerCase();
+        const before = char.statuses.length;
+        char.statuses = char.statuses.filter(e => String(e.name).toLowerCase() !== needle);
+        if (char.statuses.length === before) return false;
+        this.emitChange("remove_status");
         return true;
     },
 

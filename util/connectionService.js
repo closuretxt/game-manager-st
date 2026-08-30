@@ -60,6 +60,16 @@ export function resolvePremasterProfile(st, premasterProfileId = "", agenticProf
     return premasterProfileId;
 }
 
+// Resolves which profile id to use for the scenario build wizard (a less
+// agentic, one-shot JSON call): its own setting, falling back to the
+// pre-master chain.
+export function resolveWizardProfile(st, wizardProfileId = "", premasterProfileId = "", agenticProfileId = "") {
+    if (wizardProfileId && hasConnectionProfile(st, wizardProfileId)) {
+        return wizardProfileId;
+    }
+    return resolvePremasterProfile(st, premasterProfileId, agenticProfileId);
+}
+
 // Sends a chat-completion style request through a specific connection profile
 // via ConnectionManagerRequestService. Returns the full text response.
 // With { stream: true } and an onChunk callback, partial text is reported as

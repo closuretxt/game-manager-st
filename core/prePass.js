@@ -2,7 +2,7 @@
 // EVERY fresh player action is judged by this cheap pre-master call BEFORE any
 // specialist runs — replacing the old trigger-word guessing. It receives the
 // recent scene, a compact state snapshot and the action, and returns a
-// structured PLAN (JSON) describing what this turn needs:
+// structured PLAN (XML tags) describing what this turn needs:
 //
 //   roll         — is the action's outcome uncertain enough to require a roll?
 //   transactions — implied shared-resource spends/gains (signed delta)
@@ -11,8 +11,8 @@
 //   nothing      — fast path: skip every specialist
 //
 // The pre-pass decides IF; the specialists (diceRoller, transactions) decide
-// HOW. On failure or malformed JSON it returns null and the caller falls back
-// to legacy keyword detection (detectTriggers in core/triggerWatcher.js).
+// HOW. On failure or a malformed reply it returns null and the caller falls
+// back to legacy keyword detection (detectTriggers in core/triggerWatcher.js).
 
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
@@ -20,27 +20,26 @@ import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
+import { parseAttrs } from "./toolParser.js";
 
 const MAX_CONTEXT_MESSAGES = 8;
 
 const SYSTEM_PROMPT = [
     "You are the router of a tabletop-style roleplay game system.",
     "You receive the recent scene, a snapshot of the tracked state, and the player's action.",
-    "Judge what the action implies and respond with ONLY a JSON object (no markdown fences, no prose):",
-    '{',
-    '  "roll": {"needed": true, "title": "<short action title, e.g. Use Fireball on Goblin>"} or {"needed": false},',
-    '  "transactions": [{"resource": "<shared resource name>", "delta": <signed number, negative = spending>, "comparison": "<plain-language note, under 12 words>"}],',
-    '  "warnings": [{"action": "set", "name": "<short name>", "text": "<under 15 words>"} or {"action": "clear", "name": "<short name>"}],',
-    '  "relevant": ["<shared resource name whose value matters this turn>"],',
-    '  "nothing": false',
-    '}',
+    "Judge what the action implies and respond with ONLY XML tags (no markdown fences, no prose). Every tag is OPTIONAL — emit only what applies:",
+    '  <roll needed="true" title="<short action title, e.g. Use Fireball on Goblin>"/>',
+    '  <transaction resource="<shared resource name>" delta="<signed number, negative = spending>" comparison="<plain-language note, under 12 words>"/>',
+    '  <warning action="set" name="<short name>" text="<under 15 words>"/>  or  <warning action="clear" name="<short name>"/>',
+    '  <relevant names="<comma-separated shared resource names whose value matters this turn>"/>',
+    "  <nothing/>",
     "",
     "Rules:",
-    "- roll.needed ONLY when the outcome is genuinely uncertain AND consequential. Naming a skill in a trivial context (\"I mention Fireball to the mage\") does NOT need a roll; implicit actions (\"I swing at it again\") CAN need one.",
-    "- transactions ONLY for the party-wide shared resources listed in the snapshot. delta is negative when spending, positive when gaining. Empty array if none. Use 0 as delta only when the action mentions the resource without implying an amount.",
-    "- warnings ONLY for imminent, concrete needs the player should prepare for (supplies running out, deadlines, approaching dangers). Do not re-emit warnings that are already true and unchanged.",
-    "- relevant: shared resources the story needs to know the current value of this turn, even without a transaction.",
-    "- If nothing applies at all, respond with ONLY: {\"nothing\": true}",
+    "- <roll> ONLY when the outcome is genuinely uncertain AND consequential. Naming a skill in a trivial context (\"I mention Fireball to the mage\") does NOT need a roll; implicit actions (\"I swing at it again\") CAN need one.",
+    "- <transaction> ONLY for the party-wide shared resources listed in the snapshot. delta is negative when spending, positive when gaining. Omit the tag if none. Use delta=\"0\" only when the action mentions the resource without implying an amount.",
+    "- <warning> ONLY for imminent, concrete needs the player should prepare for (supplies running out, deadlines, approaching dangers). Do not re-emit warnings that are already true and unchanged.",
+    "- <relevant>: shared resources the story needs to know the current value of this turn, even without a transaction.",
+    "- If nothing applies at all, respond with ONLY: <nothing/>",
 ].join("\n");
 
 //
@@ -53,14 +52,25 @@ async function collectContext(playerAction) {
 
     // Compact snapshot: only what the router needs to judge intent.
     const d = stateManager.getData();
+    const s = extension_settings[extensionName];
     const snapshot = {
         party: (d.characters || []).map(c => ({
             name: c.name,
             skills: (c.skills || []).map(s => s.name),
+            statuses: (c.statuses || []).map(s => ({ name: s.name, modifiers: s.modifiers || "" })),
         })),
         sharedResources: (d.sharedResources || []).map(r => ({ name: r.name, qty: r.qty })),
         warnings: (d.warnings || []).map(w => w.name),
     };
+    // Enemies only when the feature is on AND some exist — the router never
+    // pays tokens for an enemy-free scene.
+    if (s.feature_enemies && (d.enemies || []).length) {
+        snapshot.enemies = d.enemies.map(e => ({
+            name: e.name,
+            resources: (e.resources || []).map(r => ({ name: r.name, value: r.value, max: r.max })),
+            statuses: (e.statuses || []).map(x => ({ name: x.name, modifiers: x.modifiers || "" })),
+        }));
+    }
 
     const blocks = [
         "TRACKED STATE (JSON):",
@@ -74,7 +84,6 @@ async function collectContext(playerAction) {
 
     // Deep context (setting-gated): card / persona / author's note / activated
     // World Info, so judgments account for lore-defined rules and casts.
-    const s = extension_settings[extensionName];
     if (s.deep_context) {
         const deep = await buildDeepContext(String(playerAction || ""));
         if (deep) blocks.push("", "DEEP CONTEXT (card / persona / lore):", deep);
@@ -85,17 +94,45 @@ async function collectContext(playerAction) {
 
 //
 
-// Tolerant parse: grabs the first {...} JSON object in the reply.
+// Tolerant XML parse of the plan. Every tag is optional; <nothing/> is the
+// fast path. Returns a raw plan or null when no recognizable tag is present.
 function parseReply(text) {
-    const start = text.indexOf("{");
-    const end = text.lastIndexOf("}");
-    if (start === -1 || end <= start) return null;
-    try {
-        return JSON.parse(text.slice(start, end + 1));
-    } catch (e) {
-        logDebug("prePass: JSON parse failed:", e);
+    if (!text) return null;
+    const plan = { roll: null, transactions: [], warnings: [], relevant: [], nothing: /<nothing\b/i.test(text) };
+    let m;
+
+    const rollM = text.match(/<roll\b([^>]*?)(?:\/>|>[\s\S]*?<\/roll>)/i);
+    if (rollM) {
+        const attrs = parseAttrs(rollM[1]);
+        if (String(attrs.needed ?? "").toLowerCase() === "true") {
+            plan.roll = { needed: true, title: String(attrs.title || "Roll") };
+        }
+    }
+
+    const txRe = /<transaction\b([^>]*?)(?:\/>|>[\s\S]*?<\/transaction>)/gi;
+    while ((m = txRe.exec(text)) !== null) {
+        const a = parseAttrs(m[1]);
+        plan.transactions.push({ resource: a.resource ?? a.name ?? "", delta: a.delta ?? 0, comparison: a.comparison ?? "" });
+    }
+
+    const warnRe = /<warning\b([^>]*?)(?:\/>|>[\s\S]*?<\/warning>)/gi;
+    while ((m = warnRe.exec(text)) !== null) {
+        const a = parseAttrs(m[1]);
+        plan.warnings.push({ action: a.action || "set", name: a.name ?? "", text: a.text ?? "" });
+    }
+
+    const relM = text.match(/<relevant\b([^>]*?)(?:\/>|>[\s\S]*?<\/relevant>)/i);
+    if (relM) {
+        const a = parseAttrs(relM[1]);
+        plan.relevant = String(a.names || a.name || "").split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+    }
+
+    const empty = !plan.roll && !plan.transactions.length && !plan.warnings.length && !plan.relevant.length;
+    if (empty && !plan.nothing) {
+        logDebug("prePass: no recognizable plan tags in reply");
         return null;
     }
+    return plan;
 }
 
 // Validates the raw plan against the live state: unknown resource names are
