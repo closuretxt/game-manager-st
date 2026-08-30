@@ -110,11 +110,11 @@ export async function rollDice(playerAction, mesId, { title = null } = {}) {
     try {
         const st = getContext();
         const profileId = resolvePremasterProfile(st, s.premaster_profile, s.connection_profile);
-        // Deep context (setting-gated) goes into the system message, after the
-        // dice engine instructions — the roller must know who and where the
-        // scene is to build fitting outcome tiers.
+        // Deep context (own "Deep Context for Engines" setting) goes into the
+        // system message, after the dice engine instructions — the roller must
+        // know who and where the scene is to build fitting outcome tiers.
         let systemContent = SYSTEM_PROMPT;
-        if (s.deep_context) {
+        if (s.deep_context_engines) {
             const deep = await buildDeepContext(String(playerAction || ""));
             if (deep) systemContent += `\n\nDEEP CONTEXT (card / persona / lore):\n${deep}`;
         }

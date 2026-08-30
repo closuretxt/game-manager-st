@@ -71,11 +71,11 @@ export async function runTransaction(resource, playerAction, mesId = null, plan 
         } else {
             const st = getContext();
             const profileId = resolvePremasterProfile(st, s.premaster_profile, s.connection_profile);
-            // Deep context (setting-gated) goes into the system message, after
-            // the accountant instructions — plausible amounts depend on the
-            // setting's prices and economy.
+            // Deep context (own "Deep Context for Engines" setting) goes into
+            // the system message, after the accountant instructions —
+            // plausible amounts depend on the setting's prices and economy.
             let systemContent = SYSTEM_PROMPT;
-            if (s.deep_context) {
+            if (s.deep_context_engines) {
                 const deep = await buildDeepContext(String(playerAction || ""));
                 if (deep) systemContent += `\n\nDEEP CONTEXT (card / persona / lore):\n${deep}`;
             }
