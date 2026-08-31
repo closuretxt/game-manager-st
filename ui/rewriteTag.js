@@ -5,7 +5,7 @@
 // attached to the message — the story engine also receives the rewrite
 // through the high-priority injection instead.
 
-import { getContext } from "../../../extensions.js";
+import { getContext } from "../../../../extensions.js";
 
 // Appends the clarified action to the persisted message text as
 // "original -- rewrite" (idempotent) and refreshes the DOM copy.
