@@ -27,9 +27,9 @@ import { buildDeepContext } from "../util/loreContext.js";
 const MAX_CONTEXT_MESSAGES = 6;
 let _running = false;
 
-// Renders the tracked state as a compact XML snapshot — same shape and
-// visibility rules the JSON version had, in the same XML dialect the agent
-// is asked to answer in.
+// Renders the tracked state as a compact XML snapshot: ONE line per actor,
+// tracked names used directly as attribute keys (the agent must echo those
+// exact names in its tool tags). Legends live once in the header note.
 function buildStateSummaryXml() {
     const d = stateManager.getData();
     const s = extension_settings[extensionName];
@@ -38,38 +38,42 @@ function buildStateSummaryXml() {
     const prog = progression.isEnabled();
 
     const actorXml = (c, tag) => {
-        const attrs = [`name="${escAttr(c.name)}"`];
         // The agent must see deaths so it never "heals" a corpse or keeps
         // treating the dead as actors.
-        if (c.dead === true) attrs.push('dead="true"');
-        if (c.dead === true && c.death_reason) attrs.push(`death_reason="${escAttr(c.death_reason)}"`);
+        if (c.dead === true) {
+            return `  <${tag} name="${escAttr(c.name)}" dead="true"${c.death_reason ? ` reason="${escAttr(c.death_reason)}"` : ""}/>`;
+        }
+        const attrs = [`name="${escAttr(c.name)}"`];
         if (prog) {
             const track = progression.trackOf(c);
-            attrs.push(`level="${track.level}" exp="${track.exp}" exp_to_next="${progression.expToNext(track.level)}" skill_points="${track.skill_points}"`);
+            attrs.push(`level="${track.level}"`, `exp="${track.exp}/${progression.expToNext(track.level)}"`, `sp="${track.skill_points}"`);
         }
-        const lines = [`  <${tag} ${attrs.join(" ")}>`];
-        for (const r of c.resources) lines.push(`    <resource name="${escAttr(r.name)}" value="${r.value}" min="${r.min}" max="${r.max}"/>`);
-        for (const a of c.attributes) lines.push(`    <attribute name="${escAttr(a.name)}" value="${a.value}"/>`);
-        for (const i of c.inventory) lines.push(`    <item name="${escAttr(i.name)}" qty="${i.qty}"/>`);
+        for (const r of c.resources) {
+            attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}${r.min > 0 ? ` (min ${r.min})` : ""}"`);
+        }
+        for (const a of c.attributes) attrs.push(`${escAttr(a.name)}="${a.value}"`);
+        const items = (c.inventory || []).map(i => `${escAttr(i.name)} x${i.qty}`).join(", ");
+        if (items) attrs.push(`items="${items}"`);
         // on_cooldown is a code-computed boolean — the agent never sees (and
-        // never computes) remaining cooldown counts.
-        for (const sk of c.skills || []) {
-            const onCd = (Number(sk.cooldown_left) || 0) > 0;
-            lines.push(`    <skill name="${escAttr(sk.name)}"${onCd ? ' on_cooldown="true"' : ""}/>`);
-        }
-        for (const st of c.statuses || []) lines.push(`    <status name="${escAttr(st.name)}"${st.modifiers ? ` modifiers="${escAttr(st.modifiers)}"` : ""}/>`);
-        lines.push(`  </${tag}>`);
-        return lines.join("\n");
+        // never computes) remaining cooldown counts. On-cooldown skills are
+        // marked with * (legend in the header note).
+        const skills = (c.skills || []).map(sk => `${escAttr(sk.name)}${(Number(sk.cooldown_left) || 0) > 0 ? "*" : ""}`).join(", ");
+        if (skills) attrs.push(`skills="${skills}"`);
+        const statuses = (c.statuses || []).map(st => `${escAttr(st.name)}${st.modifiers ? ` (${escAttr(st.modifiers)})` : ""}`).join(", ");
+        if (statuses) attrs.push(`statuses="${statuses}"`);
+        return `  <${tag} ${attrs.join(" ")}/>`;
     };
 
-    const parts = ["<state>"];
-    for (const c of d.characters) parts.push(actorXml(c, "character"));
+    const parts = ['<state note="values are value/max; * = skill on cooldown; statuses as Name (modifiers)">'];
+    for (const c of d.characters) parts.push(actorXml(c, "char"));
     // Enemies only when the feature is on AND some exist — otherwise the
     // agent never sees (and never invents) enemy state.
     if (s.feature_enemies) {
         for (const e of d.enemies) parts.push(actorXml(e, "enemy"));
     }
-    for (const c of d.custom) parts.push(`  <custom name="${escAttr(c.name)}" value="${escAttr(c.value)}"/>`);
+    if ((d.custom || []).length) {
+        parts.push(`  <custom>${d.custom.map(c => `${escAttr(c.name)}=${escAttr(c.value)}`).join("; ")}</custom>`);
+    }
     // Open threads: untracked/unfinished things + secrets the agent left
     // for itself (also visible to the pre-pass, never to the story prompt).
     for (const t of d.threads || []) {

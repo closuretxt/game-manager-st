@@ -48,13 +48,13 @@ export function decodeEntities(str) {
 }
 
 // Escapes a value for use inside a double-quoted XML attribute (or as text
-// content — the extra " escaping is harmless there).
+// content — the extra quote escaping is harmless there).
 export function escAttr(v) {
     return String(v ?? "")
-        .replace(/&/g, "&")
-        .replace(/</g, "<")
-        .replace(/>/g, ">")
-        .replace(/"/g, """);
+        .replace(/&/g, "\u0026amp;")
+        .replace(/</g, "\u0026lt;")
+        .replace(/>/g, "\u0026gt;")
+        .replace(/"/g, "\u0026quot;");
 }
 
 export function parseAttrs(raw) {

@@ -84,32 +84,29 @@ async function collectContext(playerAction) {
     const history = chat.slice(-MAX_CONTEXT_MESSAGES, -1)
         .map(m => `${m.is_user ? "Player" : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 1500)}`);
 
-    // Compact XML snapshot: only what the router needs to judge intent, in
-    // the same XML dialect every other LLM call in the extension speaks.
+    // Compact XML snapshot: only what the router needs to judge intent — one
+    // line per actor, tracked names as attribute keys, same dialect as the
+    // post-pass snapshot.
     const d = stateManager.getData();
     const s = extension_settings[extensionName];
-    const parts = ["<state>"];
+    const parts = ['<state note="* = skill on cooldown; statuses as Name (modifiers)">'];
 
     for (const c of d.characters || []) {
         // The dead have nothing left to judge — collapse their entry.
         if (c.dead === true) {
-            parts.push(`  <character name="${escAttr(c.name)}" dead="true"/>`);
+            parts.push(`  <char name="${escAttr(c.name)}" dead="true"/>`);
             continue;
         }
-        const lines = [`  <character name="${escAttr(c.name)}">`];
         // on_cooldown is a code-computed boolean — the router never sees
         // (and never computes) remaining cooldown counts.
-        for (const sk of c.skills || []) {
-            const onCd = (Number(sk.cooldown_left) || 0) > 0;
-            lines.push(`    <skill name="${escAttr(sk.name)}"${onCd ? ' on_cooldown="true"' : ""}/>`);
-        }
-        for (const st of c.statuses || []) lines.push(`    <status name="${escAttr(st.name)}"${st.modifiers ? ` modifiers="${escAttr(st.modifiers)}"` : ""}/>`);
-        lines.push("  </character>");
-        parts.push(...lines);
+        const skills = (c.skills || []).map(sk => `${escAttr(sk.name)}${(Number(sk.cooldown_left) || 0) > 0 ? "*" : ""}`).join(", ");
+        const statuses = (c.statuses || []).map(st => `${escAttr(st.name)}${st.modifiers ? ` (${escAttr(st.modifiers)})` : ""}`).join(", ");
+        parts.push(`  <char name="${escAttr(c.name)}"${skills ? ` skills="${skills}"` : ""}${statuses ? ` statuses="${statuses}"` : ""}/>`);
     }
 
-    for (const r of d.sharedResources || []) parts.push(`  <resource name="${escAttr(r.name)}" qty="${escAttr(r.qty)}"/>`);
-    for (const w of d.warnings || []) parts.push(`  <warning name="${escAttr(w.name)}"/>`);
+    const resources = (d.sharedResources || []).map(r => `${escAttr(r.name)}="${escAttr(r.qty)}"`).join(" ");
+    if (resources) parts.push(`  <resources ${resources}/>`);
+    if ((d.warnings || []).length) parts.push(`  <warnings>${d.warnings.map(w => escAttr(w.name)).join(", ")}</warnings>`);
     // Open threads: untracked/unfinished things + secrets left by the
     // post-pass. Never injected into the story prompt directly — the
     // router leaks what the scene demands via <note>.
@@ -120,18 +117,15 @@ async function collectContext(playerAction) {
     // pays tokens for an enemy-free scene.
     if (s.feature_enemies && (d.enemies || []).length) {
         for (const e of d.enemies) {
-            const lines = [`  <enemy name="${escAttr(e.name)}">`];
-            for (const r of e.resources || []) lines.push(`    <resource name="${escAttr(r.name)}" value="${r.value}" max="${r.max}"/>`);
-            for (const sk of e.skills || []) {
-                const onCd = (Number(sk.cooldown_left) || 0) > 0;
-                lines.push(`    <skill name="${escAttr(sk.name)}"${onCd ? ' on_cooldown="true"' : ""}/>`);
-            }
-            for (const st of e.statuses || []) lines.push(`    <status name="${escAttr(st.name)}"${st.modifiers ? ` modifiers="${escAttr(st.modifiers)}"` : ""}/>`);
-            lines.push("  </enemy>");
-            parts.push(...lines);
+            const attrs = [`name="${escAttr(e.name)}"`];
+            for (const r of e.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}"`);
+            const skills = (e.skills || []).map(sk => `${escAttr(sk.name)}${(Number(sk.cooldown_left) || 0) > 0 ? "*" : ""}`).join(", ");
+            if (skills) attrs.push(`skills="${skills}"`);
+            const statuses = (e.statuses || []).map(st => `${escAttr(st.name)}${st.modifiers ? ` (${escAttr(st.modifiers)})` : ""}`).join(", ");
+            if (statuses) attrs.push(`statuses="${statuses}"`);
+            parts.push(`  <enemy ${attrs.join(" ")}/>`);
         }
     }
-    parts.push("</state>");
 
     const blocks = [
         "TRACKED STATE (XML):",
