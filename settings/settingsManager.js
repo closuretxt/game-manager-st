@@ -60,8 +60,8 @@ export const defaultSettings = {
     edit_mode: false, // When off, all resource/entry mutation controls are hidden (view-only, hardcore feel).
     window_opacity: 95, // Floating window background opacity in percent.
 
-    // Notifications — toastr popups for game-state events. Suppressed while
-    // edit mode is on (the user's own edits would be pure noise).
+    // Notifications — status-bubble popups for game-state events. Suppressed
+    // while edit mode is on (the user's own edits would be pure noise).
     notify_enabled: true,     // Master switch for every notification.
     notify_stats: true,       // Resource/attribute changes.
     notify_items: true,       // Items gained or lost.

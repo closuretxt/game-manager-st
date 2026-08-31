@@ -1,6 +1,6 @@
-// Notifications — optional toastr popups for game-state events: stat and
-// resource changes, items gained/lost, skills used or earned, EXP grants,
-// level-ups, deaths, knockouts and status effects.
+// Notifications — optional popups (via the status bubble above the input bar)
+// for game-state events: stat and resource changes, items gained/lost, skills
+// used or earned, EXP grants, level-ups, deaths, knockouts and status effects.
 //
 // Instead of threading notification calls through every subsystem, this module
 // WRAPS the mutating stateManager/progression methods at init time: each wrap
@@ -14,9 +14,10 @@
 
 import { extension_settings } from "../../../../extensions.js";
 import { extensionName } from "../core/constants.js";
-import { logDebug, gmNotify } from "../core/debug.js";
+import { logDebug } from "../core/debug.js";
 import { stateManager } from "../core/stateManager.js";
 import { progression } from "../core/progression.js";
+import { statusBubble } from "./statusBubble.js";
 
 function settings() {
     return extension_settings[extensionName];
@@ -68,26 +69,26 @@ export const notifications = {
             const hasDelta = opts.delta !== undefined && opts.delta !== null && opts.delta !== "";
             const change = hasDelta ? signed(opts.delta) : `→ ${opts.value}`;
             const now = entry ? ` (now ${entry.value})` : "";
-            gmNotify(`${char.name} · ${name}: ${change}${now}`, type === "attribute" ? "success" : "info");
+            statusBubble.notify(`${char.name} · ${name}: ${change}${now}`);
         });
 
         // ---------- items ----------
         wrapMethod(stateManager, "addItem", ([charId, { name, qty = 1 } = {}], ok) => {
             if (!ok || !allowed("notify_items") || !actorAllowed(charId)) return;
             const char = stateManager.getSheet(charId);
-            gmNotify(`${char?.name ?? "?"} gained ${name} x${signed(qty)}`, "success");
+            statusBubble.notify(`${char?.name ?? "?"} gained ${name} x${signed(qty)}`);
         });
         wrapMethod(stateManager, "removeItem", ([charId, name, qty = null], ok) => {
             if (!ok || !allowed("notify_items") || !actorAllowed(charId)) return;
             const char = stateManager.getSheet(charId);
-            gmNotify(`${char?.name ?? "?"} lost ${name}${qty != null ? ` x${qty}` : ""}`, "warning");
+            statusBubble.notify(`${char?.name ?? "?"} lost ${name}${qty != null ? ` x${qty}` : ""}`);
         });
 
         // ---------- skills used (cooldown started) ----------
         wrapMethod(stateManager, "useSkill", ([charId, skillName], ok) => {
             if (!ok || !allowed("notify_skills") || !actorAllowed(charId)) return;
             const char = stateManager.getSheet(charId);
-            gmNotify(`${char?.name ?? "?"} used ${skillName}`, "info");
+            statusBubble.notify(`${char?.name ?? "?"} used ${skillName}`);
         });
 
         // ---------- skills / passives earned (sheet entries added) ----------
@@ -97,7 +98,7 @@ export const notifications = {
             if (type !== "skill" && type !== "passive") return;
             if (!allowed("notify_skills") || !stateManager.getCharacter(characterId)) return;
             const char = stateManager.getCharacter(characterId);
-            gmNotify(`${char.name} earned ${type}: ${overrides.name ?? "?"}`, "success");
+            statusBubble.notify(`${char.name} earned ${type}: ${overrides.name ?? "?"}`, 6000);
         });
 
         // ---------- EXP & level-ups ----------
@@ -108,9 +109,9 @@ export const notifications = {
             if (!char) return;
             if (result.levels > 0) {
                 const track = progression.trackOf(char);
-                gmNotify(`${char.name} reached level ${track.level}! (${signed(amount)} EXP, ${track.skill_points} skill point(s) available)`, "success", 6000);
+                statusBubble.notify(`${char.name} reached level ${track.level}! (${signed(amount)} EXP, ${track.skill_points} skill point(s) available)`, 8000);
             } else {
-                gmNotify(`${char.name} gained ${signed(amount)} EXP`, "info");
+                statusBubble.notify(`${char.name} gained ${signed(amount)} EXP`);
             }
         });
 
@@ -118,28 +119,28 @@ export const notifications = {
         wrapMethod(stateManager, "setState", ([idOrName, mode, reason], result) => {
             if (!result || !allowed("notify_states") || !actorAllowed(result.id)) return;
             if (mode === "dead") {
-                gmNotify(`${result.name} has died${reason ? ` — ${reason}` : ""}`, "error", 8000);
+                statusBubble.notify(`☠ ${result.name} has died${reason ? ` — ${reason}` : ""}`, 8000);
             } else if (mode === "ko") {
-                gmNotify(`${result.name} was knocked out${reason ? ` — ${reason}` : ""}`, "warning");
+                statusBubble.notify(`${result.name} was knocked out${reason ? ` — ${reason}` : ""}`, 6000);
             } else {
-                gmNotify(`${result.name}: ${mode}`, "warning");
+                statusBubble.notify(`${result.name}: ${mode}`, 6000);
             }
         });
         wrapMethod(stateManager, "clearState", ([idOrName], result) => {
             if (!result || !allowed("notify_states") || !actorAllowed(result.id)) return;
-            gmNotify(`${result.name} recovered`, "success");
+            statusBubble.notify(`${result.name} recovered`);
         });
 
         // ---------- status effects ----------
         wrapMethod(stateManager, "updateStatus", ([charId, { name, modifiers } = {}], ok) => {
             if (!ok || !allowed("notify_states") || !actorAllowed(charId)) return;
             const char = stateManager.getSheet(charId);
-            gmNotify(`${char?.name ?? "?"}: ${name} applied${modifiers ? ` (${modifiers})` : ""}`, "info");
+            statusBubble.notify(`${char?.name ?? "?"}: ${name} applied${modifiers ? ` (${modifiers})` : ""}`);
         });
         wrapMethod(stateManager, "removeStatusByName", ([charId, name], ok) => {
             if (!ok || !allowed("notify_states") || !actorAllowed(charId)) return;
             const char = stateManager.getSheet(charId);
-            gmNotify(`${char?.name ?? "?"}: ${name} ended`, "info");
+            statusBubble.notify(`${char?.name ?? "?"}: ${name} ended`);
         });
 
         logDebug("notifications: wired to state mutations");

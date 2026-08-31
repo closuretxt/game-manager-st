@@ -12,6 +12,7 @@ class StatusBubble {
         this.status = null;
         this.lines = null;
         this._closeTimer = null;
+        this._isNotification = false;
     }
 
     // Hugs the top edge of the send form, centered (same anchor as the dice bubble).
@@ -36,6 +37,7 @@ class StatusBubble {
     _build(text) {
         this.close(true);
         clearTimeout(this._closeTimer);
+        this._isNotification = false;
         this.el = $("<div>").attr("id", "gm_status_bubble").appendTo("body");
         this.head = $("<div>").addClass("gm_status_head");
         this.icon = $("<i>").addClass("fa-solid fa-compass gm_status_spin");
@@ -51,6 +53,7 @@ class StatusBubble {
     show(text) {
         if (!this.el) this._build(text);
         else this.status.text(text || "");
+        this._isNotification = false;
         this.icon.attr("class", "fa-solid fa-compass gm_status_spin");
         this.el.removeClass("gm_status_done");
         this._position();
@@ -89,8 +92,32 @@ class StatusBubble {
         return this;
     }
 
+    // Standalone notification (notifications feature): shows a line in the
+    // bubble WITHOUT a pipeline running. When the pipeline bubble is already
+    // up, the line simply joins its results; otherwise a lightweight bubble
+    // with a check icon is created and auto-closes after `timeout` ms.
+    notify(text, timeout = 4000) {
+        if (!text) return this;
+        if (this.el && !this._isNotification) {
+            // Pipeline bubble active — piggyback on its result lines.
+            return this.result(text);
+        }
+        if (!this.el) {
+            this._build("");
+            this._isNotification = true;
+            this.icon.attr("class", "fa-solid fa-circle-check gm_status_check");
+            this.el.addClass("gm_status_done");
+        }
+        this.lines.append($("<div>").addClass("gm_status_line").text(String(text)));
+        this._position();
+        clearTimeout(this._closeTimer);
+        this._closeTimer = setTimeout(() => this.close(), timeout);
+        return this;
+    }
+
     close(instant = false) {
         clearTimeout(this._closeTimer);
+        this._isNotification = false;
         if (!this.el) return;
         const el = this.el;
         this.el = null;
