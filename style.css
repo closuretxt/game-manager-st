@@ -1948,6 +1948,20 @@ textarea.gm_input {
     color: var(--gm-ok, #4caf7d);
 }
 
+/* Detail swap: when a different node is inspected, the new content (info +
+   action) fades in with a slight rise instead of popping instantly. The
+   class is retriggered per render — see _detailSwap in ui/skillTree.js. */
+.gm_stree_detail_swap > * {
+    animation: gm_stree_detail_in 0.18s ease-out;
+}
+
+@keyframes gm_stree_detail_in {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+}
+
 .gm_stree_bottom {
     display: flex;
     align-items: center;
@@ -1957,8 +1971,15 @@ textarea.gm_input {
 .gm_stree_bottom .gm_tree_hint {
     flex: 1 1 auto;
     margin-top: 0;
+    /* Override the base hint's reserved line: an empty hint must not prop
+       open the footer and lift the detail box off the bottom frame. */
+    min-height: 0;
     font-size: 12px;
     opacity: 1;
+}
+
+.gm_stree_bottom .gm_tree_hint:empty {
+    display: none;
 }
 
 /* Empty state (no tree yet). */

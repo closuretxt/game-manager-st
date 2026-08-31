@@ -86,15 +86,17 @@ export const skillTree = {
             '  <skilltree><node id="n1" tier="4" cost="1" requires="n0" type="upgrade" target="Fireball" name="Greater Fireball" description="+1 target, halved cost"/></skilltree>',
             "",
             "Rules:",
-            '- type is one of: "upgrade" (improves an EXISTING skill — set target="<exact skill name>"; description states what changes), "active" (brand-new active skill), "passive" (grants a passive effect), "stat" (raises an attribute — description MUST read like "Strength +1").',
+            '- type is one of: "upgrade" (improves an EXISTING skill — set target="<exact skill name>"; description states exactly what changes and how the skill reads after the upgrade), "active" (brand-new skill the character deliberately uses in play), "passive" (permanent effect, no activation needed), "stat" (raises an attribute — description MUST read like "Strength +1").',
             "- PRIORITIZE UPGRADES: the tree's backbone deepens what the character already does. Introduce a brand-new active skill ONLY when the character has few (2 or fewer) — new actives are rare milestones, never filler.",
             "- BUILDS MUST MATTER: give each branch a clear identity (burst vs sustain, offense vs defense, mobility vs control...), offer competing paths inside a tier so two players pick differently, and prefer trade-offs and signature moments over generic small bonuses.",
             "- FORK, DON'T CHAIN: open 2-4 distinct branch roots in the segment's first tier and fork branches again deeper down (a node may have several children) — the tree must WIDEN as it deepens, never run as single-file chains.",
-            "- Balance against the character's LEVEL and tier: segment-entry nodes are cheap and incremental, capstones are expensive and transformative. A node should feel meaningful at the level it is unlocked, never game-breaking.",
+            "- Balance against the character's LEVEL and tier: a node should feel meaningful at the level it is unlocked, never game-breaking.",
             "- tier: integers continuing from the frontier given below. Produce exactly 3 tiers, 3-5 nodes per tier.",
-            "- cost: skill points, integer >= 1, growing with power (cheap early in the segment, pricier deeper).",
-            "- requires: space-separated node ids that must be unlocked first (frontier nodes and/or same-segment nodes). Segment-entry nodes should chain from the frontier when it makes sense.",
-            "- Respect the character's sheet, world and the user's wish. Keep names short and descriptions under 15 words.",
+            "- cost: skill points, integer >= 1, set by the node's POWER (not its position): incremental or utility effects cost 1-2, solid build-defining effects 3-4, powerful signature effects 5-6, and only truly transformative capstones go higher.",
+            "- requires: space-separated node ids that must be unlocked first (frontier nodes and/or same-segment nodes). Segment-entry nodes should chain from the frontier when it makes sense; every deeper node must depend on at least one earlier node, and no single node may be the sole gateway to an entire tier.",
+            "- ACTIVE SKILL USAGE: an active node's description must read like a usable skill — what the character does, the concrete effect, and any resource cost — and MUST end with \"Cooldown: N turns\" (1 turn = 1 player message). N is never below 2 and scales with strength: minor or utility effects 2, solid combat effects 3, powerful effects 4, transformative capstones 5 or more. Never omit the cooldown and never phrase it differently.",
+            "- Descriptions have no length limit, but state exact numbers (damage, targets, duration, bonuses) — never vague quantifiers like \"some\", \"a bit\" or \"chance to\".",
+            "- Respect the character's sheet, world and the user's wish. Keep names short.",
             "- Never repeat nodes that already exist in the tree.",
         ].join("\n");
 
@@ -240,7 +242,12 @@ export const skillTree = {
     _syncReward(char, node) {
         const tag = { from_tree: node.id };
         if (node.type === "active") {
-            const entry = stateManager.addEntry(char.id, "skill", { name: node.name, description: node.description, ...tag });
+            // The generation rules require the description to end with
+            // "Cooldown: N turns" — parse it here so the code-controlled
+            // cooldown engine actually enforces it (minimum 2 turns).
+            const cdMatch = /cooldown:\s*(\d+)/i.exec(String(node.description || ""));
+            const cooldown = Math.max(2, Math.trunc(Number(cdMatch?.[1]) || 0));
+            const entry = stateManager.addEntry(char.id, "skill", { name: node.name, description: node.description, cooldown, ...tag });
             node.applied = { kind: "entry", type: "skill", entryId: entry?.id };
         } else if (node.type === "passive") {
             const entry = stateManager.addEntry(char.id, "passive", { name: node.name, ptype: "special", description: node.description, ...tag });

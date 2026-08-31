@@ -38,6 +38,7 @@ Knocked and death states, the pos-turn gamemaster is urged to provide knockouts 
 As said before, your actual LLM just receives relevant information and they are split into high and low priorities. High priorities are intended to go with your author's note and low nested inside lorebooks.
 "How does a LLM know what matters?" - The specialists will provide warnings and inject information if relevant. "You have about two days of food left.", "Encounter chance increased.", etc. The details do not matter, your story engine is for creative writing.
 Everything is made through agentic stuff and different API's, setup cheap flash versions with thinking and let them take the bullet.
+This system also doesn't craft lorebook entries or detailed appearance (unless asked to in custom fields), it leaves the autonomy to story and lorebooks still, keeping everything clean and straightforward.
 
 ## Why this over X Tracker/Suite/RPG extension?
 If you are a power user, most extensions are **highly** disruptive, eat context and have no actual use if you already have ready to go scenarios and characters. This was made for a friend of mine and for myself, but if it finds use out there to someone like me that cares about this thing, then I am glad.
@@ -73,6 +74,16 @@ Both the pre-pass/post-pass and the pre-master LLM calls (router, dice, transact
 
 - The pre-pass router judges every fresh action (no keyword guessing) and the XML tool-tag parser (`<change_values>`, `<warnings>`, etc.
 - Future plans (kept modular via `core/schemas.js`): skill trees, robust combat system, maps.
+
+## UI & Examples
+Skill Tree System (expands as you reach the end)
+![alt text](/docs/images/exampleskilltree.png)
+
+Clash resolver with multi-character and ally action.
+![alt text](/docs/images/Clashresolverexample.png)
+
+Dice roller for one-sided actions and non-combat interactions.
+![alt text](/docs/images/ChanceTracking.png)
 
 ## 📄 License
 

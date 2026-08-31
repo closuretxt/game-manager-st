@@ -130,10 +130,8 @@ export const skillTreeView = {
         const extend = $("<div>").addClass("menu_button gm_small_btn gm_stree_extend")
             .append($("<i>").addClass("fa-solid fa-arrows-down-to-line"), $("<span>").text(" Extend Tree (+3 tiers)"))
             .hide();
-        const footer = $("<div>").addClass("gm_stree_footer").append(
-            detail,
-            $("<div>").addClass("gm_stree_bottom").append(hint, extend),
-        );
+        const bottom = $("<div>").addClass("gm_stree_bottom").append(hint, extend);
+        const footer = $("<div>").addClass("gm_stree_footer").append(detail, bottom);
 
         dialog.append(header, canvasWrap, footer);
         overlay.append(dialog);
@@ -142,7 +140,7 @@ export const skillTreeView = {
         extend.on("click", () => this._openWishPopup(char, "frontier"));
         $("body").append(overlay);
 
-        this._popup = { overlay, canvasWrap, detail, hint, extend, tools, points, charId: char.id, edit, selectedId: null };
+        this._popup = { overlay, canvasWrap, detail, hint, bottom, extend, tools, points, charId: char.id, edit, selectedId: null };
         this._refresh();
     },
 
@@ -219,9 +217,12 @@ export const skillTreeView = {
             this._renderTree(p, char, tree);
         }
 
-        // Detail panel + extend button.
+        // Detail panel + extend button. The bottom row (hint + extend) is
+        // collapsed entirely while both are empty/hidden, so the detail box
+        // sits flush with the popup's bottom frame.
         this._renderDetail(p, char, tree);
         p.extend.toggle(skillTree.shouldExtend(char.id));
+        p.bottom.toggle(!!p.hint.text() || p.extend.is(":visible"));
 
         // Frontier reached: offer the next 3 tiers (once per character until
         // a segment is generated).
@@ -473,6 +474,7 @@ export const skillTreeView = {
         if (!node) {
             box.append($("<div>").addClass("gm_stree_detail_empty")
                 .text("Select a node to inspect it — unlock it here when you can afford it."));
+            this._detailSwap(box);
             return;
         }
 
@@ -531,6 +533,7 @@ export const skillTreeView = {
                 } else {
                     p.fx = null;
                     p.hint.text(res.reason);
+                    p.bottom.show();
                     gmNotify(res.reason, "warning");
                     this._playErrorSound();
                 }
@@ -538,6 +541,16 @@ export const skillTreeView = {
             action.append(unlock);
         }
         box.append(action);
+        this._detailSwap(box);
+    },
+
+    // Fade/slide the detail content in whenever the inspected node changes —
+    // the class is retriggered per render (reflow hack) so switching nodes
+    // reads as a transition instead of an instant swap.
+    _detailSwap(box) {
+        box.removeClass("gm_stree_detail_swap");
+        void box[0].offsetWidth;
+        box.addClass("gm_stree_detail_swap");
     },
 
     // ---------- effects ----------
