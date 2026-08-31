@@ -6,7 +6,7 @@ import { stateManager } from "../core/stateManager.js";
 
 export const defaultSettings = {
     enabled: true,
-    auto_update: false, // Parse AI tool-tags (change_values etc.) on received messages. Off while the system is a placeholder.
+    auto_update: true, // Parse AI tool-tags (change_values etc.) on received messages. Off while the system is a placeholder.
     debug_mode: false,
     open_panel_on_start: true,
 
@@ -25,7 +25,7 @@ export const defaultSettings = {
     // Deep context — send character card, persona, author's note and activated
     // World Info to the extension's LLMs (wizard + pre/post pass). Off by
     // default: it raises the token cost of every call.
-    deep_context: false,
+    deep_context: true,
 
     // Deep context for the specialist engines (dice roller + transactions)
     // only — separate toggle since those calls are frequent and cheap.
@@ -58,7 +58,7 @@ export const defaultSettings = {
     combat_profile: "",     // Connection profile id for the combat passes (ally/enemy/clash). "" = same as premaster chain.
     legacy_api: false, // LEGACY: swap the active connection profile for extension AI calls instead of per-request profiles.
     edit_mode: false, // When off, all resource/entry mutation controls are hidden (view-only, hardcore feel).
-    window_opacity: 95, // Floating window background opacity in percent.
+    window_opacity: 50, // Floating window background opacity in percent.
 
     // Notifications — status-bubble popups for game-state events. Suppressed
     // while edit mode is on (the user's own edits would be pure noise).
@@ -73,7 +73,7 @@ export const defaultSettings = {
     // Sound FX — synthesized dice sounds (Web Audio, no assets) for rolls and
     // per-tier outcomes in the dice and combat bubbles.
     sound_enabled: true, // Master switch for sound effects.
-    sound_volume: 60,    // Sound effect volume in percent.
+    sound_volume: 40,    // Sound effect volume in percent.
 };
 
 export async function loadSettings() {

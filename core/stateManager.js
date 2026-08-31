@@ -228,6 +228,23 @@ export const stateManager = {
         }
     },
 
+    // Uploaded avatar: only the servable file URL is stored here (the
+    // full-quality file lives in ST's "user/files/" folder, uploaded via
+    // util/avatars.js). Survives renames since it hangs off the character.
+    setCharacterAvatarFile(id, file) {
+        const c = this.getCharacter(id);
+        if (!c || !file) return;
+        c.avatarFile = file;
+        this.emitChange("set_avatar");
+    },
+
+    clearCharacterAvatarFile(id) {
+        const c = this.getCharacter(id);
+        if (!c || !c.avatarFile) return;
+        delete c.avatarFile;
+        this.emitChange("clear_avatar");
+    },
+
     // ---------- per-character entries ----------
     addEntry(characterId, type, overrides = {}) {
         const char = this.getSheet(characterId);

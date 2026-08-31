@@ -26,6 +26,9 @@
     overflow: auto;
     resize: both;
     background: var(--SmartThemeBlurTintColor, rgba(23, 23, 28, 0.97));
+    /* Blur the chat behind the window so text doesn't blend through. */
+    backdrop-filter: blur(var(--SmartThemeBlurStrength, 10px));
+    -webkit-backdrop-filter: blur(var(--SmartThemeBlurStrength, 10px));
     color: var(--SmartThemeBodyColor, #dcdcdc);
     border: 1px solid var(--gm-line);
     border-radius: 10px;
@@ -48,6 +51,8 @@
     cursor: move;
     user-select: none;
     flex: 0 0 auto;
+    /* Solid bar so the title row stays visible over the blurred backdrop. */
+    background: rgba(0, 0, 0, 0.4);
     border-bottom: 1px solid var(--gm-line);
     border-radius: 10px 10px 0 0;
 }
@@ -154,6 +159,42 @@
     padding: 6px 2px 8px;
 }
 
+/* Blurred character picture covering the WHOLE window while a character
+   sheet is open. Window-level layer under everything; the window's
+   border-radius + overflow crop it at the corners automatically. The
+   ::before overscans so the blur doesn't fade at the edges. */
+.gm_window_backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    overflow: hidden;
+}
+
+.gm_window_backdrop::before {
+    content: "";
+    position: absolute;
+    inset: -24px;
+    /* --gm-backdrop is set from mainPanel once a picture resolves. */
+    background-image: var(--gm-backdrop, none);
+    background-size: cover;
+    background-position: center 15%;
+    filter: blur(22px) brightness(0.45) saturate(1.15);
+    opacity: 0;
+    transition: opacity 0.25s;
+}
+
+.gm_window_backdrop.gm_has_pic::before {
+    opacity: 1;
+}
+
+/* Window chrome and content sit above the backdrop layer. */
+#gm_floating_window > *:not(.gm_window_backdrop) {
+    position: relative;
+    z-index: 1;
+}
+
 /* ---------- Lists / rows ---------- */
 .gm_section_header {
     display: flex;
@@ -243,6 +284,48 @@
     font-size: 18px;
 }
 
+/* Edit-mode overlay: camera/remove buttons stacked over the sheet avatar. */
+.gm_avatar_editable {
+    position: relative;
+}
+
+.gm_avatar_actions {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    background: rgba(0, 0, 0, 0.55);
+    border-radius: inherit;
+}
+
+.gm_avatar_editable:hover .gm_avatar_actions {
+    display: flex;
+}
+
+.gm_avatar_btn {
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    color: var(--SmartThemeBodyColor);
+    background: rgba(255, 255, 255, 0.12);
+    cursor: pointer;
+}
+
+.gm_avatar_btn:hover {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+.gm_avatar_btn i {
+    font-size: 10px;
+    opacity: 1;
+}
+
 .gm_sheet_header {
     display: flex;
     align-items: center;
@@ -257,8 +340,10 @@
 
 .gm_entry_main {
     display: flex;
-    align-items: baseline;
-    gap: 4px;
+    /* center, not baseline — a real avatar picture is a 28px box and would
+       otherwise poke above the row when its bottom sits on the text baseline */
+    align-items: center;
+    gap: 6px;
     min-width: 0;
 }
 
@@ -389,11 +474,54 @@
 
 /* ---------- Party list / character sheet ---------- */
 .gm_party_row {
+    position: relative;
+    overflow: hidden;
     cursor: pointer;
+    /* Twice as tall as a plain row — it carries the character picture. */
+    padding: 14px 10px;
+}
+
+/* The character's picture, cropped to the button and dimmed so the
+   name/chips stay readable. --gm-row-img is set from mainPanel. */
+.gm_party_row::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: var(--gm-row-img, none);
+    background-size: cover;
+    background-position: center 15%;
+    filter: brightness(0.5) saturate(1.1);
+    transition: filter 0.15s;
+}
+
+.gm_party_row:hover::before {
+    filter: brightness(0.68) saturate(1.15);
 }
 
 .gm_party_row:hover {
     border-color: var(--gm-accent);
+}
+
+/* Row content sits above the picture layer. */
+.gm_party_row > * {
+    position: relative;
+    z-index: 1;
+}
+
+/* Bigger avatar + name to match the taller picture button. */
+.gm_party_row .gm_avatar {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+    border-radius: 10px;
+}
+
+.gm_party_row .gm_avatar i {
+    font-size: 18px;
+}
+
+.gm_party_row .gm_entry_name {
+    font-size: 15px;
 }
 
 .gm_party_summary {
@@ -423,16 +551,18 @@
     align-items: center;
     gap: 6px;
     cursor: pointer;
-    opacity: 0.65;
+    opacity: 0.85;
     padding: 6px 12px;
     border-radius: var(--gm-radius);
-    border: 1px solid transparent;
-    transition: opacity 0.15s, background 0.15s;
+    border: 1px solid var(--gm-line);
+    background: rgba(0, 0, 0, 0.35);
+    transition: opacity 0.15s, background 0.15s, border-color 0.15s;
 }
 
 .gm_back_btn:hover {
     opacity: 1;
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--gm-accent);
 }
 
 .gm_back_btn span {
@@ -529,6 +659,17 @@ textarea.gm_input {
 .gm_small_btn {
     padding: 6px 14px;
     border-radius: 6px;
+}
+
+/* Solid button bases so controls keep contrast over the blurred backdrop. */
+#gm_floating_window .menu_button {
+    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid var(--gm-line);
+}
+
+#gm_floating_window .menu_button:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--gm-accent);
 }
 
 /* ---------- Settings drawer ---------- */

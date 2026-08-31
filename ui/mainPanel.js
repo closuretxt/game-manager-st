@@ -14,7 +14,7 @@ import { progression } from "../core/progression.js";
 import { skillTree } from "../core/skillTree.js";
 import { skillTreeView } from "./skillTree.js";
 import { manualRun } from "../inject/postTurn.js";
-import { getCharacterAvatar, clearAvatarCache } from "../util/avatars.js";
+import { getCharacterAvatar, clearAvatarCache, uploadCharacterAvatar, deleteCharacterAvatar, resolveAvatar, extractDominantColor } from "../util/avatars.js";
 import { settingsUI } from "./settingsUI.js";
 import { characterView } from "./characterView.js";
 import { customTab } from "./customTab.js";
@@ -65,6 +65,9 @@ class MainPanel {
     // ---------- lifecycle ----------
     init() {
         this.root = $("#gm_floating_window");
+        // Window-level backdrop layer (blurred character picture behind
+        // everything while a character sheet is open).
+        this.root.append($("<div>").addClass("gm_window_backdrop"));
         const win = this._window;
 
         if (win.w && win.h) this.root.css({ width: win.w + "px", height: win.h + "px" });
@@ -309,6 +312,8 @@ class MainPanel {
 
     _renderContent() {
         const content = $("#gm_tab_content").empty();
+        // The window backdrop only shows while a character sheet is open.
+        this.root.find(".gm_window_backdrop").removeClass("gm_has_pic");
         const edit = this.editMode;
         switch (this.activeTab) {
             case "shared":
@@ -336,8 +341,9 @@ class MainPanel {
     // ---------- Party tab: character list (home) ----------
     // Avatar with layered fallbacks: icon placeholder until resolved, icon
     // again if the resolved picture fails to load. Never leaves a broken <img>.
-    // Matches the ST character of the same name for its picture.
-    _buildAvatar(name, large = false) {
+    // Picture comes from util/avatars.js: uploaded file, ST character or
+    // persona of the same name (see resolveAvatar for the chain).
+    _buildAvatar(name, large = false, onResolved = null) {
         const wrap = $("<div>").addClass("gm_avatar").toggleClass("gm_avatar_lg", large);
         const icon = $("<i>").addClass("fa-solid fa-user");
         const img = $("<img>").attr("alt", "").hide();
@@ -346,13 +352,52 @@ class MainPanel {
             icon.show();
         });
         wrap.append(icon, img);
-        getCharacterAvatar(name).then(url => {
-            if (url && img.length) {
-                img.attr("src", url).show();
+        resolveAvatar(name).then(res => {
+            if (res?.url && img.length) {
+                img.attr("src", res.url).show();
                 icon.hide();
             }
-        }).catch(() => { /* keep placeholder */ });
+            onResolved?.(res ?? null);
+        }).catch(() => { onResolved?.(null); /* keep placeholder */ });
         return wrap;
+    }
+
+    // Edit-mode overlay for the sheet avatar: camera uploads a user-chosen
+    // picture (stored full-quality on the ST server, its file URL on the
+    // character); xmark removes it (only shown when one was uploaded).
+    _avatarEditButtons(char) {
+        const btns = $("<div>").addClass("gm_avatar_actions");
+        const upload = $("<div>").addClass("gm_avatar_btn").attr("title", "Upload picture")
+            .append($("<i>").addClass("fa-solid fa-camera"));
+        const fileInput = $("<input>").attr({ type: "file", accept: "image/*" }).hide();
+        upload.on("click", () => fileInput.trigger("click"));
+        fileInput.on("change", async () => {
+            const file = fileInput[0].files?.[0];
+            if (!file) return;
+            try {
+                const filename = await uploadCharacterAvatar(file, char.name);
+                clearAvatarCache(); // before the change — render() fires on emitChange
+                stateManager.setCharacterAvatarFile(char.id, filename);
+                gmNotify("Picture uploaded.", "success");
+            } catch (e) {
+                console.error("[Game Manager] avatar upload failed:", e);
+                gmNotify("Picture upload failed.", "error");
+            }
+        });
+        btns.append(upload, fileInput);
+
+        if (char.avatarFile) {
+            const remove = $("<div>").addClass("gm_avatar_btn").attr("title", "Remove picture")
+                .append($("<i>").addClass("fa-solid fa-xmark"));
+            remove.on("click", async () => {
+                const file = char.avatarFile;
+                clearAvatarCache();
+                stateManager.clearCharacterAvatarFile(char.id);
+                await deleteCharacterAvatar(file);
+            });
+            btns.append(remove);
+        }
+        return btns;
     }
 
     _renderPartyList(content, edit) {
@@ -426,7 +471,23 @@ class MainPanel {
             const top = $("<div>").addClass("gm_entry_top");
 
             const nameWrap = $("<div>").addClass("gm_entry_main");
-            nameWrap.append(this._buildAvatar(c.name));
+            // Flavor: a stripe of the character's picture on the row's left
+            // edge, and the name tinted with the picture's dominant color.
+            nameWrap.append(this._buildAvatar(c.name, false, async (res) => {
+                if (!res?.url || !row.length) return;
+                row.css("--gm-row-img", `url("${res.url}")`);
+                const color = await extractDominantColor(res.url);
+                if (color) {
+                    row.find(".gm_entry_name").css({
+                        color,
+                        // Dark halo keeps the tinted name readable on any
+                        // picture (dark tints on dark crops included).
+                        "text-shadow": `0 1px 2px rgba(0, 0, 0, 0.95), `
+                            + `0 0 6px rgba(0, 0, 0, 0.85), `
+                            + `0 0 12px color-mix(in srgb, ${color} 45%, transparent)`,
+                    });
+                }
+            }));
             nameWrap.append($("<span>").addClass("gm_entry_name").text(c.name));
             top.append(nameWrap);
 
@@ -833,8 +894,20 @@ class MainPanel {
 
     // ---------- Party tab: character sheet (with its own sub-tabs) ----------
     _renderCharacterSheet(content, char, edit) {
+        // Blurred character picture covering the whole window — only layered
+        // in when a picture actually resolves; otherwise the plain window.
+        const backdrop = this.root.find(".gm_window_backdrop");
+        resolveAvatar(char.name).then(res => {
+            if (res?.fullUrl && backdrop.length) {
+                // The ::before layer paints from this var (see style.css).
+                backdrop.css("--gm-backdrop", `url("${res.fullUrl}")`).addClass("gm_has_pic");
+            }
+        }).catch(() => { /* plain background */ });
+
         const header = $("<div>").addClass("gm_sheet_header");
-        header.append(this._buildAvatar(char.name, true));
+        const avatar = this._buildAvatar(char.name, true);
+        if (edit) avatar.addClass("gm_avatar_editable").append(this._avatarEditButtons(char));
+        header.append(avatar);
         header.append($("<b>").addClass("gm_sheet_name").text(char.name));
         if (progression.isEnabled()) header.append(this._progBadges(char));
         content.append(header);
