@@ -813,6 +813,10 @@ textarea.gm_input {
     font-variant-numeric: tabular-nums;
 }
 
+.gm_dice_tier_rolling {
+    background: color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 16%, transparent);
+}
+
 .gm_dice_tier_win {
     outline: 1px solid var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
     animation: gm_win_flash 0.6s ease-out both;

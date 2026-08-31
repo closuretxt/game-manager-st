@@ -163,9 +163,11 @@ export async function runCombatTurn(action, plan, mesId) {
         if (!groups) groups = fallbackGroups(partyActions, enemyActions);
         bubble.syncGroups(groups);
 
-        // Roll each group with the shared weighted roller.
+        // Roll each group with the shared weighted roller: the slot-machine
+        // sweep runs while the roll "happens", then the winner pops.
         const winners = [];
         for (let i = 0; i < groups.length; i++) {
+            bubble.startGroupRoll(i);
             await new Promise(r => setTimeout(r, 900)); // let the animation breathe
             const winner = weightedRoll(groups[i].tiers);
             winners.push(winner);

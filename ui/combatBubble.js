@@ -2,18 +2,38 @@
 // One bubble floats centered above the chat input bar (same spot as the dice
 // bubble); each clash group renders as a card with the two sides facing each
 // other (party left, enemies right) and its 4 chance tiers streaming in one
-// by one. The winning tier pops with a glow per group.
+// by one. While a group rolls, a highlight sweeps its tiers (slot-machine)
+// and the head icon cycles dice faces — the winning tier then pops with a
+// glow per group.
 //
 // The permanent record is DOM-only: attachCombatToMessage appends a compact
 // result tag to the player's message WITHOUT editing its text — the LLM
 // receives the resolved round through the high-priority injection instead.
+
+const DICE_FACES = ["fa-dice-one", "fa-dice-two", "fa-dice-three", "fa-dice-four", "fa-dice-five", "fa-dice-six"];
 
 class CombatBubble {
     constructor() {
         this.el = null;
         this.groupsEl = null;
         this._groupEls = [];
+        this._faceTimer = null;
+        this._faceIndex = 0;
+        this._rollTimers = new Map(); // group index -> slot-machine interval
         this._closeTimer = null;
+    }
+
+    // Head icon cycles dice faces while the pipeline is rolling (same feel
+    // as the dice bubble).
+    _startDiceCycle() {
+        this._faceIndex = 0;
+        clearInterval(this._faceTimer);
+        this._faceTimer = setInterval(() => {
+            this._faceIndex = (this._faceIndex + 1) % DICE_FACES.length;
+            this.icon
+                .removeClass(DICE_FACES.join(" "))
+                .addClass(DICE_FACES[this._faceIndex]);
+        }, 130);
     }
 
     // Centers the bubble horizontally over the chat input bar, hugging its top edge.
@@ -38,13 +58,14 @@ class CombatBubble {
         this.close(true);
         this.el = $("<div>").attr("id", "gm_combat_bubble").appendTo("body");
         this.head = $("<div>").addClass("gm_dice_head");
-        this.icon = $("<i>").addClass("fa-solid fa-hand-fist gm_dice_rolling");
+        this.icon = $("<i>").addClass("fa-solid gm_dice_rolling").addClass(DICE_FACES[0]);
         this.status = $("<span>").addClass("gm_dice_status").text(statusText || "");
         this.status.append($("<span>").addClass("gm_dice_shimmer"));
         this.head.append(this.icon, this.status);
         this.groupsEl = $("<div>").addClass("gm_combat_groups");
         this.el.append(this.head, this.groupsEl);
         this._groupEls = [];
+        this._startDiceCycle();
         this._position();
         return this;
     }
@@ -89,6 +110,8 @@ class CombatBubble {
             }
             if (entry.sig === sig) continue;
             entry.sig = sig;
+            // Rebuilt rows would leave the slot-machine sweeping stale nodes.
+            this.stopGroupRoll(i);
             entry.tiers.empty();
             entry.tierEls.clear();
             for (const tier of g.tiers) {
@@ -108,8 +131,37 @@ class CombatBubble {
         this._position();
     }
 
-    // Highlights the winning tier of one group with a pop.
+    // Slot-machine phase for one group: a highlight sweeps the tier rows
+    // until resolveGroup lands on the winner.
+    startGroupRoll(index) {
+        const entry = this._groupEls[index];
+        if (!entry || !entry.tierEls.size) return;
+        this.stopGroupRoll(index);
+        const names = [...entry.tierEls.keys()];
+        let i = 0;
+        const timer = setInterval(() => {
+            for (const [name, info] of entry.tierEls) {
+                info.row.toggleClass("gm_dice_tier_rolling", name === names[i % names.length]);
+            }
+            i++;
+        }, 130);
+        this._rollTimers.set(index, timer);
+    }
+
+    stopGroupRoll(index) {
+        const timer = this._rollTimers.get(index);
+        if (!timer) return;
+        clearInterval(timer);
+        this._rollTimers.delete(index);
+        const entry = this._groupEls[index];
+        if (entry) {
+            for (const info of entry.tierEls.values()) info.row.removeClass("gm_dice_tier_rolling");
+        }
+    }
+
+    // Stops the sweep and highlights the winning tier of one group with a pop.
     resolveGroup(index, winner) {
+        this.stopGroupRoll(index);
         const entry = this._groupEls[index];
         if (!entry) return;
         for (const [name, info] of entry.tierEls) {
@@ -121,10 +173,13 @@ class CombatBubble {
         this._position();
     }
 
-    // Pipeline finished — swap the spinner for a check and fade out.
+    // Pipeline finished — stop the dice cycle, swap the icon for a check and
+    // fade out.
     done(text) {
         if (!this.el) return;
-        this.icon.removeClass("gm_dice_rolling").removeClass("fa-hand-fist").addClass("fa-check");
+        clearInterval(this._faceTimer);
+        this._faceTimer = null;
+        this.icon.removeClass(DICE_FACES.join(" ")).removeClass("gm_dice_rolling").addClass("fa-check");
         this.status.find(".gm_dice_shimmer").remove();
         this.status.text(text || "Combat resolved.");
         this.el.addClass("gm_dice_resolved");
@@ -136,6 +191,9 @@ class CombatBubble {
     close(instant = false) {
         clearTimeout(this._closeTimer);
         this._closeTimer = null;
+        clearInterval(this._faceTimer);
+        this._faceTimer = null;
+        for (const index of [...this._rollTimers.keys()]) this.stopGroupRoll(index);
         if (!this.el) return;
         const el = this.el;
         this.el = null;
