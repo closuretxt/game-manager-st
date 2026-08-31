@@ -58,14 +58,15 @@ class CombatBubble {
         this.close(true);
         this.el = $("<div>").attr("id", "gm_combat_bubble").appendTo("body");
         this.head = $("<div>").addClass("gm_dice_head");
-        this.icon = $("<i>").addClass("fa-solid gm_dice_rolling").addClass(DICE_FACES[0]);
+        // Assessment stage (clash resolution): a shaking fist. The icon only
+        // becomes cycling dice faces once the groups start rolling.
+        this.icon = $("<i>").addClass("fa-solid fa-hand-fist gm_dice_rolling");
         this.status = $("<span>").addClass("gm_dice_status").text(statusText || "");
         this.status.append($("<span>").addClass("gm_dice_shimmer"));
         this.head.append(this.icon, this.status);
         this.groupsEl = $("<div>").addClass("gm_combat_groups");
         this.el.append(this.head, this.groupsEl);
         this._groupEls = [];
-        this._startDiceCycle();
         this._position();
         return this;
     }
@@ -137,6 +138,8 @@ class CombatBubble {
         const entry = this._groupEls[index];
         if (!entry || !entry.tierEls.size) return;
         this.stopGroupRoll(index);
+        // First spin: swap the assessment fist for cycling dice faces.
+        if (!this._faceTimer) this._startDiceCycle();
         const names = [...entry.tierEls.keys()];
         let i = 0;
         const timer = setInterval(() => {
@@ -179,7 +182,7 @@ class CombatBubble {
         if (!this.el) return;
         clearInterval(this._faceTimer);
         this._faceTimer = null;
-        this.icon.removeClass(DICE_FACES.join(" ")).removeClass("gm_dice_rolling").addClass("fa-check");
+        this.icon.removeClass(DICE_FACES.join(" ")).removeClass("fa-hand-fist gm_dice_rolling").addClass("fa-check");
         this.status.find(".gm_dice_shimmer").remove();
         this.status.text(text || "Combat resolved.");
         this.el.addClass("gm_dice_resolved");
