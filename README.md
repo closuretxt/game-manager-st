@@ -92,11 +92,6 @@ Bring any scenario or character and set everything up with **one button** (Party
 
 Both the pre-pass/post-pass and the pre-master LLM calls (router, dice, transactions, setup wizard) run through SillyTavern connection profiles **separate profile options** in the Advanced settings drawer, so you can put them on a fast/cheap model.
 
-## Current status
-
-- The pre-pass router judges every fresh action (no keyword guessing) and the XML tool-tag parser (`<change_values>`, `<warnings>`, `<new_characters>`, etc.
-- Future plans (kept modular via `core/schemas.js`): skill trees, robust combat system, maps.
-
 ## 📄 License
 
 AGPL-3.0 LICENSE || Copyright (C) 2026 closuretxt || Please read LICENSE for more information.
