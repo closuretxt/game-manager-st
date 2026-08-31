@@ -36,18 +36,23 @@ Knocked and death states, the pos-turn gamemaster is urged to provide knockouts 
 
 ## UI & Examples
 Skill Tree System (expands as you reach the end)
+
 ![alt text](https://github.com/closuretxt/closure-imgdump/blob/main/exampleskilltree.png)
 
 Clash resolver with multi-character and ally action.
+
 ![alt text](https://github.com/closuretxt/closure-imgdump/blob/main/Clashresolverexample.png)
 
 Dice roller for one-sided actions and non-combat interactions.
+
 ![alt text](https://github.com/closuretxt/closure-imgdump/blob/main/ChanceTracking.png)
 
 Party UI.
+
 ![alt text](https://github.com/closuretxt/closure-imgdump/blob/main/PartyUI.png)
 
 Character details page (All values are customizeable)
+
 ![alt text](https://github.com/closuretxt/closure-imgdump/blob/main/CharacterDetails.png)
 
 ## Minimal injections
