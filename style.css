@@ -1894,3 +1894,40 @@ textarea.gm_input {
 .gm_dead_row .gm_entry_name {
     text-decoration: line-through;
 }
+
+/* ---------- knockout (recoverable unconsciousness) ---------- */
+
+.gm_ko_banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 0;
+    padding: 7px 10px;
+    font-size: 12px;
+    border-radius: var(--gm-radius, 8px);
+    border: 1px solid color-mix(in srgb, var(--gm-ko, #9a8cf5) 50%, transparent);
+    background: color-mix(in srgb, var(--gm-ko, #9a8cf5) 12%, transparent);
+    animation: gm_dice_in 0.3s ease-out both;
+}
+
+.gm_ko_banner > i {
+    color: var(--gm-ko, #9a8cf5);
+    font-size: 14px;
+}
+
+.gm_ko_banner b {
+    color: var(--gm-ko, #9a8cf5);
+    letter-spacing: 1px;
+}
+
+.gm_ko_banner span {
+    color: var(--SmartThemeBodyColor, #ccc);
+}
+
+.gm_ko_chip {
+    color: var(--gm-ko, #9a8cf5);
+}
+
+.gm_ko_row {
+    opacity: 0.7;
+}

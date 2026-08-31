@@ -22,6 +22,9 @@
 //                       are archived, not deleted, and restored on return)
 //   <deaths>          — report a party character's death (<death char="Name"
 //                       reason="..."/>); only the user (edit mode) revives
+//   <knockouts>       — knock a party character out (<ko char="Name"
+//                       reason="..."/>) or have them recover (<ko_clear
+//                       char="Name"/>); unlike death, the LLM clears it
 // Every block may contain a <char>Name</char> (or <target>) tag to scope it;
 // when omitted the active character is used. <warnings> and <threads> are
 // party-level and <char> resolves party characters AND enemies.
@@ -32,9 +35,9 @@ import { stateManager } from "./stateManager.js";
 import { progression } from "./progression.js";
 import { logDebug } from "./debug.js";
 
-const BLOCK_TAGS = ["change_values", "set_attributes", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies", "deaths"];
+const BLOCK_TAGS = ["change_values", "set_attributes", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies", "deaths", "knockouts"];
 const BLOCK_RE = new RegExp(`<(${BLOCK_TAGS.join("|")})>([\\s\\S]*?)<\\/\\1>`, "gi");
-const INNER_RE = /<(char|target|resource|item|attribute|entry|status|warning|warning_clear|thread|thread_clear|passive|skill|exp|death)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
+const INNER_RE = /<(char|target|resource|item|attribute|entry|status|warning|warning_clear|thread|thread_clear|passive|skill|exp|death|ko|ko_clear)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const ENEMY_RE = /<enemy\b([^>]*?)(?:\/>|>([\s\S]*?)<\/enemy>)/gi;
 
 // Shared with the other LLM-output parsers (prePass, setupWizard).
@@ -270,6 +273,23 @@ export function applyToolBlocks(blocks, { autoCreateChars = false } = {}) {
                     continue;
                 }
                 if (stateManager.setDead(target.id, action.attrs.reason ?? action.content ?? "")) applied++;
+            }
+            continue;
+        }
+        // Knockouts are per-action scoped: <ko char="Name" reason="..."/> to
+        // knock out, <ko_clear char="Name"/> to recover (rest, timeskip...).
+        // Party characters only; not feature-gated — it is the non-lethal
+        // outcome whether permadeath is on or off.
+        if (block.type === "knockouts") {
+            for (const action of block.actions) {
+                const target = stateManager.getCharacter(action.attrs.char || "");
+                if (!target) {
+                    logDebug("toolParser: skipping knockout for unknown character:", action.attrs.char || "(none)");
+                    continue;
+                }
+                if (action.tag === "ko_clear") {
+                    if (stateManager.clearKnockedOut(target.id)) applied++;
+                } else if (stateManager.setKnockedOut(target.id, action.attrs.reason ?? action.content ?? "")) applied++;
             }
             continue;
         }

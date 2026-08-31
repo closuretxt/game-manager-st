@@ -63,6 +63,7 @@ const SYSTEM_PROMPT = [
     "- <warning>: ONLY for imminent, concrete needs the player should prepare for (supplies running out, deadlines, approaching dangers). action=\"set\" adds or updates one; action=\"clear\" removes one whose cause is resolved. Never re-emit a warning that is already true and unchanged.",
     "- <relevant>: shared resources whose CURRENT VALUE the story engine needs to know this turn even though nothing was spent (haggling, showing off wealth, checking supplies). Resources flagged always-inject are already visible — never list them.",
     "- <note>: brief free-form information the story engine would otherwise miss and that affects how the scene should unfold right now (local prices, an NPC's hidden intent, a rule of the location). At most two per turn, under 25 words each. This is NOT for tracked values — those go in <relevant> — and NOT for anything the scene text already establishes.",
+    "- Knocked-out characters (ko=\"true\") cannot act. When someone is knocked out and the scene allows, a <note> nudging the story toward rest or a timeskip so they can recover is welcome — only where it fits naturally.",
     "- <rewrite>: ONLY when the action is vague, ambiguous, or self-contradictory AND clarifying it changes what should happen next (\"I grab the coins in my pocket and I hand it to the seller\" -> the amount and target become explicit). Rules: rewrite ONLY what the player DOES — CROP OUT all dialogue (quoted speech stays the player's own; the story engine already sees the original message); NEVER invent actions the player did not imply; NEVER answer or extend dialogue; keep it under 40 words, plain declarative description of the action. If the action is already clear, omit the tag entirely.",
     "- <nothing/>: when NONE of the above applies (pure casual chat, simple dialogue, movement with no stakes). Respond with ONLY <nothing/> and nothing else.",
     "- COOLDOWNS are tracked by the system, not by you: a skill marked on_cooldown in the snapshot is UNAVAILABLE this turn. If the player's action tries to use one, emit a <note> saying that skill is still on cooldown so the story engine can narrate the failed/refused attempt — never decide yourself when a cooldown ends.",
@@ -101,7 +102,7 @@ async function collectContext(playerAction) {
         // (and never computes) remaining cooldown counts.
         const skills = (c.skills || []).map(sk => `${escAttr(sk.name)}${(Number(sk.cooldown_left) || 0) > 0 ? "*" : ""}`).join(", ");
         const statuses = (c.statuses || []).map(st => `${escAttr(st.name)}${st.modifiers ? ` (${escAttr(st.modifiers)})` : ""}`).join(", ");
-        parts.push(`  <char name="${escAttr(c.name)}"${skills ? ` skills="${skills}"` : ""}${statuses ? ` statuses="${statuses}"` : ""}/>`);
+        parts.push(`  <char name="${escAttr(c.name)}"${c.knocked_out === true ? ' ko="true"' : ""}${skills ? ` skills="${skills}"` : ""}${statuses ? ` statuses="${statuses}"` : ""}/>`);
     }
 
     const resources = (d.sharedResources || []).map(r => `${escAttr(r.name)}="${escAttr(r.qty)}"`).join(" ");

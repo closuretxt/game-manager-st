@@ -408,6 +408,7 @@ class MainPanel {
         for (const c of chars) {
             const row = $("<div>").addClass("gm_entry_row gm_party_row");
             row.toggleClass("gm_dead_row", c.dead === true);
+            row.toggleClass("gm_ko_row", c.dead !== true && c.knocked_out === true);
             const top = $("<div>").addClass("gm_entry_top");
 
             const nameWrap = $("<div>").addClass("gm_entry_main");
@@ -421,6 +422,12 @@ class MainPanel {
                 chips.append($("<span>").addClass("gm_party_chip gm_death_chip")
                     .attr("title", c.death_reason || "Dead")
                     .append($("<i>").addClass("fa-solid fa-skull")));
+            }
+            // Knockout chip — dizzy face with the cause on hover.
+            if (c.knocked_out === true) {
+                chips.append($("<span>").addClass("gm_party_chip gm_ko_chip")
+                    .attr("title", c.ko_reason || "Knocked out")
+                    .append($("<i>").addClass("fa-solid fa-face-dizzy")));
             }
             for (const r of c.resources.slice(0, 4)) {
                 chips.append($("<span>").addClass("gm_party_chip").text(`${r.name} ${r.value}/${r.max}`));
@@ -809,6 +816,17 @@ class MainPanel {
                 revive.on("click", () => stateManager.reviveChar(char.id));
                 banner.append(revive);
             }
+            content.append(banner);
+        }
+
+        // Knockout banner — down, but recoverable. Visual only: the tracker
+        // clears the flag via <ko_clear> on rest/timeskip, no manual button.
+        if (char.dead !== true && char.knocked_out === true) {
+            const banner = $("<div>").addClass("gm_ko_banner");
+            banner.append($("<i>").addClass("fa-solid fa-face-dizzy"));
+            const label = $("<span>").append($("<b>").text("KNOCKED OUT"));
+            if (char.ko_reason) label.append($("<span>").text(` — ${char.ko_reason}`));
+            banner.append(label);
             content.append(banner);
         }
 

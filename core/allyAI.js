@@ -68,7 +68,7 @@ function collectContext(playerAction) {
         ...history,
         "",
         "PARTY SHEETS (you command the uncommanded):",
-        JSON.stringify((d.characters || []).filter(c => c.dead !== true).map(sheetOf)),
+        JSON.stringify((d.characters || []).filter(c => c.dead !== true && c.knocked_out !== true).map(sheetOf)),
         "",
         "ENEMY PRESENCE (visible state only):",
         JSON.stringify((d.enemies || []).map(e => ({

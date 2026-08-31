@@ -116,6 +116,9 @@ export const stateManager = {
             // reason only exists while dead.
             c.dead = c.dead === true;
             if (!c.dead) delete c.death_reason;
+            // Knockout flag: absent/false = conscious (keeps old chats clean).
+            c.knocked_out = c.knocked_out === true;
+            if (!c.knocked_out) delete c.ko_reason;
             // Migration: custom features used to be per-character, now party-wide.
             if (Array.isArray(c.custom) && c.custom.length) {
                 d.custom.push(...c.custom);
@@ -341,6 +344,33 @@ export const stateManager = {
         c.dead = false;
         delete c.death_reason;
         this.emitChange("char_revive");
+        return c;
+    },
+
+    // ---------- knockout (recoverable unconsciousness) ----------
+    // Like death, a flag rather than a container — but recoverable: the LLM
+    // reports it via <knockouts> and clears it via <ko_clear> (rest, timeskip,
+    // recovery), where death only the user can reverse.
+    isKnockedOut(idOrName) {
+        const c = this.getCharacter(idOrName);
+        return !!c?.knocked_out;
+    },
+
+    setKnockedOut(idOrName, reason = "") {
+        const c = this.getCharacter(idOrName);
+        if (!c || c.dead === true || c.knocked_out === true) return null;
+        c.knocked_out = true;
+        c.ko_reason = String(reason || "").slice(0, 160);
+        this.emitChange("char_knockout");
+        return c;
+    },
+
+    clearKnockedOut(idOrName) {
+        const c = this.getCharacter(idOrName);
+        if (!c || c.knocked_out !== true) return null;
+        c.knocked_out = false;
+        delete c.ko_reason;
+        this.emitChange("char_recover");
         return c;
     },
 

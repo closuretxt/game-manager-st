@@ -133,9 +133,13 @@ export function buildLowPriority() {
     }
 
     // Dead party members: the story engine must never use them again.
+    // Knocked-out members: down until they recover — the story engine must
+    // not have them act, and may ease the scene toward rest or a timeskip.
     for (const c of d.characters || []) {
         if (c.dead === true) {
             parts.push(`  <character name="${esc(c.name)}" status="dead"${c.death_reason ? ` reason="${esc(c.death_reason)}"` : ""}/>`);
+        } else if (c.knocked_out === true) {
+            parts.push(`  <character name="${esc(c.name)}" status="knocked_out"${c.ko_reason ? ` reason="${esc(c.ko_reason)}"` : ""}/>`);
         }
     }
 
