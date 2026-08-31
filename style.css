@@ -1565,6 +1565,43 @@ textarea.gm_input {
 /* Inheritance lines are drawn rim to rim as SVG <line> elements with the
    child's branch hue and state opacity set inline (see _renderTree). */
 
+/* Frontier fade: the bottom of the canvas dissolves into the panel
+   background so the tree reads as "continues downward" past the frontier. */
+.gm_stree_fade {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 80px;
+    pointer-events: none;
+    background: linear-gradient(to bottom,
+        transparent,
+        color-mix(in srgb, var(--SmartThemeBlurTintColor, var(--SmartThemeBodyColor, #1a1a1a)) 45%, transparent) 45%,
+        color-mix(in srgb, var(--SmartThemeBlurTintColor, var(--SmartThemeBodyColor, #1a1a1a)) 75%, black));
+}
+
+/* Ghost bubbles drifting in the fade zone, tinted with the branch hues.
+   --bc carries the hue, --go the base opacity (see _renderTree). */
+.gm_stree_ghost {
+    position: absolute;
+    border-radius: 50%;
+    border: 2px solid var(--bc, #5a5a66);
+    background: color-mix(in srgb, var(--bc, #5a5a66) 8%, transparent);
+    pointer-events: none;
+    animation: gm_stree_ghost_float 4.5s ease-in-out infinite;
+}
+
+@keyframes gm_stree_ghost_float {
+    0%, 100% {
+        transform: translateY(0);
+        opacity: var(--go, 0.3);
+    }
+    50% {
+        transform: translateY(-6px);
+        opacity: calc(var(--go, 0.3) * 0.55);
+    }
+}
+
 /* Tier label in the left gutter. */
 .gm_stree_tier_label {
     position: absolute;

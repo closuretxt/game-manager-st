@@ -29,6 +29,7 @@ const TYPE_LABELS = {
 const NODE_W = 150; // horizontal slot per node
 const ROW_H = 120; // vertical distance between tier centers
 const GUTTER = 60; // left gutter for the tier labels
+const FADE_H = 80; // ghost-bubble dissolve zone under the frontier row
 
 // Branch hues: every root (tier 1) claims one hue and its whole build path
 // inherits it, so competing branches read apart at a glance.
@@ -284,7 +285,7 @@ export const skillTreeView = {
         const areaW = maxCount * NODE_W;
         // Symmetric gutters keep the node area centered over the labels.
         const canvasW = GUTTER + areaW + GUTTER;
-        const canvasH = 48 + (rows.length - 1) * ROW_H + 84;
+        const canvasH = 48 + (rows.length - 1) * ROW_H + 84 + FADE_H;
         const pos = new Map(); // node id -> { cx, cy, r }
         const rowCy = ti => 48 + ti * ROW_H;
         rows.forEach((row, ti) => {
@@ -354,6 +355,35 @@ export const skillTreeView = {
             const xy = pos.get(n.id);
             if (xy) canvas.append(this._nodeOrb(p, char, tree, n, xy, rootColor.get(n.id)));
         }
+
+        //
+
+        // Frontier fade: ghost bubbles drift below the last tier and dissolve
+        // into the background, so the tree reads as "continues downward"
+        // instead of dying at the frontier row.
+        const hues = [...new Set(rootColor.values())];
+        const lastCy = rowCy(rows.length - 1);
+        const ghosts = [
+            { fx: 0.20, r: 13, o: 0.30, dy: 96 },
+            { fx: 0.45, r: 9, o: 0.24, dy: 118 },
+            { fx: 0.66, r: 15, o: 0.28, dy: 104 },
+            { fx: 0.86, r: 8, o: 0.20, dy: 128 },
+            { fx: 0.32, r: 6, o: 0.14, dy: 146 },
+            { fx: 0.55, r: 7, o: 0.12, dy: 152 },
+        ];
+        ghosts.forEach((g, i) => {
+            canvas.append($("<div>").addClass("gm_stree_ghost")
+                .css({
+                    left: GUTTER + areaW * g.fx - g.r,
+                    top: lastCy + g.dy - g.r,
+                    width: g.r * 2,
+                    height: g.r * 2,
+                    "--bc": hues[i % hues.length] || "#8a8a95",
+                    "--go": g.o,
+                    animationDelay: `${(i * 0.7).toFixed(1)}s`,
+                }));
+        });
+        canvas.append($("<div>").addClass("gm_stree_fade"));
 
         p.canvasWrap.append(canvas);
     },
