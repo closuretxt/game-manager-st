@@ -35,7 +35,6 @@ const CHAR_TABS = [
     { id: "stats", label: "Basic Stats", icon: "fa-solid fa-heart-pulse" },
     { id: "inventory", label: "Inventory", icon: "fa-solid fa-box-open" },
     { id: "skills", label: "Skills", icon: "fa-solid fa-bolt" },
-    { id: "skilltree", label: "Skill Tree", icon: "fa-solid fa-sitemap" },
     { id: "passives", label: "Passives", icon: "fa-solid fa-shield-halved" },
     { id: "statuses", label: "Statuses", icon: "fa-solid fa-face-dizzy" },
 ];
@@ -887,10 +886,11 @@ class MainPanel {
         }
         content.append(backRow);
 
+        // The Skill Tree tab was folded into Skills — migrate stale selections.
+        if (this.activeCharTab === "skilltree") this.activeCharTab = "skills";
+
         const bar = $("<div>").addClass("gm_tab_bar gm_char_tab_bar");
         for (const tab of CHAR_TABS) {
-            // Skill Tree tab only when the feature (and progression) is on.
-            if (tab.id === "skilltree" && !skillTree.isEnabled()) continue;
             const btn = $("<div>")
                 .addClass("gm_tab")
                 .toggleClass("active", tab.id === this.activeCharTab)
@@ -898,8 +898,6 @@ class MainPanel {
             btn.on("click", () => {
                 this.activeCharTab = tab.id;
                 this.render();
-                // The tree lives in a fullscreen popup — open it on tab click.
-                if (tab.id === "skilltree") skillTreeView.open(char, edit);
             });
             bar.append(btn);
         }
@@ -911,12 +909,21 @@ class MainPanel {
             case "inventory":
                 characterView.renderList(body, char, "item", edit);
                 break;
-            case "skills":
-                characterView.renderList(body, char, "skill", edit);
+            case "skills": {
+                // Skill Tree launcher lives with the skills it feeds; the tree
+                // itself opens in the fullscreen popup.
+                if (skillTree.isEnabled()) {
+                    const treeBtn = $("<div>").addClass("menu_button gm_add_btn")
+                        .append($("<i>").addClass("fa-solid fa-sitemap"), $("<span>").text(" Skill Tree"));
+                    treeBtn.on("click", () => skillTreeView.open(char, edit));
+                    characterView.renderList(body, char, "skill", edit, treeBtn);
+                } else {
+                    characterView.renderList(body, char, "skill", edit);
+                }
+                // No tab body anymore — keep a live popup in sync manually.
+                skillTreeView.syncPopup(char.id);
                 break;
-            case "skilltree":
-                skillTreeView.render(body, char, edit);
-                break;
+            }
             case "passives":
                 characterView.renderList(body, char, "passive", edit);
                 break;

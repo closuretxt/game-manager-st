@@ -79,9 +79,13 @@ export const skillTreeView = {
         wrap.append(open);
 
         container.append(wrap);
+        this.syncPopup(char.id);
+    },
 
-        // Keep a live popup for this character in sync with the new state.
-        if (this._popup && this._popup.charId === char.id) this._refresh();
+    // Keep a live popup for this character in sync with state changes that
+    // emit outside the popup (unlocks, generation, sheet edits).
+    syncPopup(charId) {
+        if (this._popup && this._popup.charId === charId) this._refresh();
     },
 
     // ---------- popup ----------

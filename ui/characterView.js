@@ -280,7 +280,9 @@ export const characterView = {
     },
 
     // ---------- generic schema-driven list (Inventory / Skills / Passives) ----------
-    renderList(container, char, type, edit = false) {
+    // headerExtra: optional jQuery element appended to the section header
+    // (e.g. the Skill Tree launcher on the Skills tab).
+    renderList(container, char, type, edit = false, headerExtra = null) {
         const def = GM_SCHEMA[type];
         const wrap = $("<div>").addClass("gm_list");
         const header = $("<div>").addClass("gm_section_header").append(
@@ -292,6 +294,7 @@ export const characterView = {
             addBtn.on("click", () => stateManager.addEntry(char.id, type));
             header.append(addBtn);
         }
+        if (headerExtra) header.append(headerExtra);
 
         const list = $("<div>").addClass("gm_entry_list");
         for (const entry of char[def.container]) {
