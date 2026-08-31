@@ -7,7 +7,8 @@
 //   roll         — is the action's outcome uncertain enough to require a roll?
 //   transactions — implied shared-resource spends/gains (signed delta)
 //   warnings     — imminent-need remarks to set/clear
-//   relevant     — shared resources worth injecting this turn
+//   relevant     — shared resources and per-character stats/resources worth
+//                  injecting this turn
 //   notes        — free-form contextual remarks worth injecting this turn
 //   rewrite      — clarified version of a vague/contradictory action
 //                  (actions only, dialogue cropped out)
@@ -35,7 +36,7 @@ const SYSTEM_PROMPT = [
     "Before every player action reaches the story engine, you judge what that action IMPLIES and decide what the game system must do this turn. You are the only gate: nothing is injected, rolled, or spent unless you say so. You do not write the story, you do not narrate, you do not talk to the player — you route.",
     "",
     "WHAT YOU RECEIVE:",
-    "- TRACKED STATE: the party (characters, skills, statuses), the party-wide SHARED resources (money, food, ammo...), active warnings, OPEN THREADS, and optionally enemies.",
+    "- TRACKED STATE: the party (characters, skills, statuses, each character's own resources and attributes/stats), the party-wide SHARED resources (money, food, ammo...), active warnings, OPEN THREADS, and optionally enemies.",
     "- OPEN THREADS: untracked/unfinished things the post-pass left for itself (ongoing trips with resources spent so far, half-done actions) and secrets hidden from the player. Use them to keep continuity (e.g. a <transaction> or <note> that accounts for the fuel already burned) and to reveal a secret ONLY when the scene genuinely demands it.",
     "- RECENT SCENE: the last few messages of the roleplay.",
     "- PLAYER ACTION: the message you must judge.",
@@ -61,7 +62,7 @@ const SYSTEM_PROMPT = [
     "- <combat>: INSTEAD of <roll>, when the action ENGAGES tracked enemies (attacking, defending under threat, fleeing from them, using a skill on one). Casual talk with an enemy present does NOT count. speed is the actor's initiative judged from their attributes/statuses (Dexterity, Haste...), 0 when unknown. The combat engine runs the opposed resolution (enemy AI + clash + dice); you only decide IF and the speed. Never emit <roll> together with <combat>.",
     "- <transaction>: ONLY for the party-wide shared resources listed in the snapshot, when the action implies spending or gaining. delta is negative when spending, positive when gaining; the transaction engine validates amounts against the current value. Use delta=\"0\" only when the action involves the resource but the amount is unclear — the engine will judge it. The comparison is a plain-language sense of scale (\"Could buy a week's worth of food\").",
     "- <warning>: ONLY for imminent, concrete needs the player should prepare for (supplies running out, deadlines, approaching dangers). action=\"set\" adds or updates one; action=\"clear\" removes one whose cause is resolved. Never re-emit a warning that is already true and unchanged.",
-    "- <relevant>: shared resources whose CURRENT VALUE the story engine needs to know this turn even though nothing was spent (haggling, showing off wealth, checking supplies). Resources flagged always-inject are already visible — never list them.",
+    "- <relevant>: values whose CURRENT VALUE the story engine needs to know this turn even though nothing was spent. Without a character attribute, names are party-wide SHARED resources (haggling, showing off wealth, checking supplies). With character=\"<name>\", names are THAT character's own resources or attributes/stats (checking one's own HP or Mana, flexing a specific attribute to impress). Resources flagged always-inject are already visible — never list them.",
     "- <note>: brief free-form information the story engine would otherwise miss and that affects how the scene should unfold right now (local prices, an NPC's hidden intent, a rule of the location). At most two per turn, under 25 words each. This is NOT for tracked values — those go in <relevant> — and NOT for anything the scene text already establishes.",
     "- Knocked-out characters (state=\"ko\") cannot act. When someone is knocked out and the scene allows, a <note> nudging the story toward rest or a timeskip so they can recover is welcome — only where it fits naturally.",
     "- <rewrite>: ONLY when the action is vague, ambiguous, or self-contradictory AND clarifying it changes what should happen next (\"I grab the coins in my pocket and I hand it to the seller\" -> the amount and target become explicit). Rules: rewrite ONLY what the player DOES — CROP OUT all dialogue (quoted speech stays the player's own; the story engine already sees the original message); NEVER invent actions the player did not imply; NEVER answer or extend dialogue; keep it under 40 words, plain declarative description of the action. If the action is already clear, omit the tag entirely.",
@@ -78,6 +79,7 @@ const SYSTEM_PROMPT = [
     "- \"I bluff the guard into believing I have business with the captain, hoping he lets me in\" -> <roll needed=\"true\" title=\"Bluff Past the Guard\"/>",
     "- \"I flaunt my wealth to impress the merchant\" -> <relevant names=\"Dinheiro\"/>",
     "- \"I check our supplies before leaving\" -> <relevant names=\"Food, Water\"/>",
+    "- \"I glance at my Mana to see if I can still cast\" -> <relevant character=\"Kira\" names=\"Mana\"/>",
     "- \"I grab the coins in my pocket and I hand it to the seller. Here you go, friend.\" -> <transaction resource=\"Dinheiro\" delta=\"0\" comparison=\"\"/> <rewrite text=\"I count out a handful of coins from my pocket and hand them to the seller as payment\"/>",
 ].join("\n");
 
@@ -106,7 +108,11 @@ async function collectContext(playerAction) {
         // (and never computes) remaining cooldown counts.
         const skills = (c.skills || []).map(sk => `${escAttr(sk.name)}${(Number(sk.cooldown_left) || 0) > 0 ? "*" : ""}`).join(", ");
         const statuses = (c.statuses || []).map(st => `${escAttr(st.name)}${st.modifiers ? ` (${escAttr(st.modifiers)})` : ""}`).join(", ");
-        parts.push(`  <char name="${escAttr(c.name)}"${c.state ? ` state="${c.state.mode}"` : ""}${skills ? ` skills="${skills}"` : ""}${statuses ? ` statuses="${statuses}"` : ""}/>`);
+        // Own resources (HP 12/20) and attributes (STR 3) — the router needs
+        // to see them to judge when their value matters this turn.
+        const res = (c.resources || []).map(r => `${escAttr(r.name)} ${r.value}${r.max ? `/${r.max}` : ""}`).join(", ");
+        const attrs = (c.attributes || []).map(a => `${escAttr(a.name)} ${a.value}`).join(", ");
+        parts.push(`  <char name="${escAttr(c.name)}"${c.state ? ` state="${c.state.mode}"` : ""}${skills ? ` skills="${skills}"` : ""}${statuses ? ` statuses="${statuses}"` : ""}${res ? ` resources="${res}"` : ""}${attrs ? ` stats="${attrs}"` : ""}/>`);
     }
 
     const resources = (d.sharedResources || []).map(r => `${escAttr(r.name)}="${escAttr(r.qty)}"`).join(" ");
@@ -182,10 +188,12 @@ function parseReply(text) {
         plan.warnings.push({ action: a.action || "set", name: a.name ?? "", text: a.text ?? "" });
     }
 
-    const relM = text.match(/<relevant\b([^>]*?)(?:\/>|>[\s\S]*?<\/relevant>)/i);
-    if (relM) {
-        const a = parseAttrs(relM[1]);
-        plan.relevant = String(a.names || a.name || "").split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+    // Multiple <relevant> tags allowed: one per scope (shared vs character).
+    const relRe = /<relevant\b([^>]*?)(?:\/>|>[\s\S]*?<\/relevant>)/gi;
+    while ((m = relRe.exec(text)) !== null) {
+        const a = parseAttrs(m[1]);
+        const names = String(a.names || a.name || "").split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+        if (names.length) plan.relevant.push({ character: a.character ? String(a.character).trim() : null, names });
     }
 
     const noteRe = /<note\b([^>]*?)(?:\/>|>([\s\S]*?)<\/note>)/gi;
@@ -253,9 +261,34 @@ function sanitizePlan(parsed) {
         })
         .filter(Boolean);
 
-    const relevant = (Array.isArray(parsed.relevant) ? parsed.relevant : [])
-        .map(name => findShared(name))
-        .filter(Boolean);
+    // Shared entries keep { entry }; character-scoped ones resolve against
+    // that character's own resources (value/max) and attributes. Unknown
+    // names are dropped.
+    const findChar = name => (d.characters || []).find(
+        c => c.name && String(c.name).toLowerCase() === String(name ?? "").toLowerCase()
+    );
+    const relevant = [];
+    for (const rel of (Array.isArray(parsed.relevant) ? parsed.relevant : [])) {
+        if (rel?.character) {
+            const char = findChar(rel.character);
+            if (!char) continue;
+            for (const name of rel.names || []) {
+                const needle = String(name).toLowerCase();
+                const res = (char.resources || []).find(r => String(r.name || "").toLowerCase() === needle);
+                if (res) {
+                    relevant.push({ character: char.name, name: res.name, value: res.max ? `${res.value}/${res.max}` : String(res.value ?? "") });
+                    continue;
+                }
+                const attr = (char.attributes || []).find(a => String(a.name || "").toLowerCase() === needle);
+                if (attr) relevant.push({ character: char.name, name: attr.name, value: String(attr.value ?? "") });
+            }
+        } else {
+            for (const name of rel?.names || []) {
+                const entry = findShared(name);
+                if (entry) relevant.push({ entry });
+            }
+        }
+    }
 
     const notes = (Array.isArray(parsed.notes) ? parsed.notes : [])
         .map(n => String(n || "").trim().slice(0, 200))

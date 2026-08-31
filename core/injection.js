@@ -53,22 +53,29 @@ export function queueHigh(xmlBlock) {
     _pendingHigh.push(xmlBlock);
 }
 
-// Stash of this turn's queued high-priority payload, keyed by the id of the
-// AI message it belongs to. Swipes/regenerates never re-run the pre-pass,
-// and the previous generation's macro already consumed the buffer — so the
-// re-generated prompt would lose the roll / combat round / transaction
-// results. stashHigh keeps them; replayHigh re-queues them.
+// Stash of this turn's queued payloads, keyed by the id of the AI message it
+// belongs to. Swipes/regenerates never re-run the pre-pass, and the previous
+// generation's macros already consumed both buffers — so the re-generated
+// prompt would lose the roll / combat round / transaction results AND the
+// one-shot low-priority lines (relevant resource values, character stats,
+// notes). stashHigh keeps both; replayHigh re-queues them.
+// NOTE: stashHigh runs in handlePreTurn's finally — BEFORE prompt assembly —
+// so _pendingLow still holds this turn's one-shot lines at stash time (the
+// macro drains them only when the prompt is built).
 const _stashedHigh = new Map();
 const STASH_LIMIT = 10;
 
 export function stashHigh(mesId) {
     const id = Number(mesId);
-    if (!Number.isFinite(id) || _pendingHigh.length === 0) return;
-    _stashedHigh.set(id, _pendingHigh.join("\n"));
+    if (!Number.isFinite(id)) return;
+    const high = _pendingHigh.join("\n");
+    const low = _pendingLow.join("\n");
+    if (!high && !low) return;
+    _stashedHigh.set(id, { high, low });
     for (const k of _stashedHigh.keys()) {
         if (k < id - STASH_LIMIT) _stashedHigh.delete(k);
     }
-    console.info(`[GM DIAG] stashHigh: key=${id} payloadChars=${_stashedHigh.get(id).length} keys=[${[..._stashedHigh.keys()]}]`);
+    console.info(`[GM DIAG] stashHigh: key=${id} highChars=${high.length} lowChars=${low.length} keys=[${[..._stashedHigh.keys()]}]`);
 }
 
 export function replayHigh(mesId) {
@@ -77,9 +84,14 @@ export function replayHigh(mesId) {
         console.info(`[GM DIAG] replayHigh: MISS for message ${mesId} (stashed keys=[${[..._stashedHigh.keys()]}])`);
         return;
     }
-    logDebug(`injection: replaying stashed high-priority results for message ${mesId} (swipe/regenerate)`);
-    console.info(`[GM DIAG] replayHigh: HIT for message ${mesId} (${stored.length} chars re-queued)`);
-    _pendingHigh.push(stored);
+    logDebug(`injection: replaying stashed results for message ${mesId} (swipe/regenerate)`);
+    console.info(`[GM DIAG] replayHigh: HIT for message ${mesId} (high=${stored.high.length} chars, low=${stored.low.length} chars re-queued)`);
+    if (stored.high) _pendingHigh.push(stored.high);
+    if (stored.low) {
+        // One-shot low-priority lines were drained by the previous
+        // generation's macro — re-queue them verbatim for this one.
+        _pendingLow.push(...stored.low.split("\n").filter(Boolean));
+    }
 }
 
 // Queues a ONE-SHOT high-priority action rewrite produced by the pre-pass.

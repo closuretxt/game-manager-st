@@ -245,14 +245,21 @@ export async function handlePreTurn(type = "normal") {
                 }
             }
 
-            // Relevant resources — one-shot low-priority injection of values
-            // that matter THIS turn (always-inject ones are already persistent;
-            // transacted ones are reported by the transaction itself).
+            // Relevant values — one-shot low-priority injection of values that
+            // matter THIS turn. Shared entries ({ entry }) skip always-inject
+            // ones (already persistent) and transacted ones (reported by the
+            // transaction itself); character entries ({ character, name,
+            // value }) are that character's own stats/resources.
             if (s.feature_injection && plan.relevant.length) {
                 const transacted = new Set(plan.transactions.map(t => t.entry.id));
-                for (const entry of plan.relevant) {
-                    if (entry.always_inject || transacted.has(entry.id)) continue;
-                    queueLowOnce(`  <resource name="${entry.name}" value="${entry.qty}"/>`);
+                for (const rel of plan.relevant) {
+                    if (rel.entry) {
+                        if (rel.entry.always_inject || transacted.has(rel.entry.id)) continue;
+                        queueLowOnce(`  <resource name="${rel.entry.name}" value="${rel.entry.qty}"/>`);
+                    } else {
+                        logDebug(`pre-turn: character stat queued "${rel.character}.${rel.name}" = ${rel.value}`);
+                        queueLowOnce(`  <character_stat character="${rel.character}" name="${rel.name}" value="${rel.value}"/>`);
+                    }
                 }
             }
 
