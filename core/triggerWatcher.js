@@ -264,10 +264,10 @@ export async function handlePreTurn(type = "normal") {
             }
 
             // Rewrite — the pre-pass clarified a vague/contradictory action.
-            // The original message text is NEVER edited: the rewrite is
-            // rendered as a highlighted tag on the message (DOM-only) and
-            // injected high-priority so the story engine acts on the
-            // clarified intent this turn.
+            // The clarified action is appended to the message text as
+            // "original -- rewrite" (with a highlighted tag) and injected
+            // high-priority so the story engine acts on the clarified
+            // intent this turn.
             if (s.feature_rewrite && plan.rewrite) {
                 logDebug(`pre-turn: rewrite planned "${plan.rewrite}"`);
                 statusBubble.update("Clarifying action...");

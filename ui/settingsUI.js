@@ -5,7 +5,7 @@ import { gmNotify, logDebug } from "../core/debug.js";
 import { CONTAINER_TYPES, GM_SCHEMA, defaultEntry } from "../core/schemas.js";
 import { stateManager } from "../core/stateManager.js";
 import { swapProfile } from "../util/profileSwapper.js";
-import { getConnectionProfiles, getProfileNameById } from "../util/connectionService.js";
+import { getConnectionProfiles, getProfileNameById, resolveConnectionProfile } from "../util/connectionService.js";
 
 export const settingsUI = {
     init() {
@@ -25,7 +25,6 @@ export const settingsUI = {
         $("#gm_profile_select").on("change", () => {
             extension_settings[extensionName].connection_profile = $("#gm_profile_select").val();
             saveSettingsDebounced();
-            this.populateProfiles();
         });
         $("#gm_premaster_profile_select").on("mousedown focus", () => this.populateProfiles());
         $("#gm_premaster_profile_select").on("change", () => {
@@ -44,8 +43,14 @@ export const settingsUI = {
                 gmNotify("No connection profile selected.", "warning");
                 return;
             }
+            // Resolve the currently active profile name so swapProfile() can
+            // skip the swap when the target is already active (same pattern
+            // as core/agentRunner.js and the Recast reference).
+            const st = getContext();
+            const currentName = st.extensionSettings?.connectionManager?.selectedProfileName
+                || getProfileNameById(st, resolveConnectionProfile(st, ""));
             gmNotify(`Swapping to connection profile "${targetName}"...`, "info");
-            const ok = await swapProfile(targetName);
+            const ok = await swapProfile(targetName, currentName);
             gmNotify(
                 ok ? `Swapped to connection profile "${targetName}".` : "Profile swap failed — check the console for details.",
                 ok ? "success" : "error"
@@ -98,9 +103,28 @@ export const settingsUI = {
     },
 
     // ---------- connection profiles ----------
+    // Signature-cached: the selects are only rebuilt when the profile list
+    // (ids + names) actually changed. Rebuilding the <option> elements while
+    // the browser's native dropdown picker is open glitches the selection
+    // out, so an unchanged list must never touch the DOM.
+    _profileSignature: null,
     populateProfiles() {
         const s = this._settings();
         const profiles = getConnectionProfiles();
+        const signature = profiles.map(p => `${p.id}:${p.name}`).join("|") + `#${profiles.length}`;
+        const rebuild = signature !== this._profileSignature;
+        this._profileSignature = signature;
+
+        // Value sync is cheap and never glitches — always keep the selected
+        // option in sync with the stored settings. Only the rebuild (which
+        // destroys the <option> elements) is skipped when nothing changed.
+        if (!rebuild) {
+            $("#gm_profile_select").val(profiles.some(p => p.id === s.connection_profile) ? s.connection_profile : "");
+            $("#gm_premaster_profile_select").val(profiles.some(p => p.id === s.premaster_profile) ? s.premaster_profile : "");
+            $("#gm_wizard_profile_select").val(profiles.some(p => p.id === s.wizard_profile) ? s.wizard_profile : "");
+            return;
+        }
+
         const agenticSel = $("#gm_profile_select").empty();
         const premasterSel = $("#gm_premaster_profile_select").empty();
         const wizardSel = $("#gm_wizard_profile_select").empty();
