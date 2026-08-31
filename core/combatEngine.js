@@ -26,6 +26,7 @@ import { runAllyAI } from "./allyAI.js";
 import { runEnemyAI } from "./enemyAI.js";
 import { resolveClashes } from "./clashResolver.js";
 import { combatBubble, attachCombatToMessage } from "../ui/combatBubble.js";
+import { playRoll, playTierResult } from "./soundFx.js";
 
 function esc(v) {
     return String(v ?? "")
@@ -168,10 +169,12 @@ export async function runCombatTurn(action, plan, mesId) {
         const winners = [];
         for (let i = 0; i < groups.length; i++) {
             bubble.startGroupRoll(i);
+            playRoll(900); // tumbling dice while the slot-machine sweeps
             await new Promise(r => setTimeout(r, 900)); // let the animation breathe
             const winner = weightedRoll(groups[i].tiers);
             winners.push(winner);
             bubble.resolveGroup(i, winner);
+            playTierResult(winner.name);
         }
         await new Promise(r => setTimeout(r, 1600));
 

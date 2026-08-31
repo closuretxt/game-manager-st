@@ -69,6 +69,11 @@ export const defaultSettings = {
     notify_progression: true, // EXP grants and level-ups.
     notify_states: true,      // Deaths, knockouts, recoveries and status effects.
     notify_enemies: false,    // Also notify for enemy sheets (HP changes, skill use...).
+
+    // Sound FX — synthesized dice sounds (Web Audio, no assets) for rolls and
+    // per-tier outcomes in the dice and combat bubbles.
+    sound_enabled: true, // Master switch for sound effects.
+    sound_volume: 60,    // Sound effect volume in percent.
 };
 
 export async function loadSettings() {
@@ -116,6 +121,9 @@ export async function loadSettings() {
     $("#gm_setting_notify_progression").prop("checked", !!s.notify_progression);
     $("#gm_setting_notify_states").prop("checked", !!s.notify_states);
     $("#gm_setting_notify_enemies").prop("checked", !!s.notify_enemies);
+    $("#gm_setting_sound").prop("checked", !!s.sound_enabled);
+    $("#gm_setting_sound_volume").val(Number.isFinite(+s.sound_volume) ? +s.sound_volume : 60);
+    $("#gm_sound_volume_value").text(`${s.sound_volume}%`);
 
     // Initialize the game-state store (characters, shared resources, ids).
     stateManager.init();
@@ -151,6 +159,8 @@ export function saveSettings() {
     s.notify_progression = $("#gm_setting_notify_progression").prop("checked");
     s.notify_states = $("#gm_setting_notify_states").prop("checked");
     s.notify_enemies = $("#gm_setting_notify_enemies").prop("checked");
+    s.sound_enabled = $("#gm_setting_sound").prop("checked");
+    s.sound_volume = Number($("#gm_setting_sound_volume").val()) || 60;
     saveSettingsDebounced();
 }
 
@@ -161,6 +171,13 @@ export function initSettingsListeners() {
       "#gm_setting_feat_enemies, #gm_setting_feat_rewrite, #gm_setting_feat_progression, #gm_setting_feat_skill_tree, " +
       "#gm_setting_feat_combat, #gm_setting_feat_ally_ai, #gm_setting_feat_death, " +
       "#gm_setting_notify, #gm_setting_notify_stats, #gm_setting_notify_items, #gm_setting_notify_skills, " +
-      "#gm_setting_notify_progression, #gm_setting_notify_states, #gm_setting_notify_enemies").on("change", saveSettings);
+      "#gm_setting_notify_progression, #gm_setting_notify_states, #gm_setting_notify_enemies, #gm_setting_sound").on("change", saveSettings);
+    // Volume slider: live label + persist on input (same feel as the opacity slider).
+    $("#gm_setting_sound_volume").off("input.gm").on("input.gm", () => {
+        const val = Number($("#gm_setting_sound_volume").val()) || 60;
+        extension_settings[extensionName].sound_volume = val;
+        $("#gm_sound_volume_value").text(`${val}%`);
+        saveSettingsDebounced();
+    });
 }
 

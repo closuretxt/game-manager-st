@@ -33,6 +33,11 @@
                 <span>Enabled</span>
             </label>
 
+            <div class="gm_settings_warning">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span>Do not forget to put the macros <code>{{gamemaster-low-priority}}</code> and <code>{{gamemaster-high-priority}}</code> in your prompt in order for them to work.</span>
+            </div>
+
             <div class="gm_settings_sep">LLM</div>
             <div class="gm_settings_grid">
                 <label class="checkbox_label" for="gm_setting_pre_pass" title="An LLM judges every action (rolls, transactions, warnings) instead of keyword matching">
@@ -78,10 +83,6 @@
                     <input id="gm_setting_feat_injection" type="checkbox" />
                     <span>Injection</span>
                 </label>
-                <div class="gm_settings_warning">
-                    <i class="fa-solid fa-triangle-exclamation"></i>
-                    <span>Do not forget to put the macros <code>{{gamemaster-low-priority}}</code> and <code>{{gamemaster-high-priority}}</code> in your prompt in order for them to work.</span>
-                </div>
                 <label class="checkbox_label" for="gm_setting_feat_enemies" title="Context-based enemies: AI-tracked sheets, archived when irrelevant, restored on return. Hidden entirely when unused.">
                     <input id="gm_setting_feat_enemies" type="checkbox" />
                     <span>Enemies</span>
@@ -159,6 +160,19 @@
                     <input id="gm_setting_notify_enemies" type="checkbox" />
                     <span>Include enemies</span>
                 </label>
+            </div>
+
+            <div class="gm_settings_sep">Sounds</div>
+            <div class="gm_settings_grid">
+                <label class="checkbox_label" for="gm_setting_sound" title="Synthesized dice sounds (Web Audio, no assets): a tumbling roll while the dice/combat bubbles animate, and a distinct jingle per outcome — Critical Failure, Failure, Success, Critical Success.">
+                    <input id="gm_setting_sound" type="checkbox" />
+                    <span>Dice sounds</span>
+                </label>
+            </div>
+            <div class="gm_field gm_field_inline">
+                <label for="gm_setting_sound_volume">Volume</label>
+                <input id="gm_setting_sound_volume" type="range" min="0" max="100" step="5" />
+                <span id="gm_sound_volume_value"></span>
             </div>
 
             <div class="gm_settings_sep">Presets</div>

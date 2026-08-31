@@ -18,6 +18,7 @@ import { parseAttrs } from "./toolParser.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 import { diceBubble, attachRollToMessage } from "../ui/diceBubble.js";
+import { playRoll, playTierResult } from "./soundFx.js";
 
 const MAX_CONTEXT_MESSAGES = 8;
 
@@ -175,8 +176,10 @@ export async function rollDice(playerAction, mesId, { title = null } = {}) {
         }
 
         const winner = weightedRoll(tiers);
+        playRoll(1600); // tumbling dice while the animation breathes
         await new Promise(r => setTimeout(r, 1600)); // let the animation breathe
         bubble.resolve(winner);
+        playTierResult(winner.name);
 
         // State baseline for swipe/delete rollback. The player's message text
         // is NEVER edited — the result is DOM-rendered on the message and
