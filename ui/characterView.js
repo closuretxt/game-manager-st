@@ -244,6 +244,32 @@ export const characterView = {
         const chip = $("<div>").addClass("gm_attr_chip");
         chip.append($("<span>").addClass("gm_attr_name").text(a.name));
         chip.append($("<span>").addClass("gm_attr_value").text(a.value));
+        // Attribute-point raise: standard usage, available OUTSIDE edit mode —
+        // shown whenever the character has unspent AP (cost scales with the
+        // current value). The refund stays edit-mode only.
+        if (progression.isEnabled() && progression.getConfig().attr_points_per_level > 0) {
+            const track = progression.trackOf(char);
+            const apActions = $("<div>").addClass("gm_entry_actions");
+            if (track.attr_points > 0) {
+                const cost = progression.attrCostFor(a.value);
+                const apUp = iconBtn("fa-solid fa-circle-up")
+                    .attr("title", `Raise ${a.name} by 1 (cost: ${cost} AP)`);
+                apUp.on("click", () => {
+                    if (progression.spendAttrPoint(char.id, a.name)) stateManager.emitChange("progression_edit");
+                });
+                apActions.append(apUp);
+            }
+            if (edit) {
+                const apDown = iconBtn("fa-solid fa-circle-down")
+                    .attr("title", `Lower ${a.name} by 1 (refunds 1 AP)`);
+                apDown.on("click", () => {
+                    if (progression.refundAttrPoint(char.id, a.name)) stateManager.emitChange("progression_edit");
+                });
+                apActions.append(apDown);
+            }
+            if (apActions.children().length) chip.append(apActions);
+        }
+
         if (edit) {
             const actions = $("<div>").addClass("gm_entry_actions");
             const minus = iconBtn("fa-solid fa-minus");
@@ -254,24 +280,6 @@ export const characterView = {
             plus.on("click", () => stateManager.applyDelta(char.id, "attribute", a.name, { delta: 1 }));
             editBtn.on("click", () => startInlineEdit(char.id, "attribute", a, wrap));
             delBtn.on("click", () => stateManager.removeEntry(char.id, "attribute", a.id));
-
-            // Attribute-point spending: raise/lower THIS attribute with the
-            // character's unspent AP (cost scales with the current value).
-            if (progression.isEnabled() && progression.getConfig().attr_points_per_level > 0) {
-                const cost = progression.attrCostFor(a.value);
-                const apUp = iconBtn("fa-solid fa-circle-up")
-                    .attr("title", `Raise ${a.name} by 1 (cost: ${cost} AP)`);
-                apUp.on("click", () => {
-                    if (progression.spendAttrPoint(char.id, a.name)) stateManager.emitChange("progression_edit");
-                });
-                const apDown = iconBtn("fa-solid fa-circle-down")
-                    .attr("title", `Lower ${a.name} by 1 (refunds 1 AP)`);
-                apDown.on("click", () => {
-                    if (progression.refundAttrPoint(char.id, a.name)) stateManager.emitChange("progression_edit");
-                });
-                actions.append(apUp, apDown);
-            }
-
             actions.append(minus, plus, editBtn, delBtn);
             chip.append(actions);
         }
