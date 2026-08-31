@@ -151,7 +151,7 @@ export const progression = {
         const cost = this.attrCostFor(entry.value);
         if (track.attr_points < cost) return false;
         char.progression = { ...track, attr_points: track.attr_points - cost };
-        stateManager.applyDelta(char.id, "attribute", entry.name, { delta: 1 });
+        stateManager.applyDelta(char.id, "attribute", entry.name, { delta: 1, silent: true });
         return true;
     },
 
@@ -166,7 +166,7 @@ export const progression = {
         if (!entry || (Number(entry.value) || 0) <= 0) return false;
         const track = this.trackOf(char);
         char.progression = { ...track, attr_points: track.attr_points + 1 };
-        stateManager.applyDelta(char.id, "attribute", entry.name, { delta: -1 });
+        stateManager.applyDelta(char.id, "attribute", entry.name, { delta: -1, silent: true });
         return true;
     },
 

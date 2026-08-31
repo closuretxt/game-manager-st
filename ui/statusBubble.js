@@ -69,12 +69,22 @@ class StatusBubble {
     }
 
     // Appends a permanent result line (e.g. "Dinheiro: -6 → 94 · ...").
-    result(text) {
+    // `html` accepts pre-escaped markup (notification highlights).
+    result(text, html = false) {
         if (!this.el) this.show("");
         if (!text) return this;
-        this.lines.append($("<div>").addClass("gm_status_line").text(String(text)));
+        this.lines.append(this._line(text, html));
         this._position();
         return this;
+    }
+
+    // Builds one result line — plain text by default, HTML when the caller
+    // already escaped every dynamic value (notifications.js highlight spans).
+    _line(text, html) {
+        const line = $("<div>").addClass("gm_status_line");
+        if (html) line.html(String(text));
+        else line.text(String(text));
+        return line;
     }
 
     // Pipeline finished — swap the spinner for a check and fade out.
@@ -96,11 +106,11 @@ class StatusBubble {
     // bubble WITHOUT a pipeline running. When the pipeline bubble is already
     // up, the line simply joins its results; otherwise a lightweight bubble
     // with a check icon is created and auto-closes after `timeout` ms.
-    notify(text, timeout = 4000) {
+    notify(text, timeout = 4000, html = false) {
         if (!text) return this;
         if (this.el && !this._isNotification) {
             // Pipeline bubble active — piggyback on its result lines.
-            return this.result(text);
+            return this.result(text, html);
         }
         if (!this.el) {
             this._build("");
@@ -108,7 +118,7 @@ class StatusBubble {
             this.icon.attr("class", "fa-solid fa-circle-check gm_status_check");
             this.el.addClass("gm_status_done");
         }
-        this.lines.append($("<div>").addClass("gm_status_line").text(String(text)));
+        this.lines.append(this._line(text, html));
         this._position();
         clearTimeout(this._closeTimer);
         this._closeTimer = setTimeout(() => this.close(), timeout);
@@ -117,6 +127,7 @@ class StatusBubble {
 
     close(instant = false) {
         clearTimeout(this._closeTimer);
+        const wasNotification = this._isNotification;
         this._isNotification = false;
         if (!this.el) return;
         const el = this.el;
@@ -128,8 +139,10 @@ class StatusBubble {
         if (instant) {
             el.remove();
         } else {
-            el.addClass("gm_dice_fadeout");
-            setTimeout(() => el.remove(), 400);
+            // Notifications fade out slower with a downward drift; pipeline
+            // bubbles pop out fast.
+            el.addClass(wasNotification ? "gm_note_fadeout" : "gm_dice_fadeout");
+            setTimeout(() => el.remove(), wasNotification ? 700 : 400);
         }
     }
 }

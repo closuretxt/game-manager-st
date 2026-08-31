@@ -247,10 +247,10 @@ export const skillTree = {
             // cooldown engine actually enforces it (minimum 2 turns).
             const cdMatch = /cooldown:\s*(\d+)/i.exec(String(node.description || ""));
             const cooldown = Math.max(2, Math.trunc(Number(cdMatch?.[1]) || 0));
-            const entry = stateManager.addEntry(char.id, "skill", { name: node.name, description: node.description, cooldown, ...tag });
+            const entry = stateManager.addEntry(char.id, "skill", { name: node.name, description: node.description, cooldown, silent: true, ...tag });
             node.applied = { kind: "entry", type: "skill", entryId: entry?.id };
         } else if (node.type === "passive") {
-            const entry = stateManager.addEntry(char.id, "passive", { name: node.name, ptype: "special", description: node.description, ...tag });
+            const entry = stateManager.addEntry(char.id, "passive", { name: node.name, ptype: "special", description: node.description, silent: true, ...tag });
             node.applied = { kind: "entry", type: "passive", entryId: entry?.id };
         } else if (node.type === "upgrade") {
             // Improves an EXISTING skill: the upgrade note is appended to the
@@ -261,7 +261,7 @@ export const skillTree = {
                 skill.description = [String(skill.description || "").trim(), `[${node.name}] ${node.description}`].filter(Boolean).join("\n");
             } else {
                 // Target vanished since generation — grant it as its own skill.
-                const entry = stateManager.addEntry(char.id, "skill", { name: node.name, description: node.description, ...tag });
+                const entry = stateManager.addEntry(char.id, "skill", { name: node.name, description: node.description, silent: true, ...tag });
                 node.applied = { kind: "entry", type: "skill", entryId: entry?.id };
             }
         } else if (node.type === "stat") {
@@ -270,7 +270,7 @@ export const skillTree = {
             const m = /^(.+?)\s*([+-]?\d+)$/.exec(String(node.description || "").trim());
             const attrName = (m ? m[1] : node.description || node.name).trim();
             const delta = m ? Math.trunc(Number(m[2]) || 0) : 1;
-            if (delta !== 0 && stateManager.applyDelta(char.id, "attribute", attrName, { delta })) {
+            if (delta !== 0 && stateManager.applyDelta(char.id, "attribute", attrName, { delta, silent: true })) {
                 node.applied = { kind: "delta", attrName, delta };
             } else {
                 const entry = stateManager.addEntry(char.id, "attribute", {

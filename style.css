@@ -815,6 +815,41 @@ textarea.gm_input {
     padding: 2px 0;
 }
 
+/* Notification highlights (notifications.js composes lines as HTML with
+   these classes; all dynamic values are escaped before interpolation). */
+.gm_status_line .gm_n_name {
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
+    font-weight: 700;
+}
+
+.gm_status_line .gm_n_pos {
+    color: var(--gm-ok, #4caf7d);
+    font-weight: 600;
+}
+
+.gm_status_line .gm_n_neg {
+    color: #e06c6c;
+    font-weight: 600;
+}
+
+.gm_status_line .gm_n_val {
+    color: var(--SmartThemeBodyColor, #ddd);
+    font-weight: 600;
+}
+
+.gm_status_line .gm_n_dim {
+    opacity: 0.7;
+    font-weight: 400;
+}
+
+/* Notification bubbles fade out slower, drifting slightly downward —
+   pipeline bubbles keep the quick fade (gm_dice_fadeout). */
+#gm_status_bubble.gm_note_fadeout {
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
 .gm_status_done .gm_status_text {
     color: var(--SmartThemeEmColor, #aaa);
     font-weight: 400;

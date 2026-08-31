@@ -34,6 +34,22 @@ Skill trees are generated similar to the scenario and character creator. It uses
 Nothing is editable without edit mode. Want to cheat? Use the toggle.
 Knocked and death states, the pos-turn gamemaster is urged to provide knockouts or death states, if your character gets knocked out and the gamemaster decides that it wants a timeskip, you will wake up in a bed or not wake up at all.
 
+## UI & Examples
+Skill Tree System (expands as you reach the end)
+![alt text](/docs/images/exampleskilltree.png)
+
+Clash resolver with multi-character and ally action.
+![alt text](/docs/images/Clashresolverexample.png)
+
+Dice roller for one-sided actions and non-combat interactions.
+![alt text](/docs/images/ChanceTracking.png)
+
+Party UI.
+![alt text](/docs/images/PartyUI.png)
+
+Character details page (All values are customizeable)
+![alt text](/docs/images/CharacterDetails.png)
+
 ## Minimal injections
 As said before, your actual LLM just receives relevant information and they are split into high and low priorities. High priorities are intended to go with your author's note and low nested inside lorebooks.
 "How does a LLM know what matters?" - The specialists will provide warnings and inject information if relevant. "You have about two days of food left.", "Encounter chance increased.", etc. The details do not matter, your story engine is for creative writing.
@@ -74,16 +90,6 @@ Both the pre-pass/post-pass and the pre-master LLM calls (router, dice, transact
 
 - The pre-pass router judges every fresh action (no keyword guessing) and the XML tool-tag parser (`<change_values>`, `<warnings>`, etc.
 - Future plans (kept modular via `core/schemas.js`): skill trees, robust combat system, maps.
-
-## UI & Examples
-Skill Tree System (expands as you reach the end)
-![alt text](/docs/images/exampleskilltree.png)
-
-Clash resolver with multi-character and ally action.
-![alt text](/docs/images/Clashresolverexample.png)
-
-Dice roller for one-sided actions and non-combat interactions.
-![alt text](/docs/images/ChanceTracking.png)
 
 ## 📄 License
 

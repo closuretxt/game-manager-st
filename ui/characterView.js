@@ -142,12 +142,12 @@ export const characterView = {
             const actions = $("<div>").addClass("gm_entry_actions");
             const expMinus = iconBtn("fa-solid fa-minus").attr("title", "Remove 10 EXP (Shift: 50)");
             expMinus.on("click", e => {
-                progression.grantExp(char.id, e.shiftKey ? -50 : -10);
+                progression.grantExp(char.id, e.shiftKey ? -50 : -10, { silent: true });
                 stateManager.emitChange("progression_edit");
             });
             const expPlus = iconBtn("fa-solid fa-plus").attr("title", "Grant 10 EXP (Shift: 50)");
             expPlus.on("click", e => {
-                progression.grantExp(char.id, e.shiftKey ? 50 : 10);
+                progression.grantExp(char.id, e.shiftKey ? 50 : 10, { silent: true });
                 stateManager.emitChange("progression_edit");
             });
             const spMinus = iconBtn("fa-solid fa-circle-minus").attr("title", "Spend 1 skill point");
@@ -226,8 +226,8 @@ export const characterView = {
             const actions = $("<div>").addClass("gm_entry_actions");
             const minus = iconBtn("fa-solid fa-minus");
             const plus = iconBtn("fa-solid fa-plus");
-            minus.on("click", e => stateManager.applyDelta(char.id, "resource", r.name, { delta: e.shiftKey ? -5 : -1 }));
-            plus.on("click", e => stateManager.applyDelta(char.id, "resource", r.name, { delta: e.shiftKey ? 5 : 1 }));
+            minus.on("click", e => stateManager.applyDelta(char.id, "resource", r.name, { delta: e.shiftKey ? -5 : -1, silent: true }));
+            plus.on("click", e => stateManager.applyDelta(char.id, "resource", r.name, { delta: e.shiftKey ? 5 : 1, silent: true }));
             const editBtn = iconBtn("fa-solid fa-pen");
             const delBtn = iconBtn("fa-solid fa-trash");
             editBtn.on("click", () => startInlineEdit(char.id, "resource", r, rowWrap));
@@ -276,8 +276,8 @@ export const characterView = {
             const plus = iconBtn("fa-solid fa-plus");
             const editBtn = iconBtn("fa-solid fa-pen");
             const delBtn = iconBtn("fa-solid fa-trash");
-            minus.on("click", () => stateManager.applyDelta(char.id, "attribute", a.name, { delta: -1 }));
-            plus.on("click", () => stateManager.applyDelta(char.id, "attribute", a.name, { delta: 1 }));
+            minus.on("click", () => stateManager.applyDelta(char.id, "attribute", a.name, { delta: -1, silent: true }));
+            plus.on("click", () => stateManager.applyDelta(char.id, "attribute", a.name, { delta: 1, silent: true }));
             editBtn.on("click", () => startInlineEdit(char.id, "attribute", a, wrap));
             delBtn.on("click", () => stateManager.removeEntry(char.id, "attribute", a.id));
             actions.append(minus, plus, editBtn, delBtn);

@@ -927,7 +927,7 @@ class MainPanel {
             if (!stateMode.llm_clearable && edit) {
                 const revive = $("<div>").addClass("menu_button gm_small_btn").append(
                     $("<i>").addClass("fa-solid fa-heart-pulse"), $("<span>").text(" Revive"));
-                revive.on("click", () => stateManager.clearState(char.id));
+                revive.on("click", () => stateManager.clearState(char.id, { silent: true }));
                 banner.append(revive);
             }
             content.append(banner);

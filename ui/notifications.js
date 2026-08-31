@@ -9,8 +9,9 @@
 // just not calling init().
 //
 // Gated per category in the settings drawer (Interface → Notifications).
-// Suppressed while edit mode is on — the user is actively editing sheets and
-// popups for their own clicks would be pure noise.
+// UI-originated edits (sheet +/- buttons, EXP nudges, revive) pass
+// silent: true — popups for the user's own clicks would be pure noise.
+// Game-driven changes notify regardless of edit mode.
 
 import { extension_settings } from "../../../../extensions.js";
 import { extensionName } from "../core/constants.js";
@@ -23,11 +24,13 @@ function settings() {
     return extension_settings[extensionName];
 }
 
-// Master gate: extension on, notifications on, not in edit mode, and the
-// event's category enabled.
+// Master gate: extension on, notifications on, and the event's category
+// enabled. Edit mode does NOT suppress notifications — only UI-originated
+// mutations do (they pass silent: true); game-driven changes (AI tool tags,
+// combat, transactions) always notify so the player sees outcomes live.
 function allowed(category) {
     const s = settings();
-    return !!(s.enabled && s.notify_enabled && !s.edit_mode && s[category]);
+    return !!(s.enabled && s.notify_enabled && s[category]);
 }
 
 // Party characters notify by default; enemies only with notify_enemies.
@@ -40,6 +43,25 @@ function signed(n) {
     const v = Math.trunc(Number(n) || 0);
     return v >= 0 ? `+${v}` : `${v}`;
 }
+
+// Escapes a dynamic value before it goes into a notification line (the
+// bubble renders highlighted lines as HTML).
+function esc(v) {
+    return String(v ?? "")
+        .replace(/&/g, "&")
+        .replace(/</g, "<")
+        .replace(/>/g, ">")
+        .replace(/"/g, """);
+}
+
+// Inline highlight spans (styled in style.css under .gm_status_line).
+const hl = {
+    name: v => `<span class="gm_n_name">${esc(v)}</span>`,   // actor names
+    pos: v => `<span class="gm_n_pos">${esc(v)}</span>`,     // gains, heals, level-ups
+    neg: v => `<span class="gm_n_neg">${esc(v)}</span>`,     // losses, damage
+    val: v => `<span class="gm_n_val">${esc(v)}</span>`,     // tracked names / values
+    dim: v => `<span class="gm_n_dim">${esc(v)}</span>`,     // secondary info
+};
 
 // Wraps a method: runs the original, then fires `after(args, result)` guarded
 // so a notification bug can never break the mutation itself.
@@ -60,6 +82,7 @@ export const notifications = {
     init() {
         // ---------- stats & resources (applyDelta) ----------
         wrapMethod(stateManager, "applyDelta", ([charId, type, name, opts = {}], ok) => {
+            if (opts?.silent) return; // manual sheet edit — user's own click
             if (!ok || (type !== "resource" && type !== "attribute")) return;
             if (!allowed("notify_stats") || !actorAllowed(charId)) return;
             const char = stateManager.getSheet(charId);
@@ -67,80 +90,85 @@ export const notifications = {
             const entry = char[type === "resource" ? "resources" : "attributes"]
                 ?.find(e => String(e.name).toLowerCase() === String(name).toLowerCase());
             const hasDelta = opts.delta !== undefined && opts.delta !== null && opts.delta !== "";
-            const change = hasDelta ? signed(opts.delta) : `→ ${opts.value}`;
-            const now = entry ? ` (now ${entry.value})` : "";
-            statusBubble.notify(`${char.name} · ${name}: ${change}${now}`);
+            const d = Math.trunc(Number(opts.delta) || 0);
+            const change = hasDelta ? (d >= 0 ? hl.pos(signed(opts.delta)) : hl.neg(signed(opts.delta))) : `→ ${hl.val(opts.value)}`;
+            const now = entry ? hl.dim(` (now ${entry.value})`) : "";
+            statusBubble.notify(`${hl.name(char.name)} · ${hl.val(name)}: ${change}${now}`, 4000, true);
         });
 
         // ---------- items ----------
         wrapMethod(stateManager, "addItem", ([charId, { name, qty = 1 } = {}], ok) => {
             if (!ok || !allowed("notify_items") || !actorAllowed(charId)) return;
             const char = stateManager.getSheet(charId);
-            statusBubble.notify(`${char?.name ?? "?"} gained ${name} x${signed(qty)}`);
+            statusBubble.notify(`${hl.name(char?.name ?? "?")} gained ${hl.val(name)} ${hl.pos(`x${signed(qty)}`)}`, 4000, true);
         });
         wrapMethod(stateManager, "removeItem", ([charId, name, qty = null], ok) => {
             if (!ok || !allowed("notify_items") || !actorAllowed(charId)) return;
             const char = stateManager.getSheet(charId);
-            statusBubble.notify(`${char?.name ?? "?"} lost ${name}${qty != null ? ` x${qty}` : ""}`);
+            statusBubble.notify(`${hl.name(char?.name ?? "?")} lost ${hl.val(name)}${qty != null ? ` ${hl.neg(`x${qty}`)}` : ""}`, 4000, true);
         });
 
         // ---------- skills used (cooldown started) ----------
         wrapMethod(stateManager, "useSkill", ([charId, skillName], ok) => {
             if (!ok || !allowed("notify_skills") || !actorAllowed(charId)) return;
             const char = stateManager.getSheet(charId);
-            statusBubble.notify(`${char?.name ?? "?"} used ${skillName}`);
+            statusBubble.notify(`${hl.name(char?.name ?? "?")} used ${hl.val(skillName)}`, 4000, true);
         });
 
         // ---------- skills / passives earned (sheet entries added) ----------
         // Covers skill tree unlocks, LLM-granted skills and manual additions —
         // anything that lands a skill/passive entry on a PARTY sheet.
         wrapMethod(stateManager, "addEntry", ([characterId, type, overrides = {}]) => {
+            if (overrides?.silent) return; // manual sheet edit / tree unlock
             if (type !== "skill" && type !== "passive") return;
             if (!allowed("notify_skills") || !stateManager.getCharacter(characterId)) return;
             const char = stateManager.getCharacter(characterId);
-            statusBubble.notify(`${char.name} earned ${type}: ${overrides.name ?? "?"}`, 6000);
+            statusBubble.notify(`${hl.name(char.name)} earned ${hl.val(type)}: ${hl.val(overrides.name ?? "?")}`, 6000, true);
         });
 
         // ---------- EXP & level-ups ----------
-        wrapMethod(progression, "grantExp", ([characterId, amount], result) => {
+        wrapMethod(progression, "grantExp", ([characterId, amount, opts = {}], result) => {
+            if (opts?.silent) return; // manual EXP edit — user's own click
             if (!result?.applied) return;
             if (!allowed("notify_progression") || !actorAllowed(characterId)) return;
             const char = stateManager.getSheet(characterId);
             if (!char) return;
             if (result.levels > 0) {
                 const track = progression.trackOf(char);
-                statusBubble.notify(`${char.name} reached level ${track.level}! (${signed(amount)} EXP, ${track.skill_points} skill point(s) available)`, 8000);
+                statusBubble.notify(`${hl.name(char.name)} reached ${hl.pos(`level ${track.level}`)}! ${hl.pos(`${signed(amount)} EXP`)}, ${hl.dim(`${track.skill_points} skill point(s) available`)}`, 8000, true);
             } else {
-                statusBubble.notify(`${char.name} gained ${signed(amount)} EXP`);
+                statusBubble.notify(`${hl.name(char.name)} gained ${hl.pos(`${signed(amount)} EXP`)}`, 4000, true);
             }
         });
 
         // ---------- character states (death, knockout, recovery) ----------
-        wrapMethod(stateManager, "setState", ([idOrName, mode, reason], result) => {
+        wrapMethod(stateManager, "setState", ([idOrName, mode, reason, opts = {}], result) => {
+            if (opts?.silent) return; // manual state edit
             if (!result || !allowed("notify_states") || !actorAllowed(result.id)) return;
             if (mode === "dead") {
-                statusBubble.notify(`☠ ${result.name} has died${reason ? ` — ${reason}` : ""}`, 8000);
+                statusBubble.notify(`☠ ${hl.name(result.name)} has died${reason ? hl.dim(` — ${reason}`) : ""}`, 8000, true);
             } else if (mode === "ko") {
-                statusBubble.notify(`${result.name} was knocked out${reason ? ` — ${reason}` : ""}`, 6000);
+                statusBubble.notify(`${hl.name(result.name)} was knocked out${reason ? hl.dim(` — ${reason}`) : ""}`, 6000, true);
             } else {
-                statusBubble.notify(`${result.name}: ${mode}`, 6000);
+                statusBubble.notify(`${hl.name(result.name)}: ${hl.val(mode)}`, 6000, true);
             }
         });
-        wrapMethod(stateManager, "clearState", ([idOrName], result) => {
+        wrapMethod(stateManager, "clearState", ([idOrName, opts = {}], result) => {
+            if (opts?.silent) return; // manual revive — user's own click
             if (!result || !allowed("notify_states") || !actorAllowed(result.id)) return;
-            statusBubble.notify(`${result.name} recovered`);
+            statusBubble.notify(`${hl.name(result.name)} recovered`, 4000, true);
         });
 
         // ---------- status effects ----------
         wrapMethod(stateManager, "updateStatus", ([charId, { name, modifiers } = {}], ok) => {
             if (!ok || !allowed("notify_states") || !actorAllowed(charId)) return;
             const char = stateManager.getSheet(charId);
-            statusBubble.notify(`${char?.name ?? "?"}: ${name} applied${modifiers ? ` (${modifiers})` : ""}`);
+            statusBubble.notify(`${hl.name(char?.name ?? "?")}: ${hl.val(name)} applied${modifiers ? hl.dim(` (${modifiers})`) : ""}`, 4000, true);
         });
         wrapMethod(stateManager, "removeStatusByName", ([charId, name], ok) => {
             if (!ok || !allowed("notify_states") || !actorAllowed(charId)) return;
             const char = stateManager.getSheet(charId);
-            statusBubble.notify(`${char?.name ?? "?"}: ${name} ended`);
+            statusBubble.notify(`${hl.name(char?.name ?? "?")}: ${hl.val(name)} ended`, 4000, true);
         });
 
         logDebug("notifications: wired to state mutations");
