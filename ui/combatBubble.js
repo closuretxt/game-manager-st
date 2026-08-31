@@ -10,7 +10,14 @@
 // result tag to the player's message WITHOUT editing its text — the LLM
 // receives the resolved round through the high-priority injection instead.
 
+import { extension_settings } from "../../../../extensions.js";
+import { extensionName } from "../core/constants.js";
+
 const DICE_FACES = ["fa-dice-one", "fa-dice-two", "fa-dice-three", "fa-dice-four", "fa-dice-five", "fa-dice-six"];
+
+// Rich clash UI (setting): face-off titles, role chips, VS badges and
+// stronger side tints. Off = the simple layout — plain title, plain sides.
+const richUI = () => !!extension_settings[extensionName]?.combat_rich_clash_ui;
 
 class CombatBubble {
     constructor() {
@@ -21,6 +28,7 @@ class CombatBubble {
         this._faceIndex = 0;
         this._rollTimers = new Map(); // group index -> slot-machine interval
         this._closeTimer = null;
+        this._actionCount = 0; // stagger counter for the action strip
     }
 
     // Head icon cycles dice faces while the pipeline is rolling (same feel
@@ -34,6 +42,11 @@ class CombatBubble {
                 .removeClass(DICE_FACES.join(" "))
                 .addClass(DICE_FACES[this._faceIndex]);
         }, 130);
+    }
+
+    // Keeps the bubble pinned to the newest content as it streams in.
+    _scrollBottom() {
+        if (this.el) this.el.scrollTop(this.el[0].scrollHeight);
     }
 
     // Centers the bubble horizontally over the chat input bar, hugging its top edge.
@@ -52,6 +65,7 @@ class CombatBubble {
             top: "auto",
             right: "auto",
         });
+        this._scrollBottom();
     }
 
     _build(statusText) {
@@ -64,9 +78,18 @@ class CombatBubble {
         this.status = $("<span>").addClass("gm_dice_status").text(statusText || "");
         this.status.append($("<span>").addClass("gm_dice_shimmer"));
         this.head.append(this.icon, this.status);
+        // Persistent action strip lives ABOVE the group cards: a party column
+        // that starts alone (full width) and an enemy column that shoves in
+        // later. Actions never disappear once shown.
+        this.actionsEl = $("<div>").addClass("gm_combat_actions");
+        this.partyCol = $("<div>").addClass("gm_combat_actions_col gm_combat_actions_party");
+        this.actionsEl.append(this.partyCol);
         this.groupsEl = $("<div>").addClass("gm_combat_groups");
-        this.el.append(this.head, this.groupsEl);
+        this.el.append(this.head, this.actionsEl, this.groupsEl);
         this._groupEls = [];
+        this._actionCount = 0;
+        this.enemyCol = null;
+        if (richUI()) this.el.addClass("gm_rich");
         this._position();
         return this;
     }
@@ -83,41 +106,84 @@ class CombatBubble {
         return this;
     }
 
+    // Staged reveal, phase 1: the party's action cards stream in one by one
+    // (staggered slide-in) the moment the ALLY AI pass finishes — no waiting
+    // for the clash resolver.
+    showActions(partyActions) {
+        if (!this.el) return;
+        this.partyCol.empty();
+        this._actionCount = 0;
+        this._addActions(partyActions || [], "party");
+    }
+
+    // Phase 2: enemy cards push in after the ENEMY AI finishes — a second
+    // column whose flex-grow animates 0 -> 1, visibly SHOVING the party
+    // cards aside. Nothing is removed.
+    addEnemyActions(enemyActions) {
+        if (!this.el || !enemyActions?.length) return;
+        if (!this.enemyCol) {
+            this.enemyCol = $("<div>").addClass("gm_combat_actions_col gm_combat_actions_enemy");
+            this.enemyCol.css("flex-grow", 0.001);
+            // Rich mode: bold VS badge between the two facing columns.
+            if (richUI()) this.actionsEl.append($("<div>").addClass("gm_combat_vs").text("VS"));
+            this.actionsEl.append(this.enemyCol);
+            requestAnimationFrame(() => this.enemyCol.css("flex-grow", 1));
+        }
+        this._addActions(enemyActions, "enemy");
+    }
+
+    _addActions(actions, who) {
+        const col = who === "enemy" ? this.enemyCol : this.partyCol;
+        for (const a of actions) {
+            const card = $("<div>").addClass(`gm_combat_action_card gm_combat_action_card_${who}`);
+            // Header row (actor + speed) with the action text below at full
+            // card width — no skinny mid-column wrapping.
+            const head = $("<div>").addClass("gm_combat_card_head");
+            if (richUI()) head.append($("<span>").addClass("gm_combat_role").text(who === "enemy" ? "Enemy" : "Party"));
+            head.append(
+                $("<span>").addClass("gm_combat_actor").text(a.actor),
+                $("<span>").addClass("gm_combat_speed").text(`SPD ${a.speed}`),
+            );
+            card.append(head, $("<div>").addClass("gm_combat_action").text(a.action || ""));
+            card.css("animation-delay", `${((this._actionCount++) * 0.18).toFixed(2)}s`);
+            col.append(card);
+        }
+        if (actions.length) this._position();
+        this._scrollBottom();
+    }
+
     // Renders/refreshes the group cards from a (possibly partial) streamed
-    // group list. A card is rebuilt only when its tier count changed, so
-    // streaming tiers appear without flickering the rest.
+    // group list. The action strip above already shows who does what, so a
+    // group card is just its face-off title + chance tiers tweening in.
     syncGroups(groups) {
         if (!this.el || !Array.isArray(groups)) return;
         for (let i = 0; i < groups.length; i++) {
             const g = groups[i];
-            const sig = `${g.title}|${g.sides.length}|${g.tiers.length}`;
+            const sig = `${g.title}|${g.tiers.length}`;
             let entry = this._groupEls[i];
             if (!entry) {
                 const card = $("<div>").addClass("gm_combat_group");
-                card.append($("<div>").addClass("gm_combat_group_title").text(g.title));
-                const sides = $("<div>").addClass("gm_combat_sides");
-                for (const s of g.sides) {
-                    sides.append($("<div>").addClass(`gm_combat_side gm_combat_side_${s.who === "enemy" ? "enemy" : "party"}`).append(
-                        $("<div>").addClass("gm_combat_actor").text(s.actor),
-                        $("<div>").addClass("gm_combat_action").text(s.action || ""),
-                        $("<div>").addClass("gm_combat_speed").text(`SPD ${s.speed}`),
-                    ));
-                }
+                const title = $("<div>").addClass("gm_combat_group_title");
                 const tiers = $("<div>").addClass("gm_dice_tiers");
-                card.append(sides, tiers);
+                card.append(title, tiers);
                 this.groupsEl.append(card);
-                entry = { card, tiers, tierEls: new Map(), sig: "" };
+                entry = { card, title, tiers, tierEls: new Map(), titleText: "", sig: "" };
                 this._groupEls[i] = entry;
+            }
+            // The title streams in AFTER the card exists — refresh on change.
+            if (entry.titleText !== g.title) {
+                entry.titleText = g.title;
+                fillTitle(entry.title, g.title);
             }
             if (entry.sig === sig) continue;
             entry.sig = sig;
-            // Rebuilt rows would leave the slot-machine sweeping stale nodes.
+            // Tiers are only ADDED as they stream in (tweening one by one) —
+            // rebuilding rows would flicker and stale the slot-machine sweep.
             this.stopGroupRoll(i);
-            entry.tiers.empty();
-            entry.tierEls.clear();
             for (const tier of g.tiers) {
+                if (entry.tierEls.has(tier.name)) continue;
                 const pct = Math.max(0, Math.min(100, Math.round(Number(tier.chance) || 0)));
-                const row = $("<div>").addClass("gm_dice_tier");
+                const row = $("<div>").addClass("gm_dice_tier gm_tier_in");
                 const bar = $("<div>").addClass("gm_dice_tier_bar").css("width", "0%");
                 row.append(
                     $("<div>").addClass("gm_dice_tier_bar_wrap").append(bar),
@@ -208,6 +274,26 @@ class CombatBubble {
             el.addClass("gm_dice_fadeout");
             setTimeout(() => el.remove(), 400);
         }
+    }
+}
+
+// Renders the group title as a face-off: the "A vs B" pattern splits into a
+// green party half and a red enemy half around a small VS separator, so the
+// opposition reads at a glance instead of as one long text line.
+const VS_SPLIT = /\s+(?:vs\.?|versus)\s+/i;
+
+function fillTitle(el, title) {
+    el.empty();
+    // Face-off split only in rich mode; simple mode keeps the plain title.
+    const parts = richUI() ? String(title).split(VS_SPLIT) : [String(title)];
+    if (parts.length === 2) {
+        el.append(
+            $("<span>").addClass("gm_combat_title_side gm_combat_title_party").text(parts[0]),
+            $("<span>").addClass("gm_combat_title_vs").text("VS"),
+            $("<span>").addClass("gm_combat_title_side gm_combat_title_enemy").text(parts[1]),
+        );
+    } else {
+        el.text(title);
     }
 }
 

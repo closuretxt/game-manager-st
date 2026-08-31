@@ -107,7 +107,8 @@ export function extractStreamedClashes(partialText) {
         const attrs = parseAttrs(m[1]);
         const body = m[2] || "";
         const sides = [];
-        const sideRe = /<side\b([^>]*?)\/>/gi;
+        // Tolerates both self-closing <side .../> and <side ...></side>.
+        const sideRe = /<side\b([^>]*?)(?:\/>|>)/gi;
         let s;
         while ((s = sideRe.exec(body)) !== null) {
             const a = parseAttrs(s[1]);

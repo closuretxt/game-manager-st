@@ -69,6 +69,12 @@ function fallbackGroups(partyActions, enemyActions) {
     return [...partyActions.map(mk), ...enemyActions.map(mk)];
 }
 
+// Strips leaked markup from AI action text (models sometimes nest raw tags
+// inside the action body) and collapses whitespace.
+function cleanActionText(v) {
+    return String(v ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
 // Builds the party-side action list: the player's own action first, then the
 // ALLY AI's actions for the uncommanded members.
 function buildPartyActions(action, plan, allyActions) {
@@ -77,18 +83,22 @@ function buildPartyActions(action, plan, allyActions) {
         who: "party",
         actor: String(st.name1 || "Player"),
         speed: Number(plan?.combat?.speed) || 0,
-        action: String(action || "").replace(/\s+/g, " ").trim().slice(0, 120) || "Hold position",
+        action: cleanActionText(action).slice(0, 120) || "Hold position",
     };
     const allies = (allyActions || [])
         // Safety net: the ALLY AI already skips characters in a special
         // state, but never trust it.
         .filter(a => !stateManager.getStateOf(a.char))
-        .map(a => ({
-            who: "party",
-            actor: a.char,
-            speed: a.speed || speedHintOf(a.char),
-            action: [a.title, a.text].filter(Boolean).join(" — ").slice(0, 120),
-        }));
+        .map(a => {
+            const title = cleanActionText(a.title);
+            const text = cleanActionText(a.text);
+            return {
+                who: "party",
+                actor: a.char,
+                speed: a.speed || speedHintOf(a.char),
+                action: [title, text !== title ? text : ""].filter(Boolean).join(" — ").slice(0, 120),
+            };
+        });
     return [player, ...allies];
 }
 
@@ -97,12 +107,16 @@ function buildPartyActions(action, plan, allyActions) {
 function buildEnemyActions(enemyActions) {
     const d = stateManager.getData();
     if (enemyActions && enemyActions.length) {
-        return enemyActions.map(a => ({
-            who: "enemy",
-            actor: a.enemy,
-            speed: a.speed || speedHintOf(a.enemy),
-            action: [a.title, a.text].filter(Boolean).join(" — ").slice(0, 120),
-        }));
+        return enemyActions.map(a => {
+            const title = cleanActionText(a.title);
+            const text = cleanActionText(a.text);
+            return {
+                who: "enemy",
+                actor: a.enemy,
+                speed: a.speed || speedHintOf(a.enemy),
+                action: [title, text !== title ? text : ""].filter(Boolean).join(" — ").slice(0, 120),
+            };
+        });
     }
     logDebug("combatEngine: enemy AI unavailable — generic attacks");
     return (d.enemies || []).map(e => ({
@@ -146,10 +160,14 @@ export async function runCombatTurn(action, plan, mesId) {
         // allies hold position (a feature, not a crash).
         const allyActions = await runAllyAI({ playerAction: action });
         const partyActions = buildPartyActions(action, plan, allyActions);
+        // Phase 1: party action cards stream in right after the ALLY AI.
+        bubble.showActions(partyActions);
 
         // Side B — the enemy AI, blind to everything above.
         const enemyRaw = await runEnemyAI({ maxActions: Math.max(1, Number(s.combat_max_enemy_actions) || 6) });
         const enemyActions = buildEnemyActions(enemyRaw);
+        // Phase 2: enemy cards push in beside the party's.
+        bubble.addEnemyActions(enemyActions);
 
         bubble.update("Resolving clashes...");
 
