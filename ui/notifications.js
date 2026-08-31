@@ -93,26 +93,26 @@ export const notifications = {
             const d = Math.trunc(Number(opts.delta) || 0);
             const change = hasDelta ? (d >= 0 ? hl.pos(signed(opts.delta)) : hl.neg(signed(opts.delta))) : `→ ${hl.val(opts.value)}`;
             const now = entry ? hl.dim(` (now ${entry.value})`) : "";
-            statusBubble.notify(`${hl.name(char.name)} · ${hl.val(name)}: ${change}${now}`, 4000, true);
+            statusBubble.notify(`${hl.name(char.name)} · ${hl.val(name)}: ${change}${now}`, 14000, true);
         });
 
         // ---------- items ----------
         wrapMethod(stateManager, "addItem", ([charId, { name, qty = 1 } = {}], ok) => {
             if (!ok || !allowed("notify_items") || !actorAllowed(charId)) return;
             const char = stateManager.getSheet(charId);
-            statusBubble.notify(`${hl.name(char?.name ?? "?")} gained ${hl.val(name)} ${hl.pos(`x${signed(qty)}`)}`, 4000, true);
+            statusBubble.notify(`${hl.name(char?.name ?? "?")} gained ${hl.val(name)} ${hl.pos(`x${signed(qty)}`)}`, 14000, true);
         });
         wrapMethod(stateManager, "removeItem", ([charId, name, qty = null], ok) => {
             if (!ok || !allowed("notify_items") || !actorAllowed(charId)) return;
             const char = stateManager.getSheet(charId);
-            statusBubble.notify(`${hl.name(char?.name ?? "?")} lost ${hl.val(name)}${qty != null ? ` ${hl.neg(`x${qty}`)}` : ""}`, 4000, true);
+            statusBubble.notify(`${hl.name(char?.name ?? "?")} lost ${hl.val(name)}${qty != null ? ` ${hl.neg(`x${qty}`)}` : ""}`, 14000, true);
         });
 
         // ---------- skills used (cooldown started) ----------
         wrapMethod(stateManager, "useSkill", ([charId, skillName], ok) => {
             if (!ok || !allowed("notify_skills") || !actorAllowed(charId)) return;
             const char = stateManager.getSheet(charId);
-            statusBubble.notify(`${hl.name(char?.name ?? "?")} used ${hl.val(skillName)}`, 4000, true);
+            statusBubble.notify(`${hl.name(char?.name ?? "?")} used ${hl.val(skillName)}`, 14000, true);
         });
 
         // ---------- skills / passives earned (sheet entries added) ----------
@@ -123,7 +123,7 @@ export const notifications = {
             if (type !== "skill" && type !== "passive") return;
             if (!allowed("notify_skills") || !stateManager.getCharacter(characterId)) return;
             const char = stateManager.getCharacter(characterId);
-            statusBubble.notify(`${hl.name(char.name)} earned ${hl.val(type)}: ${hl.val(overrides.name ?? "?")}`, 6000, true);
+            statusBubble.notify(`${hl.name(char.name)} earned ${hl.val(type)}: ${hl.val(overrides.name ?? "?")}`, 16000, true);
         });
 
         // ---------- EXP & level-ups ----------
@@ -135,9 +135,9 @@ export const notifications = {
             if (!char) return;
             if (result.levels > 0) {
                 const track = progression.trackOf(char);
-                statusBubble.notify(`${hl.name(char.name)} reached ${hl.pos(`level ${track.level}`)}! ${hl.pos(`${signed(amount)} EXP`)}, ${hl.dim(`${track.skill_points} skill point(s) available`)}`, 8000, true);
+                statusBubble.notify(`${hl.name(char.name)} reached ${hl.pos(`level ${track.level}`)}! ${hl.pos(`${signed(amount)} EXP`)}, ${hl.dim(`${track.skill_points} skill point(s) available`)}`, 18000, true);
             } else {
-                statusBubble.notify(`${hl.name(char.name)} gained ${hl.pos(`${signed(amount)} EXP`)}`, 4000, true);
+                statusBubble.notify(`${hl.name(char.name)} gained ${hl.pos(`${signed(amount)} EXP`)}`, 14000, true);
             }
         });
 
@@ -146,29 +146,29 @@ export const notifications = {
             if (opts?.silent) return; // manual state edit
             if (!result || !allowed("notify_states") || !actorAllowed(result.id)) return;
             if (mode === "dead") {
-                statusBubble.notify(`☠ ${hl.name(result.name)} has died${reason ? hl.dim(` — ${reason}`) : ""}`, 8000, true);
+                statusBubble.notify(`☠ ${hl.name(result.name)} has died${reason ? hl.dim(` — ${reason}`) : ""}`, 18000, true);
             } else if (mode === "ko") {
-                statusBubble.notify(`${hl.name(result.name)} was knocked out${reason ? hl.dim(` — ${reason}`) : ""}`, 6000, true);
+                statusBubble.notify(`${hl.name(result.name)} was knocked out${reason ? hl.dim(` — ${reason}`) : ""}`, 16000, true);
             } else {
-                statusBubble.notify(`${hl.name(result.name)}: ${hl.val(mode)}`, 6000, true);
+                statusBubble.notify(`${hl.name(result.name)}: ${hl.val(mode)}`, 16000, true);
             }
         });
         wrapMethod(stateManager, "clearState", ([idOrName, opts = {}], result) => {
             if (opts?.silent) return; // manual revive — user's own click
             if (!result || !allowed("notify_states") || !actorAllowed(result.id)) return;
-            statusBubble.notify(`${hl.name(result.name)} recovered`, 4000, true);
+            statusBubble.notify(`${hl.name(result.name)} recovered`, 14000, true);
         });
 
         // ---------- status effects ----------
         wrapMethod(stateManager, "updateStatus", ([charId, { name, modifiers } = {}], ok) => {
             if (!ok || !allowed("notify_states") || !actorAllowed(charId)) return;
             const char = stateManager.getSheet(charId);
-            statusBubble.notify(`${hl.name(char?.name ?? "?")}: ${hl.val(name)} applied${modifiers ? hl.dim(` (${modifiers})`) : ""}`, 4000, true);
+            statusBubble.notify(`${hl.name(char?.name ?? "?")}: ${hl.val(name)} applied${modifiers ? hl.dim(` (${modifiers})`) : ""}`, 14000, true);
         });
         wrapMethod(stateManager, "removeStatusByName", ([charId, name], ok) => {
             if (!ok || !allowed("notify_states") || !actorAllowed(charId)) return;
             const char = stateManager.getSheet(charId);
-            statusBubble.notify(`${hl.name(char?.name ?? "?")}: ${hl.val(name)} ended`, 4000, true);
+            statusBubble.notify(`${hl.name(char?.name ?? "?")}: ${hl.val(name)} ended`, 14000, true);
         });
 
         logDebug("notifications: wired to state mutations");
