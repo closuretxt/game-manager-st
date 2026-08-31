@@ -1138,6 +1138,13 @@ textarea.gm_input {
     border: 1px solid color-mix(in srgb, var(--gm-ok, #4caf7d) 50%, transparent);
 }
 
+/* Registered custom property so the conic sweep on busy buttons can rotate. */
+@property --gm-busy-angle {
+    syntax: "<angle>";
+    initial-value: 0deg;
+    inherits: false;
+}
+
 /* ---------- Roster chips ---------- */
 .gm_roster_chips {
     display: flex;
@@ -1533,36 +1540,46 @@ textarea.gm_input {
     pointer-events: none;
 }
 
-/* Busy LLM button (Generating... / Refining...): spins the icon and sweeps
-   a shimmer across the button so the wait reads as "work in progress". */
+/* Busy LLM button (Generating... / Refining...): shakes the icon side to side
+   and runs a rotating light sweep around the button's outline so the wait
+   reads as "work in progress". */
 .menu_button.gm_busy {
     position: relative;
-    overflow: hidden;
+    /* Drop the static colored border (e.g. the green save outline) — the
+       rotating sweep replaces it while waiting. */
+    border-color: transparent !important;
 }
 
 .menu_button.gm_busy i {
-    animation: gm_busy_spin 1.1s linear infinite;
+    animation: gm_busy_shake 0.55s ease-in-out infinite;
 }
 
+/* Rotating outline: a conic light sweep clipped to the border ring. */
 .menu_button.gm_busy::after {
     content: "";
     position: absolute;
-    inset: 0;
-    background: linear-gradient(100deg,
-        transparent 30%,
-        color-mix(in srgb, var(--gm-accent, #ffffff) 22%, transparent) 50%,
-        transparent 70%);
-    transform: translateX(-100%);
-    animation: gm_busy_shimmer 1.5s ease-in-out infinite;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: conic-gradient(from var(--gm-busy-angle, 0deg),
+        transparent 0deg,
+        color-mix(in srgb, var(--gm-accent, #b8912f) 85%, transparent) 80deg,
+        transparent 160deg);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+            mask-composite: exclude;
+    animation: gm_busy_orbit 1.2s linear infinite;
     pointer-events: none;
 }
 
-@keyframes gm_busy_spin {
-    to { transform: rotate(360deg); }
+@keyframes gm_busy_shake {
+    0%, 100% { transform: translateX(-2px); }
+    50%      { transform: translateX(2px); }
 }
 
-@keyframes gm_busy_shimmer {
-    to { transform: translateX(100%); }
+@keyframes gm_busy_orbit {
+    to { --gm-busy-angle: 360deg; }
 }
 
 /* Inline feedback line for unlock attempts (why a node is locked). */
