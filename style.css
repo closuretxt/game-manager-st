@@ -1554,7 +1554,6 @@ textarea.gm_input {
 .gm_field_inline select {
     flex: 1;
 }
-}
 
 .gm_field_inline input[type="range"] {
     flex: 1;
@@ -2019,6 +2018,7 @@ textarea.gm_input {
     overflow: hidden;
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
 }
 
