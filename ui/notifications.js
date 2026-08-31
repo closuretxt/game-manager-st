@@ -48,10 +48,10 @@ function signed(n) {
 // bubble renders highlighted lines as HTML).
 function esc(v) {
     return String(v ?? "")
-        .replace(/&/g, "&")
-        .replace(/</g, "<")
-        .replace(/>/g, ">")
-        .replace(/"/g, """);
+        .replace(/&/g, "\u0026amp;")
+        .replace(/</g, "\u0026lt;")
+        .replace(/>/g, "\u0026gt;")
+        .replace(/"/g, "\u0026quot;");
 }
 
 // Inline highlight spans (styled in style.css under .gm_status_line).
