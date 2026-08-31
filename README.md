@@ -36,19 +36,19 @@ Knocked and death states, the pos-turn gamemaster is urged to provide knockouts 
 
 ## UI & Examples
 Skill Tree System (expands as you reach the end)
-![alt text](/docs/images/exampleskilltree.png)
+![alt text](https://github.com/closuretxt/closure-imgdump/blob/main/exampleskilltree.png)
 
 Clash resolver with multi-character and ally action.
-![alt text](/docs/images/Clashresolverexample.png)
+![alt text](https://github.com/closuretxt/closure-imgdump/blob/main/Clashresolverexample.png)
 
 Dice roller for one-sided actions and non-combat interactions.
-![alt text](/docs/images/ChanceTracking.png)
+![alt text](https://github.com/closuretxt/closure-imgdump/blob/main/ChanceTracking.png)
 
 Party UI.
-![alt text](/docs/images/PartyUI.png)
+![alt text](https://github.com/closuretxt/closure-imgdump/blob/main/PartyUI.png)
 
 Character details page (All values are customizeable)
-![alt text](/docs/images/CharacterDetails.png)
+![alt text](https://github.com/closuretxt/closure-imgdump/blob/main/CharacterDetails.png)
 
 ## Minimal injections
 As said before, your actual LLM just receives relevant information and they are split into high and low priorities. High priorities are intended to go with your author's note and low nested inside lorebooks.
