@@ -227,7 +227,6 @@ function buildUserPrompt(exchange, history = []) {
     );
     return blocks.join("\n");
 }
-}
 
 // Runs one agentic analysis pass for the message `mesId`. Returns the number
 // of applied changes.
