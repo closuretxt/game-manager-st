@@ -10,6 +10,7 @@ import { gmNotify } from "../core/debug.js";
 import { stateManager } from "../core/stateManager.js";
 import { progression } from "../core/progression.js";
 import { skillTree } from "../core/skillTree.js";
+import { fadeOutRemove } from "../util/fx.js";
 
 const TYPE_ICONS = {
     active: "fa-solid fa-bolt",
@@ -147,7 +148,7 @@ export const skillTreeView = {
 
     close() {
         if (!this._popup) return;
-        this._popup.overlay.remove();
+        fadeOutRemove(this._popup.overlay);
         this._popup = null;
     },
 
@@ -358,10 +359,10 @@ export const skillTreeView = {
 
         //
 
-        // Frontier fade: ghost bubbles drift below the last tier and dissolve
-        // into the background, so the tree reads as "continues downward"
-        // instead of dying at the frontier row.
-        const hues = [...new Set(rootColor.values())];
+        // Frontier fade: ghost bubbles drift below the last tier, linked to
+        // the frontier nodes by dashed inheritance lines, so the tree reads
+        // as "continues downward" instead of dying at the frontier row.
+        const lastRow = rows[rows.length - 1];
         const lastCy = rowCy(rows.length - 1);
         const ghosts = [
             { fx: 0.20, r: 13, o: 0.30, dy: 96 },
@@ -372,17 +373,50 @@ export const skillTreeView = {
             { fx: 0.55, r: 7, o: 0.12, dy: 152 },
         ];
         ghosts.forEach((g, i) => {
+            const gx = GUTTER + areaW * g.fx;
+            const gy = lastCy + g.dy;
+            // Each ghost hangs off the frontier node closest to its column,
+            // inheriting its hue — a dashed preview of the next tier.
+            let parent = lastRow[0];
+            let best = Infinity;
+            for (const n of lastRow) {
+                const d = Math.abs(pos.get(n.id).cx - gx);
+                if (d < best) { best = d; parent = n; }
+            }
+            const pp = pos.get(parent.id);
+            const hue = rootColor.get(parent.id) || "#8a8a95";
+            const gdx = gx - pp.cx;
+            const gdy = gy - pp.cy;
+            const glen = Math.hypot(gdx, gdy) || 1;
+            const gux = gdx / glen;
+            const guy = gdy / glen;
+            const line = document.createElementNS(SVG_NS, "line");
+            line.setAttribute("x1", pp.cx + gux * (pp.r + 2));
+            line.setAttribute("y1", pp.cy + guy * (pp.r + 2));
+            line.setAttribute("x2", gx - gux * (g.r + 2));
+            line.setAttribute("y2", gy - guy * (g.r + 2));
+            line.setAttribute("stroke", hue);
+            line.setAttribute("stroke-width", 1.5);
+            line.setAttribute("stroke-dasharray", "4 5");
+            line.setAttribute("stroke-opacity", 0.35);
+            svg.append(line);
+
             canvas.append($("<div>").addClass("gm_stree_ghost")
                 .css({
-                    left: GUTTER + areaW * g.fx - g.r,
-                    top: lastCy + g.dy - g.r,
+                    left: gx - g.r,
+                    top: gy - g.r,
                     width: g.r * 2,
                     height: g.r * 2,
-                    "--bc": hues[i % hues.length] || "#8a8a95",
+                    "--bc": hue,
                     "--go": g.o,
                     animationDelay: `${(i * 0.7).toFixed(1)}s`,
                 }));
         });
+
+        // "???" tier label in the gutter — the tier that doesn't exist yet.
+        canvas.append($("<div>").addClass("gm_stree_tier_label gm_stree_tier_unknown")
+            .css({ top: lastCy + 118 })
+            .text("???"));
         canvas.append($("<div>").addClass("gm_stree_fade"));
 
         p.canvasWrap.append(canvas);
@@ -569,10 +603,10 @@ export const skillTreeView = {
             .append($("<i>").addClass("fa-solid fa-sitemap"), $("<span>").text(" Generate"));
         const cancel = $("<div>").addClass("menu_button").text("Cancel");
 
-        const close = () => overlay.remove();
+        const close = () => fadeOutRemove(overlay);
         cancel.on("click", close);
         generate.on("click", async () => {
-            generate.addClass("disabled").find("span").text(" Generating...");
+            generate.addClass("disabled gm_busy").find("span").text(" Generating...");
             const nodes = await skillTree.generateSegment(char.id, String(textarea.val() || ""));
             if (!nodes) {
                 gmNotify("Skill tree generation failed — check the connection profile.", "error");
@@ -610,10 +644,10 @@ export const skillTreeView = {
         const go = $("<div>").addClass("menu_button gm_modal_save")
             .append($("<i>").addClass("fa-solid fa-wand-magic-sparkles"), $("<span>").text(" Refine"));
 
-        const close = () => overlay.remove();
+        const close = () => fadeOutRemove(overlay);
         cancel.on("click", close);
         go.on("click", async () => {
-            go.addClass("disabled").find("span").text(" Refining...");
+            go.addClass("disabled gm_busy").find("span").text(" Refining...");
             // Strip the last segment, then regenerate it with the feedback.
             // On failure the stripped segment is restored untouched.
             const keptNodes = tree.nodes.filter(n => !lastSegment.includes(n));

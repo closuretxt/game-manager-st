@@ -15,6 +15,7 @@ import { skillTree } from "../core/skillTree.js";
 import { skillTreeView } from "./skillTree.js";
 import { manualRun } from "../inject/postTurn.js";
 import { getCharacterAvatar, clearAvatarCache, uploadCharacterAvatar, deleteCharacterAvatar, resolveAvatar, extractDominantColor } from "../util/avatars.js";
+import { fadeOutRemove } from "../util/fx.js";
 import { settingsUI } from "./settingsUI.js";
 import { characterView } from "./characterView.js";
 import { customTab } from "./customTab.js";
@@ -754,7 +755,7 @@ class MainPanel {
         const guidelines = $("<textarea>").addClass("gm_modal_textarea").val(cfg.exp_guidelines || "")
             .attr("placeholder", "e.g. Trivial task ~5 EXP, minor victory ~25 EXP, boss ~120 EXP...");
 
-        const close = () => overlay.remove();
+        const close = () => fadeOutRemove(overlay);
         const save = () => {
             progression.setConfig({
                 enabled: enabled.prop("checked"),

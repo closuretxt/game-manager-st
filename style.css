@@ -61,6 +61,14 @@
     border-radius: 10px;
 }
 
+/* Left header group: title + the rerun button (kept far from the edit
+   toggle on the right so exiting edit mode never triggers a rerun). */
+#gm_window_left {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
 #gm_window_title {
     font-weight: 600;
     font-size: 12px;
@@ -1077,9 +1085,11 @@ textarea.gm_input {
     justify-content: center;
     background: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(2px);
+    animation: gm_overlay_in 0.18s ease-out;
 }
 
 .gm_modal {
+    animation: gm_popup_in 0.22s ease-out;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -1152,9 +1162,61 @@ textarea.gm_input {
     padding: 1px 3px;
 }
 
+/* ---------- popup motion ---------- */
+
+/* Fade-out on close: the overlay gets .gm_fade_out just before removal
+   (see fadeOutRemove in util/fx.js); the dialog scales down with it. */
+.gm_fade_out {
+    animation: gm_overlay_out 0.16s ease-in forwards;
+    pointer-events: none;
+}
+
+.gm_fade_out .gm_modal,
+.gm_fade_out .gm_stree,
+.gm_fade_out .gm_wizard_modal {
+    animation: gm_popup_out 0.16s ease-in forwards;
+}
+
+@keyframes gm_overlay_in {
+    from { opacity: 0; }
+}
+
+@keyframes gm_overlay_out {
+    to { opacity: 0; }
+}
+
+@keyframes gm_popup_in {
+    from {
+        opacity: 0;
+        transform: translateY(10px) scale(0.98);
+    }
+}
+
+@keyframes gm_popup_out {
+    to {
+        opacity: 0;
+        transform: translateY(6px) scale(0.98);
+    }
+}
+
+/* Icon breathing room: gm menu buttons pack an <i> before a <span>; keep a
+   consistent gap instead of relying on the leading space in the label. */
+#gm_floating_window .menu_button,
+#gm_settings_block .menu_button,
+.gm_modal_overlay .menu_button,
+.gm_wizard_modal .menu_button,
+#gm_dice_bubble .menu_button,
+#gm_combat_bubble .menu_button,
+#gm_status_bubble .menu_button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
 /* ---------- Scenario Setup Wizard / Character Creator modals ---------- */
 #gm_wizard_overlay,
 #gm_creator_overlay {
+    animation: gm_overlay_in 0.18s ease-out;
     position: fixed;
     inset: 0;
     z-index: 4000;
@@ -1168,6 +1230,7 @@ textarea.gm_input {
 }
 
 .gm_wizard_modal {
+    animation: gm_popup_in 0.22s ease-out;
     width: min(560px, 92vw);
     max-height: 86vh;
     display: flex;
@@ -1470,6 +1533,38 @@ textarea.gm_input {
     pointer-events: none;
 }
 
+/* Busy LLM button (Generating... / Refining...): spins the icon and sweeps
+   a shimmer across the button so the wait reads as "work in progress". */
+.menu_button.gm_busy {
+    position: relative;
+    overflow: hidden;
+}
+
+.menu_button.gm_busy i {
+    animation: gm_busy_spin 1.1s linear infinite;
+}
+
+.menu_button.gm_busy::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(100deg,
+        transparent 30%,
+        color-mix(in srgb, var(--gm-accent, #ffffff) 22%, transparent) 50%,
+        transparent 70%);
+    transform: translateX(-100%);
+    animation: gm_busy_shimmer 1.5s ease-in-out infinite;
+    pointer-events: none;
+}
+
+@keyframes gm_busy_spin {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes gm_busy_shimmer {
+    to { transform: translateX(100%); }
+}
+
 /* Inline feedback line for unlock attempts (why a node is locked). */
 .gm_tree_hint {
     font-size: 11px;
@@ -1485,6 +1580,7 @@ textarea.gm_input {
 }
 
 .gm_stree {
+    animation: gm_popup_in 0.22s ease-out;
     display: flex;
     flex-direction: column;
     width: min(960px, 96vw);
@@ -1580,15 +1676,31 @@ textarea.gm_input {
         color-mix(in srgb, var(--SmartThemeBlurTintColor, var(--SmartThemeBodyColor, #1a1a1a)) 75%, black));
 }
 
-/* Ghost bubbles drifting in the fade zone, tinted with the branch hues.
-   --bc carries the hue, --go the base opacity (see _renderTree). */
+/* Ghost bubbles drifting in the fade zone, tinted with the branch hue of
+   the frontier node they hang off. --bc carries the hue, --go the base
+   opacity (see _renderTree). Dashed rim = "not yet real". */
 .gm_stree_ghost {
     position: absolute;
     border-radius: 50%;
-    border: 2px solid var(--bc, #5a5a66);
+    border: 2px dashed var(--bc, #5a5a66);
     background: color-mix(in srgb, var(--bc, #5a5a66) 8%, transparent);
     pointer-events: none;
+    /* Base opacity matches the keyframes: without it a delayed animation
+       leaves the bubble fully visible until its first cycle kicks in. */
+    opacity: var(--go, 0.3);
     animation: gm_stree_ghost_float 4.5s ease-in-out infinite;
+    animation-fill-mode: backwards;
+}
+
+/* "???" tier label in the ghost zone — the tier that doesn't exist yet. */
+.gm_stree_tier_unknown {
+    font-style: italic;
+    animation: gm_stree_unknown_pulse 3s ease-in-out infinite;
+}
+
+@keyframes gm_stree_unknown_pulse {
+    0%, 100% { opacity: 0.22; }
+    50% { opacity: 0.5; }
 }
 
 @keyframes gm_stree_ghost_float {

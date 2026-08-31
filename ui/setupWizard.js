@@ -16,6 +16,7 @@ import { extensionName } from "../core/constants.js";
 import { gmNotify, logDebug } from "../core/debug.js";
 import { generateProposal, refineProposal, applyProposal } from "../core/setupWizard.js";
 import { captureModalScroll, restoreModalScroll } from "../util/scrollKeeper.js";
+import { fadeOutRemove } from "../util/fx.js";
 import { iconBtn } from "./characterView.js";
 import { sheetEditor } from "./sheetEditor.js";
 
@@ -110,7 +111,7 @@ export const setupWizard = {
     },
 
     close() {
-        $("#gm_wizard_overlay").remove();
+        fadeOutRemove($("#gm_wizard_overlay"));
         this._proposal = null;
     },
 
@@ -188,12 +189,12 @@ export const setupWizard = {
         const generate = $("<div>").addClass("menu_button gm_small_btn gm_accent_btn").append(
             $("<i>").addClass("fa-solid fa-wand-magic-sparkles"), $("<span>").text(" Generate Setup"));
         generate.on("click", async () => {
-            generate.addClass("disabled").find("span").text(" Generating...");
+            generate.addClass("disabled gm_busy").find("span").text(" Generating...");
             this._scenario = String(ta.val() || "").trim();
             const proposal = await generateProposal(this._scenario);
             if (!proposal) {
                 gmNotify("Setup generation failed — check the connection profile.", "error");
-                generate.removeClass("disabled").find("span").text(" Generate Setup");
+                generate.removeClass("disabled gm_busy").find("span").text(" Generate Setup");
                 return;
             }
             this._proposal = proposal;
@@ -423,11 +424,11 @@ export const setupWizard = {
             $("<i>").addClass("fa-solid fa-arrows-rotate"),
             $("<span>").text(this._refinements ? ` Refine Again (×${this._refinements})` : " Refine"));
         refineBtn.on("click", async () => {
-            refineBtn.addClass("disabled").find("span").text(" Refining...");
+            refineBtn.addClass("disabled gm_busy").find("span").text(" Refining...");
             const refined = await refineProposal(this._proposal, String(feedback.val() || "").trim(), this._scenario);
             if (!refined) {
                 gmNotify("Refinement failed — keeping the current proposal.", "error");
-                refineBtn.removeClass("disabled").find("span")
+                refineBtn.removeClass("disabled gm_busy").find("span")
                     .text(this._refinements ? ` Refine Again (×${this._refinements})` : " Refine");
                 return;
             }

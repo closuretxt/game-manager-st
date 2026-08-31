@@ -16,6 +16,7 @@ import { progression } from "../core/progression.js";
 import { CHARACTER_CONTAINERS, genId } from "../core/schemas.js";
 import { generateCharacterProposal, refineCharacterProposal } from "../core/characterGenerator.js";
 import { captureModalScroll, restoreModalScroll } from "../util/scrollKeeper.js";
+import { fadeOutRemove } from "../util/fx.js";
 import { settingsUI } from "./settingsUI.js";
 import { sheetEditor } from "./sheetEditor.js";
 import { iconBtn } from "./characterView.js";
@@ -50,7 +51,7 @@ export const characterCreator = {
     },
 
     close() {
-        $("#gm_creator_overlay").remove();
+        fadeOutRemove($("#gm_creator_overlay"));
         this._proposal = null;
     },
 
@@ -221,11 +222,11 @@ export const characterCreator = {
             gmNotify("Give the character a name first.", "error");
             return;
         }
-        btn.addClass("disabled").find("span").text(" Generating...");
+        btn.addClass("disabled gm_busy").find("span").text(" Generating...");
         const char = await generateCharacterProposal(this._brief());
         if (!char) {
             gmNotify("Character generation failed — check the connection profile.", "error");
-            btn.removeClass("disabled").find("span").text(" Generate");
+            btn.removeClass("disabled gm_busy").find("span").text(" Generate");
             return;
         }
         this._proposal = char;
@@ -279,11 +280,11 @@ export const characterCreator = {
             $("<i>").addClass("fa-solid fa-arrows-rotate"),
             $("<span>").text(this._refinements ? ` Refine Again (×${this._refinements})` : " Refine"));
         refineBtn.on("click", async () => {
-            refineBtn.addClass("disabled").find("span").text(" Refining...");
+            refineBtn.addClass("disabled gm_busy").find("span").text(" Refining...");
             const refined = await refineCharacterProposal(this._proposal, String(feedback.val() || "").trim(), this._brief());
             if (!refined) {
                 gmNotify("Refinement failed — keeping the current sheet.", "error");
-                refineBtn.removeClass("disabled").find("span")
+                refineBtn.removeClass("disabled gm_busy").find("span")
                     .text(this._refinements ? ` Refine Again (×${this._refinements})` : " Refine");
                 return;
             }

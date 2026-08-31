@@ -5,6 +5,7 @@ import { gmNotify, logDebug } from "../core/debug.js";
 import { CONTAINER_TYPES, GM_SCHEMA, defaultEntry } from "../core/schemas.js";
 import { stateManager } from "../core/stateManager.js";
 import { swapProfile } from "../util/profileSwapper.js";
+import { fadeOutRemove } from "../util/fx.js";
 import { getConnectionProfiles, getProfileNameById, resolveConnectionProfile } from "../util/connectionService.js";
 
 export const settingsUI = {
@@ -81,7 +82,7 @@ export const settingsUI = {
         const postArea = $("<textarea>").addClass("gm_modal_textarea").val(s.custom_instructions.post || "")
             .attr("placeholder", "Standing instructions for the POST-PASS tracker (applies state changes)...");
 
-        const close = () => overlay.remove();
+        const close = () => fadeOutRemove(overlay);
         const save = () => {
             s.custom_instructions.pre = String(preArea.val() || "");
             s.custom_instructions.post = String(postArea.val() || "");
