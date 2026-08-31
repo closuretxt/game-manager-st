@@ -12,6 +12,7 @@ import { gmNotify, logDebug } from "../core/debug.js";
 import { stateManager } from "../core/stateManager.js";
 import { CHARACTER_CONTAINERS, genId } from "../core/schemas.js";
 import { generateCharacterProposal, refineCharacterProposal } from "../core/characterGenerator.js";
+import { captureModalScroll, restoreModalScroll } from "../util/scrollKeeper.js";
 import { settingsUI } from "./settingsUI.js";
 import { sheetEditor } from "./sheetEditor.js";
 import { iconBtn } from "./characterView.js";
@@ -73,6 +74,8 @@ export const characterCreator = {
     },
 
     _overlay() {
+        // Keep the scroll position alive across the rebuild (see scrollKeeper).
+        captureModalScroll("gm_creator_overlay");
         $("#gm_creator_overlay").remove();
         const overlay = $("<div>").attr("id", "gm_creator_overlay");
         const modal = $("<div>").addClass("gm_wizard_modal");
@@ -274,6 +277,7 @@ export const characterCreator = {
         body.append(actions);
 
         modal.append(body);
+        restoreModalScroll("gm_creator_overlay");
     },
 
     //

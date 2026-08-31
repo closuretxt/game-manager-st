@@ -15,6 +15,7 @@ import { saveSettingsDebounced } from "../../../../../script.js";
 import { extensionName } from "../core/constants.js";
 import { gmNotify, logDebug } from "../core/debug.js";
 import { generateProposal, refineProposal, applyProposal } from "../core/setupWizard.js";
+import { captureModalScroll, restoreModalScroll } from "../util/scrollKeeper.js";
 import { iconBtn } from "./characterView.js";
 import { sheetEditor } from "./sheetEditor.js";
 
@@ -122,6 +123,8 @@ export const setupWizard = {
     _overlay() {
         // Replace the overlay element WITHOUT going through close() — close()
         // nulls this._proposal, which the review step still needs.
+        // Keep the scroll position alive across the rebuild (see scrollKeeper).
+        captureModalScroll("gm_wizard_overlay");
         $("#gm_wizard_overlay").remove();
         const overlay = $("<div>").attr("id", "gm_wizard_overlay");
         const modal = $("<div>").addClass("gm_wizard_modal");
@@ -354,7 +357,7 @@ export const setupWizard = {
             const addProg = $("<div>").addClass("menu_button gm_small_btn").append(
                 $("<i>").addClass("fa-solid fa-arrow-trend-up"), $("<span>").text(" Add progression"));
             addProg.on("click", () => {
-                p.progression = { enabled: true, exp_base: 100, exp_growth: 1.25, skill_points_per_level: 1, bonus_every: 5, exp_guidelines: "" };
+                p.progression = { enabled: true, exp_base: 100, exp_growth: 1.25, skill_points_per_level: 1, bonus_every: 5, attr_points_per_level: 0, attr_cost_every: 10, attr_starting_budget: 20, exp_guidelines: "" };
                 this._renderReview();
             });
             progWrap.append($("<div>").addClass("gm_empty").text("No progression proposed."), addProg);
@@ -384,6 +387,9 @@ export const setupWizard = {
             row.append(num("exp_growth", "EXP growth per level (multiplier)", 1, 0.01));
             row.append(num("skill_points_per_level", "Skill points per level", 0, 1));
             row.append(num("bonus_every", "Bonus point every N levels (0 = off)", 0, 1));
+            row.append(num("attr_points_per_level", "Attribute points per level (0 = off)", 0, 1));
+            row.append(num("attr_cost_every", "Attribute cost growth: +1 cost per N current value (0 = flat)", 0, 1));
+            row.append(num("attr_starting_budget", "Starting attribute budget (total points at level 1)", 0, 1));
             const del = iconBtn("fa-solid fa-trash").attr("title", "Remove progression");
             del.on("click", () => {
                 delete p.progression;
@@ -490,5 +496,6 @@ export const setupWizard = {
         body.append(actions);
 
         modal.append(body);
+        restoreModalScroll("gm_wizard_overlay");
     },
 };

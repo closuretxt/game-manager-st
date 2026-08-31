@@ -37,7 +37,7 @@ const RESPONSE_SHAPE = [
     '  <ally name="..." note="<one line: who they are, why they matter>"/>',
     '  <shared name="Dinheiro" qty="150" description="..." always_inject="false"/>',
     '  <custom name="Seeds" value="Pouch" description="..."/>',
-    '  <progression enabled="true" exp_base="100" exp_growth="1.25" skill_points="1" bonus_every="5">EXP guidelines: how much EXP trivial actions, minor victories and major challenges give</progression>',
+    '  <progression enabled="true" exp_base="100" exp_growth="1.25" skill_points="1" bonus_every="5" attr_points="0" attr_cost_every="10" attr_starting_budget="20">EXP guidelines: how much EXP trivial actions, minor victories and major challenges give</progression>',
     '  <warning name="Food" text="<under 15 words, imminent need>"/>',
     "</setup>",
 ].join("\n");
@@ -60,7 +60,7 @@ const SYSTEM_PROMPT_HEADER = [
     "- warnings are minimalist imminent-need remarks about the PARTY AS A WHOLE (food, water, approaching danger), under 15 words. They never describe one character's personal state.",
     "- OWNERSHIP TEST — apply to EVERY shared/custom/warning entry: if it is about ONE named character (their hunger, health, mood, condition, stats), it belongs on THAT character's sheet as a resource/attribute/status — NEVER in a party-wide section. Party-wide entries must be true for the whole group and must not name a single character. 'Hunger — Cerberos is starving' is WRONG: it is a Hunger resource on Cerberos's sheet (or, only if the ENTIRE party shares the need, a nameless party-wide warning).",
     "- If the scenario implies survival pressure (food, water, enemies, territory), make it tangible through sharedResources + warnings for the group, and per-character resources/statuses for individual states. If it is purely casual, keep the setup minimal.",
-    "- PROGRESSION: include <progression> ONLY when the scenario implies growth over time (combat, leveling, long campaigns). Calibrate exp_base (EXP for the first level-up) and exp_growth (multiplier per level) to the world's pace, set skill_points per level (bonus_every: +1 extra point every N levels, 0 = off), and write plain-language EXP guidelines as the tag's text (how much EXP trivial actions, minor victories and major challenges give). Omit the tag for purely casual scenarios.",
+    "- PROGRESSION: include <progression> ONLY when the scenario implies growth over time (combat, leveling, long campaigns). Calibrate exp_base (EXP for the first level-up) and exp_growth (multiplier per level) to the world's pace, set skill_points per level (bonus_every: +1 extra point every N levels, 0 = off), and write plain-language EXP guidelines as the tag's text (how much EXP trivial actions, minor victories and major challenges give). Attribute points are a second currency the PLAYER spends to raise attributes: attr_points per level (0 = off), attr_cost_every (raising costs +1 extra point per N current value, 0 = flat), attr_starting_budget (the TOTAL attribute points a fresh level-1 character should have — calibrate party starting attributes to roughly this sum). Omit the tag for purely casual scenarios.",
     "- Omit tags that do not apply (an empty <setup> is valid). Never invent entries outside the given shapes.",
 ].join("\n");
 
@@ -209,6 +209,9 @@ export function sanitizeProposal(parsed) {
             exp_growth: num(raw.exp_growth, 1.25, 1),
             skill_points_per_level: num(raw.skill_points ?? raw.skill_points_per_level, 1, 0),
             bonus_every: num(raw.bonus_every, 5, 0),
+            attr_points_per_level: num(raw.attr_points ?? raw.attr_points_per_level, 0, 0),
+            attr_cost_every: num(raw.attr_cost_every, 10, 0),
+            attr_starting_budget: num(raw.attr_starting_budget, 20, 0),
             exp_guidelines: String(raw.exp_guidelines || "").slice(0, 600),
         };
     }
@@ -282,6 +285,9 @@ export function parseSetupXml(text) {
             exp_growth: pa.exp_growth,
             skill_points: pa.skill_points ?? pa.skill_points_per_level,
             bonus_every: pa.bonus_every,
+            attr_points: pa.attr_points ?? pa.attr_points_per_level,
+            attr_cost_every: pa.attr_cost_every,
+            attr_starting_budget: pa.attr_starting_budget,
             exp_guidelines: (progMatch[2] ?? "").trim(),
         };
     }
@@ -380,7 +386,7 @@ function proposalToPromptXml(p) {
     for (const w of p.warnings || []) lines.push(`  <warning name="${escAttr(w.name)}" text="${escAttr(w.text)}"/>`);
     if (p.progression) {
         const g = p.progression;
-        lines.push(`  <progression enabled="${g.enabled !== false ? "true" : "false"}" exp_base="${escAttr(g.exp_base)}" exp_growth="${escAttr(g.exp_growth)}" skill_points="${escAttr(g.skill_points_per_level)}" bonus_every="${escAttr(g.bonus_every)}">${escAttr(g.exp_guidelines || "")}</progression>`);
+        lines.push(`  <progression enabled="${g.enabled !== false ? "true" : "false"}" exp_base="${escAttr(g.exp_base)}" exp_growth="${escAttr(g.exp_growth)}" skill_points="${escAttr(g.skill_points_per_level)}" bonus_every="${escAttr(g.bonus_every)}" attr_points="${escAttr(g.attr_points_per_level)}" attr_cost_every="${escAttr(g.attr_cost_every)}" attr_starting_budget="${escAttr(g.attr_starting_budget)}">${escAttr(g.exp_guidelines || "")}</progression>`);
     }
     lines.push("</setup>");
     return lines.join("\n");

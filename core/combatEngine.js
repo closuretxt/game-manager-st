@@ -37,6 +37,17 @@ function esc(v) {
 
 // Generic 4-tier set for the degraded path (clash resolver failed): every
 // action is resolved single-sided with neutral chances.
+// Code-owned initiative hint: when an AI pass leaves speed at 0, derive it
+// from a Dexterity-like attribute so attribute points visibly win initiative
+// instead of relying purely on LLM judgment.
+const SPEED_ATTR_RE = /dex|agi|reflex|quickness|initiative|haste|speed/i;
+function speedHintOf(name) {
+    const sheet = stateManager.getSheet(name);
+    if (!sheet) return 0;
+    const attr = (sheet.attributes || []).find(a => SPEED_ATTR_RE.test(String(a.name)));
+    return attr ? Math.max(0, Math.trunc(Number(attr.value) || 0)) : 0;
+}
+
 function genericTiers(actor, action) {
     return [
         { name: "Critical Failure", chance: 10, outcome: `${actor}'s ${action} goes horribly wrong` },
@@ -74,7 +85,7 @@ function buildPartyActions(action, plan, allyActions) {
         .map(a => ({
             who: "party",
             actor: a.char,
-            speed: a.speed,
+            speed: a.speed || speedHintOf(a.char),
             action: [a.title, a.text].filter(Boolean).join(" — ").slice(0, 120),
         }));
     return [player, ...allies];
@@ -88,7 +99,7 @@ function buildEnemyActions(enemyActions) {
         return enemyActions.map(a => ({
             who: "enemy",
             actor: a.enemy,
-            speed: a.speed,
+            speed: a.speed || speedHintOf(a.enemy),
             action: [a.title, a.text].filter(Boolean).join(" — ").slice(0, 120),
         }));
     }
@@ -96,7 +107,7 @@ function buildEnemyActions(enemyActions) {
     return (d.enemies || []).map(e => ({
         who: "enemy",
         actor: e.name,
-        speed: 0,
+        speed: speedHintOf(e.name),
         action: "Attack",
     }));
 }

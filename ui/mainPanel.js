@@ -676,6 +676,9 @@ class MainPanel {
         const expGrowth = numInput(cfg.exp_growth, 1, 0.01);
         const spPerLevel = numInput(cfg.skill_points_per_level, 0, 1);
         const bonusEvery = numInput(cfg.bonus_every, 0, 1);
+        const attrPerLevel = numInput(cfg.attr_points_per_level, 0, 1);
+        const attrCostEvery = numInput(cfg.attr_cost_every, 0, 1);
+        const attrStartBudget = numInput(cfg.attr_starting_budget, 0, 1);
         const guidelines = $("<textarea>").addClass("gm_modal_textarea").val(cfg.exp_guidelines || "")
             .attr("placeholder", "e.g. Trivial task ~5 EXP, minor victory ~25 EXP, boss ~120 EXP...");
 
@@ -687,6 +690,9 @@ class MainPanel {
                 exp_growth: Math.max(1, Number(expGrowth.val()) || 1.25),
                 skill_points_per_level: Math.max(0, Math.trunc(Number(spPerLevel.val()) || 0)),
                 bonus_every: Math.max(0, Math.trunc(Number(bonusEvery.val()) || 0)),
+                attr_points_per_level: Math.max(0, Math.trunc(Number(attrPerLevel.val()) || 0)),
+                attr_cost_every: Math.max(0, Math.trunc(Number(attrCostEvery.val()) || 0)),
+                attr_starting_budget: Math.max(0, Math.trunc(Number(attrStartBudget.val()) || 0)),
                 exp_guidelines: String(guidelines.val() || ""),
             });
             gmNotify("Progression config saved.", "success");
@@ -705,6 +711,12 @@ class MainPanel {
             spPerLevel,
             $("<label>").text("Bonus point every N levels (0 = off)"),
             bonusEvery,
+            $("<label>").text("Attribute points per level (0 = off)"),
+            attrPerLevel,
+            $("<label>").text("Attribute cost growth: +1 cost per N current value (0 = flat)"),
+            attrCostEvery,
+            $("<label>").text("Starting attribute budget (total points at level 1 — anchors generation)"),
+            attrStartBudget,
             $("<label>").text("EXP guidelines for the post-pass LLM"),
             guidelines,
             $("<div>").addClass("gm_modal_actions").append(
@@ -723,6 +735,9 @@ class MainPanel {
         wrap.append($("<span>").addClass("gm_level_badge").text(`Lv ${track.level}`));
         if (track.skill_points > 0) {
             wrap.append($("<span>").addClass("gm_points_chip").text(`${track.skill_points} SP`));
+        }
+        if (track.attr_points > 0) {
+            wrap.append($("<span>").addClass("gm_points_chip").attr("title", "Unspent attribute points").text(`${track.attr_points} AP`));
         }
         return wrap;
     }

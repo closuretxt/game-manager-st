@@ -143,6 +143,7 @@ async function buildSystemPrompt(exchange = []) {
         "Use <use_skills> whenever a character ACTIVELY used one of their listed skills during the exchange: one <skill name=\"...\"/> per skill used, scoped with <char>. The system starts cooldowns automatically — NEVER report or compute cooldowns yourself, and NEVER report a skill marked on_cooldown (it could not have been used). Passives are always active: never report them.",
         ...(prog ? [
             "Use <grant_exp> when a character clearly EARNED experience during the exchange (overcoming a challenge, a victory, a meaningful accomplishment) — one <exp amount=\"...\"/> per character, scoped with <char>. The system computes level-ups and skill points automatically — NEVER report or compute levels yourself. Grant EXP by your own accord, at a pace calibrated by the EXP GUIDELINES below; skip the block when nothing noteworthy happened.",
+            "ATTRIBUTE MILESTONES are RARE narrative beats (a permanent injury, a breakthrough, divine favor) — most attribute growth comes from the PLAYER spending attribute points. Never raise attributes routinely or as a substitute for level-ups.",
             ...(String(progression.getConfig().exp_guidelines || "").trim()
                 ? [`EXP GUIDELINES (calibration for <grant_exp> amounts): ${progression.getConfig().exp_guidelines.trim()}`]
                 : []),

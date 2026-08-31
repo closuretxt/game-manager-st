@@ -9,6 +9,7 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
+import { progression } from "./progression.js";
 import { CHARACTER_CONTAINERS } from "./schemas.js";
 import { parseSetupXml, sanitizeProposal, characterToXml, fieldKeysFor, recentChatLines } from "./setupWizard.js";
 import { sendRequestViaProfile, resolveWizardProfile } from "../util/connectionService.js";
@@ -82,6 +83,20 @@ async function runCharLLM(systemPrompt, userContent, name) {
     return char;
 }
 
+// Progression anchoring: when the scenario has progression, generated
+// characters receive a level-appropriate attribute budget so enemies spawn
+// as real peers for the party — the numbers are code-owned, the LLM only
+// distributes them across attribute names.
+function progressionBlocks() {
+    if (!progression.isEnabled()) return [];
+    const level = progression.partyLevel();
+    const budget = progression.attrBudgetForLevel(level);
+    return [
+        "PROGRESSION ACTIVE: the party is around level " + level + ".",
+        `Calibrate THIS character's total attribute points to roughly ${budget} (the expected budget for level ${level}) — a rival or boss may exceed it, a weak minion fall well short. Scale starting resources (Health and similar) proportionately for stronger or weaker characters.`,
+    ];
+}
+
 // Brief blocks shared by generation and refinement: field shapes, existing
 // names, recent chat and the character brief (+ references when given).
 function briefBlocks({ name, details, references }) {
@@ -93,6 +108,7 @@ function briefBlocks({ name, details, references }) {
     };
     const blocks = [
         `ENTRY FIELD SHAPES: resource {${fieldKeysFor("resource")}}, attribute {${fieldKeysFor("attribute")}}, item {${fieldKeysFor("item")}}, skill {${fieldKeysFor("skill")}}, passive {${fieldKeysFor("passive")}} (ptype: special|stat), status {${fieldKeysFor("status")}}.`,
+        ...progressionBlocks(),
         "",
         `EXISTING SETUP (names only — the new character must not duplicate them): ${JSON.stringify(existing)}`,
         "",
