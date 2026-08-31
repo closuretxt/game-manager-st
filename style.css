@@ -799,12 +799,16 @@ textarea.gm_input {
     animation: gm_dice_in 0.25s ease-out both;
 }
 
+/* Fade-out is an ANIMATION, not a transition: a new animation fully replaces
+   the gm_dice_in fill (both), which would otherwise keep forcing opacity: 1
+   and suppress the fade. */
 #gm_status_bubble.gm_dice_fadeout {
-    opacity: 0;
-    transition: opacity 0.35s ease;
-    /* The gm_dice_in fill (both) keeps forcing opacity: 1 and overrides
-       transitions — drop it or the fade never renders. */
-    animation: none;
+    animation: gm_bubble_out 0.35s ease both;
+}
+
+@keyframes gm_bubble_out {
+    from { opacity: 1; }
+    to { opacity: 0; }
 }
 
 
@@ -894,11 +898,12 @@ textarea.gm_input {
 /* Notification bubbles fade out slower, drifting slightly downward —
    pipeline bubbles keep the quick fade (gm_dice_fadeout). */
 #gm_status_bubble.gm_note_fadeout {
-    opacity: 0;
-    transform: translateY(8px);
-    transition: opacity 0.6s ease, transform 0.6s ease;
-    /* Same gm_dice_in fill conflict as above. */
-    animation: none;
+    animation: gm_note_out 0.6s ease both;
+}
+
+@keyframes gm_note_out {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(8px); }
 }
 
 .gm_status_done .gm_status_text {
