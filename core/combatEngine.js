@@ -68,9 +68,9 @@ function buildPartyActions(action, plan, allyActions) {
         action: String(action || "").replace(/\s+/g, " ").trim().slice(0, 120) || "Hold position",
     };
     const allies = (allyActions || [])
-        // Safety net: the ALLY AI already skips the dead and the knocked out,
-        // but never trust it.
-        .filter(a => !stateManager.isDead(a.char) && !stateManager.isKnockedOut(a.char))
+        // Safety net: the ALLY AI already skips characters in a special
+        // state, but never trust it.
+        .filter(a => !stateManager.getStateOf(a.char))
         .map(a => ({
             who: "party",
             actor: a.char,

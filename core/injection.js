@@ -14,7 +14,7 @@
 // Everything here is gated by the feature_injection setting in the macros.
 
 import { extension_settings } from "../../../../extensions.js";
-import { extensionName } from "./constants.js";
+import { extensionName, CHARACTER_STATES } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 
@@ -132,15 +132,13 @@ export function buildLowPriority() {
         }
     }
 
-    // Dead party members: the story engine must never use them again.
-    // Knocked-out members: down until they recover — the story engine must
-    // not have them act, and may ease the scene toward rest or a timeskip.
+    // Characters in a special state: the story engine must respect them
+    // (dead = never use again; knocked out = down until recovery, and the
+    // scene may ease toward rest or a timeskip).
     for (const c of d.characters || []) {
-        if (c.dead === true) {
-            parts.push(`  <character name="${esc(c.name)}" status="dead"${c.death_reason ? ` reason="${esc(c.death_reason)}"` : ""}/>`);
-        } else if (c.knocked_out === true) {
-            parts.push(`  <character name="${esc(c.name)}" status="knocked_out"${c.ko_reason ? ` reason="${esc(c.ko_reason)}"` : ""}/>`);
-        }
+        const mode = c.state ? CHARACTER_STATES[c.state.mode] : null;
+        if (!mode) continue;
+        parts.push(`  <character name="${esc(c.name)}" status="${mode.status}"${c.state.reason ? ` reason="${esc(c.state.reason)}"` : ""}/>`);
     }
 
     // Context-based enemies: compact state summary, only when the feature is

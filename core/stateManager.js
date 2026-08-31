@@ -5,7 +5,7 @@
 
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { saveSettingsDebounced } from "../../../../../script.js";
-import { extensionName } from "./constants.js";
+import { extensionName, CHARACTER_STATES } from "./constants.js";
 import { CHARACTER_CONTAINERS, GM_SCHEMA, defaultEntry, genId } from "./schemas.js";
 import { logDebug } from "./debug.js";
 
@@ -112,13 +112,9 @@ export const stateManager = {
             }
             _normalizeProgression(c);
             _normalizeSkillTree(c);
-            // Death flag: absent/false = alive (keeps old chats clean). The
-            // reason only exists while dead.
-            c.dead = c.dead === true;
-            if (!c.dead) delete c.death_reason;
-            // Knockout flag: absent/false = conscious (keeps old chats clean).
-            c.knocked_out = c.knocked_out === true;
-            if (!c.knocked_out) delete c.ko_reason;
+            // State slot (death, knockout, ...): single generic { mode, reason }.
+            // Absent = no special state.
+            if (!c.state || !CHARACTER_STATES[c.state.mode]) delete c.state;
             // Migration: custom features used to be per-character, now party-wide.
             if (Array.isArray(c.custom) && c.custom.length) {
                 d.custom.push(...c.custom);
@@ -319,58 +315,38 @@ export const stateManager = {
         return this.addCharacter(entry.name, entry.sheet || null);
     },
 
-    // ---------- death (permadeath) ----------
-    // Death is a flag, not a container: the LLM reports it via <deaths>,
-    // only the user (edit mode) can reverse it.
+    // ---------- character states (death, knockout, ...) ----------
+    // One generic state slot per character: { mode, reason }. Modes live in
+    // CHARACTER_STATES (core/constants.js) — a new incapacitation state is a
+    // registry entry, not a new flag threaded through every subsystem. The
+    // LLM reports states via <deaths>/<knockouts>; llm_clearable modes are
+    // also cleared by the LLM (<ko_clear>), others only by the user.
+    getStateOf(idOrName) {
+        const c = this.getCharacter(idOrName);
+        return c?.state || null;
+    },
+
     isDead(idOrName) {
-        const c = this.getCharacter(idOrName);
-        return !!c?.dead;
+        return this.getStateOf(idOrName)?.mode === "dead";
     },
 
-    setDead(idOrName, reason = "") {
+    setState(idOrName, mode, reason = "") {
         const c = this.getCharacter(idOrName);
-        if (!c || c.dead === true) return null;
-        c.dead = true;
-        c.death_reason = String(reason || "").slice(0, 160);
+        if (!c || !CHARACTER_STATES[mode] || c.state) return null;
+        c.state = { mode, reason: String(reason || "").slice(0, 160) };
         // The dead hold no cooldowns.
-        for (const skill of c.skills || []) skill.cooldown_left = 0;
-        this.emitChange("char_death");
+        if (mode === "dead") {
+            for (const skill of c.skills || []) skill.cooldown_left = 0;
+        }
+        this.emitChange("char_state");
         return c;
     },
 
-    reviveChar(idOrName) {
+    clearState(idOrName) {
         const c = this.getCharacter(idOrName);
-        if (!c || c.dead !== true) return null;
-        c.dead = false;
-        delete c.death_reason;
-        this.emitChange("char_revive");
-        return c;
-    },
-
-    // ---------- knockout (recoverable unconsciousness) ----------
-    // Like death, a flag rather than a container — but recoverable: the LLM
-    // reports it via <knockouts> and clears it via <ko_clear> (rest, timeskip,
-    // recovery), where death only the user can reverse.
-    isKnockedOut(idOrName) {
-        const c = this.getCharacter(idOrName);
-        return !!c?.knocked_out;
-    },
-
-    setKnockedOut(idOrName, reason = "") {
-        const c = this.getCharacter(idOrName);
-        if (!c || c.dead === true || c.knocked_out === true) return null;
-        c.knocked_out = true;
-        c.ko_reason = String(reason || "").slice(0, 160);
-        this.emitChange("char_knockout");
-        return c;
-    },
-
-    clearKnockedOut(idOrName) {
-        const c = this.getCharacter(idOrName);
-        if (!c || c.knocked_out !== true) return null;
-        c.knocked_out = false;
-        delete c.ko_reason;
-        this.emitChange("char_recover");
+        if (!c || !c.state) return null;
+        c.state = null;
+        this.emitChange("char_state_clear");
         return c;
     },
 

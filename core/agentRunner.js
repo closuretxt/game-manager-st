@@ -14,7 +14,7 @@
 
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { generateRaw, substituteParams } from "../../../../../script.js";
-import { extensionName } from "./constants.js";
+import { extensionName, CHARACTER_STATES } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { progression } from "./progression.js";
@@ -38,16 +38,15 @@ function buildStateSummaryXml() {
     const prog = progression.isEnabled();
 
     const actorXml = (c, tag) => {
-        // The agent must see deaths so it never "heals" a corpse or keeps
-        // treating the dead as actors.
-        if (c.dead === true) {
-            return `  <${tag} name="${escAttr(c.name)}" dead="true"${c.death_reason ? ` reason="${escAttr(c.death_reason)}"` : ""}/>`;
+        // The agent must see states so it never "heals" a corpse or keeps
+        // treating the incapacitated as actors. Non-recoverable states collapse
+        // the entry entirely; recoverable ones keep the sheet (they can come
+        // back) flagged with state="<mode>".
+        if (c.state && !CHARACTER_STATES[c.state.mode]?.llm_clearable) {
+            return `  <${tag} name="${escAttr(c.name)}" state="${c.state.mode}"${c.state.reason ? ` reason="${escAttr(c.state.reason)}"` : ""}/>`;
         }
         const attrs = [`name="${escAttr(c.name)}"`];
-        // Knocked-out actors keep their sheets (they can recover) but cannot
-        // act until the flag clears.
-        if (c.knocked_out === true) attrs.push('ko="true"');
-        if (c.knocked_out === true && c.ko_reason) attrs.push(`ko_reason="${escAttr(c.ko_reason)}"`);
+        if (c.state) attrs.push(`state="${c.state.mode}"`);
         if (prog) {
             const track = progression.trackOf(c);
             attrs.push(`level="${track.level}"`, `exp="${track.exp}/${progression.expToNext(track.level)}"`, `sp="${track.skill_points}"`);
@@ -137,7 +136,7 @@ async function buildSystemPrompt(exchange = []) {
         "Use <threads> to leave notes to yourself about UNTRACKED or UNFINISHED things the formal containers cannot hold: ongoing trips (fuel/money spent so far), half-done actions, unresolved behavior, or secrets that must stay hidden from the player. ALWAYS record where/when it started (ref) so you can compare progress later (\"started when leaving town\", \"day 2 of the siege\"). Update the thread as things progress; clear it (thread_clear) as soon as it is finished or irrelevant. Threads are invisible to the player and never injected into the story prompt — the pre-pass decides what the story needs to know.",
         "Use <enemies> when enemies or threats appear in the scene: action=\"add\" to introduce one (with its HP resource and notable passives/skills), nested <resource>/<status> tags or hp_delta to update it, and action=\"remove\" AS SOON AS an enemy stops being relevant (defeated, fled, scene moved on) — removed enemies are archived and automatically restored with their last state if they return. You may also damage enemies with <change_values><char>EnemyName</char>.",
         "Use <set_statuses> for TEMPORARY per-character conditions (Dazed, Drunk, Inspired...). When a status lands, also apply its listed stat modifiers through <change_values>; when the condition ends, remove the modifiers with a matching <change_values> and clear the status with <clear_statuses>. Do not use statuses for permanent traits (passives) or party-wide gimmicks (custom).",
-        "Use <knockouts> when a character is clearly unconscious or incapacitated but NOT dead (non-lethal defeat, a blow to the head, exhaustion): <ko char=\"Name\" reason=\"...\"/> knocks them out, <ko_clear char=\"Name\"/> when they regain consciousness (rest, recovery, a timeskip). A knocked-out character (ko=\"true\") cannot act until cleared — do not report actions, skill use or EXP for them.",
+        "Use <knockouts> when a character is clearly unconscious or incapacitated but NOT dead (non-lethal defeat, a blow to the head, exhaustion): <ko char=\"Name\" reason=\"...\"/> knocks them out, <ko_clear char=\"Name\"/> when they regain consciousness (rest, recovery, a timeskip). A character with state=\"ko\" cannot act until cleared — do not report actions, skill use or EXP for them.",
         ...(s.feature_death !== false ? [
             "LETHALITY — be realistic about damage and health. Do NOT soften outcomes to protect characters: wounds have consequences, and a resource reaching its minimum (or a clearly unsurvivable blow shown in the exchange) means DEATH. When a character or ally dies, report it with <deaths><death char=\"Name\" reason=\"short cause\"/></deaths>. A character survives a lethal hit ONLY if one of their listed skills or passives (not on cooldown) explicitly says otherwise (a revive, an undying passive). Never invent a rescue the scene and sheets do not support. Enemies die via <enemies action=\"remove\" reason=\"slain\">. A character marked dead in the snapshot stays dead — never report actions, healing or EXP for them.",
         ] : []),

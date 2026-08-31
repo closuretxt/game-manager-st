@@ -74,7 +74,7 @@ function collectContext(playerAction, partyActions, enemyActions) {
     const partyNames = new Set(partyActions.map(a => a.actor.toLowerCase()));
     const enemyNames = new Set(enemyActions.map(a => a.actor.toLowerCase()));
     const sheets = [
-        ...(d.characters || []).filter(c => c.dead !== true && c.knocked_out !== true && partyNames.has(String(c.name).toLowerCase())).map(sheetOf),
+        ...(d.characters || []).filter(c => !c.state && partyNames.has(String(c.name).toLowerCase())).map(sheetOf),
         ...(d.enemies || []).filter(e => enemyNames.has(String(e.name).toLowerCase())).map(sheetOf),
     ];
 

@@ -68,11 +68,11 @@ function collectContext(maxActions) {
         JSON.stringify((d.enemies || []).map(sheetOf)),
         "",
         "PARTY SUMMARY (opposition, visible state only):",
-        JSON.stringify((d.characters || []).filter(c => c.dead !== true).map(c => ({
+        JSON.stringify((d.characters || []).filter(c => c.state?.mode !== "dead").map(c => ({
             name: c.name,
-            // Knocked-out members stay visible (a downed fighter is scene
+            // Special states stay visible (a downed fighter is scene
             // information) but the enemy AI must not target them as active.
-            knocked_out: c.knocked_out === true || undefined,
+            state: c.state?.mode || undefined,
             resources: (c.resources || []).map(r => ({ name: r.name, value: r.value, max: r.max })),
             statuses: (c.statuses || []).map(s => s.name),
         }))),

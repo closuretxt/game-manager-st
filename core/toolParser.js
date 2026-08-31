@@ -272,7 +272,7 @@ export function applyToolBlocks(blocks, { autoCreateChars = false } = {}) {
                     logDebug("toolParser: skipping death for unknown character:", action.attrs.char || "(none)");
                     continue;
                 }
-                if (stateManager.setDead(target.id, action.attrs.reason ?? action.content ?? "")) applied++;
+                if (stateManager.setState(target.id, "dead", action.attrs.reason ?? action.content ?? "")) applied++;
             }
             continue;
         }
@@ -288,8 +288,8 @@ export function applyToolBlocks(blocks, { autoCreateChars = false } = {}) {
                     continue;
                 }
                 if (action.tag === "ko_clear") {
-                    if (stateManager.clearKnockedOut(target.id)) applied++;
-                } else if (stateManager.setKnockedOut(target.id, action.attrs.reason ?? action.content ?? "")) applied++;
+                    if (stateManager.clearState(target.id)) applied++;
+                } else if (stateManager.setState(target.id, "ko", action.attrs.reason ?? action.content ?? "")) applied++;
             }
             continue;
         }
