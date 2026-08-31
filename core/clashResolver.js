@@ -31,6 +31,7 @@ const SYSTEM_PROMPT = [
     "",
     "YOUR OBJECTIVE:",
     "Pair the actions into clash groups and, for each group, provide exactly 4 ordered chance tiers (Critical Failure / Failure / Success / Critical Success) with short outcome lines. Chances are percentages of a 100% total and MUST reflect the stat sheets fairly: a dodging or shielding action with high Dexterity shifts tiers toward the defender; heavy armor shifts outcomes toward mitigation; a skilled attacker shifts them toward success. Higher speed acts first when both sides would succeed — reflect that in the outcome lines.",
+    "Clashes are NOT always combat: any opposed struggle resolves the same way — grappling, pinning, struggling free of a hold, wrestling over an object, tug-of-war, escape attempts, arm wrestling. Judge those by the relevant attributes (Strength, Dexterity...) instead of weapons and armor.",
     "",
     "OUTPUT FORMAT:",
     "Respond with ONLY XML — no markdown fences, no prose:",
