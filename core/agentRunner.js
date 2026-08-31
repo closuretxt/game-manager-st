@@ -114,6 +114,9 @@ function collectRecentMessages() {
 async function buildSystemPrompt(exchange = []) {
     const s = extension_settings[extensionName];
     const prog = progression.isEnabled();
+    // Spawn review: new characters/enemies are reported as briefs for the
+    // generate + review flow instead of minimal auto-created sheets.
+    const spawnReview = !!(s.feature_character_creator && s.feature_spawn_review);
     let deep = "";
     if (s.deep_context) {
         const extraText = exchange.length ? exchange[exchange.length - 1].text : "";
@@ -144,6 +147,7 @@ async function buildSystemPrompt(exchange = []) {
         '  <warnings><warning name="Food" text="You have about two days of food left."/><warning_clear name="Food"/></warnings>',
         '  <threads><thread name="Fuel trip" text="Left town with 40L fuel; ~120 km driven so far" ref="started when leaving town"/><thread_clear name="Fuel trip"/></threads>',
         '  <enemies><enemy action="add" name="Goblin"><resource name="HP" value="30" max="30"/><passive name="Brutal" description="+2 damage below half HP"/></enemy><enemy action="update" name="Goblin"><resource name="HP" delta="-7"/><status name="Wounded" modifiers="Aim -2"/></enemy><enemy action="remove" name="Goblin" reason="defeated"/></enemies>',
+        ...(spawnReview ? ['  <new_characters><char name="Kael" kind="party" details="wounded knight the party rescued, stoic and dry-humored" level="3"/><char name="Goblin Chief" kind="enemy" details="scarred veteran leading the warband, brutal close-quarters fighter"/></new_characters>'] : []),
         ...(s.feature_death !== false ? ['  <deaths><death char="Name" reason="short cause of death"/></deaths>'] : []),
         '  <knockouts><ko char="Name" reason="short cause"/><ko_clear char="Name"/></knockouts>',
         ...(prog ? ['  <grant_exp><char>Name</char><exp amount="25"/></grant_exp>'] : []),
@@ -151,6 +155,9 @@ async function buildSystemPrompt(exchange = []) {
         "Use <warnings> ONLY for imminent, concrete needs the player should prepare for (supplies running out, deadlines, approaching dangers). Keep warning text under 15 words. Clear a warning when its cause is resolved. Do not re-emit unchanged warnings every turn.",
         "Use <threads> to leave notes to yourself about UNTRACKED or UNFINISHED things the formal containers cannot hold: ongoing trips (fuel/money spent so far), half-done actions, unresolved behavior, or secrets that must stay hidden from the player. ALWAYS record where/when it started (ref) so you can compare progress later (\"started when leaving town\", \"day 2 of the siege\"). Update the thread as things progress; clear it (thread_clear) as soon as it is finished or irrelevant. Threads are invisible to the player and never injected into the story prompt — the pre-pass decides what the story needs to know.",
         "Use <enemies> when enemies or threats appear in the scene: action=\"add\" to introduce one (with its HP resource and notable passives/skills), nested <resource>/<status> tags or hp_delta to update it, and action=\"remove\" AS SOON AS an enemy stops being relevant (defeated, fled, scene moved on) — removed enemies are archived and automatically restored with their last state if they return. You may also damage enemies with <change_values><char>EnemyName</char>.",
+        ...(spawnReview ? [
+            "Use <new_characters> when a NEW named character or enemy clearly enters the scene and matters beyond this exchange: one <char> per newcomer with kind=\"party\" (a potential companion or recurring NPC) or kind=\"enemy\" (a hostile threat), a short details brief (role, appearance, combat style, what makes them different) and their level when progression is active. Never re-emit names already in the state snapshot. When you report a new enemy here, skip the <enemies> add — the player reviews and builds the full sheet from your brief; keep <enemies> for updates and removals.",
+        ] : []),
         "Use <set_statuses> for TEMPORARY per-character conditions (Dazed, Drunk, Inspired...). When a status lands, also apply its listed stat modifiers through <change_values>; when the condition ends, remove the modifiers with a matching <change_values> and clear the status with <clear_statuses>. Do not use statuses for permanent traits (passives) or party-wide gimmicks (custom).",
         "Use <knockouts> when a character is clearly unconscious or incapacitated but NOT dead — non-lethal defeat, blunt trauma to the head, choking, blood loss, drugging, electrocution, exhaustion, a spell that drops them. Do NOT hesitate to knock out human characters, allies or the player character when the fiction calls for it: being beaten unconscious is a normal game outcome, not something to shield anyone from. <ko char=\"Name\" reason=\"...\"/> knocks them out, <ko_clear char=\"Name\"/> when they regain consciousness (rest, recovery, a timeskip). Write the reason bluntly and concretely (\"choked out in a headlock\", \"cracked skull on the pavement\", \"drugged wine\") — never a vague euphemism. A character with state=\"ko\" cannot act until cleared — do not report actions, skill use or EXP for them.",
         ...(s.feature_death !== false ? [

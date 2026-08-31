@@ -1673,6 +1673,72 @@ textarea.gm_input {
     to { --gm-busy-angle: 360deg; }
 }
 
+/* ---------- spawn review chip ---------- */
+/* Persistent pill while the tracker has new-character briefs waiting:
+   click = generate + open the review page, X = discard all. Enemy-only
+   queues get the skull + a hostile red tint. */
+#gm_spawn_chip {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 2999; /* below ST drawers/popups, above the page */
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--gm-accent, #b8912f) 70%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #1a1a22) 88%, transparent);
+    color: var(--SmartThemeBodyColor, #ddd);
+    font-size: 12px;
+    cursor: pointer;
+    box-shadow: 0 2px 14px rgba(0, 0, 0, 0.45);
+    animation: gm_spawn_in 0.35s ease-out;
+    user-select: none;
+}
+
+#gm_spawn_chip:hover {
+    border-color: var(--gm-accent, #b8912f);
+    box-shadow: 0 2px 18px rgba(0, 0, 0, 0.6);
+}
+
+#gm_spawn_chip > i {
+    color: var(--gm-accent, #b8912f);
+    animation: gm_spawn_pulse 2.2s ease-in-out infinite;
+}
+
+/* Enemy-only queue: hostile tint instead of the accent gold. */
+#gm_spawn_chip.gm_spawn_enemy {
+    border-color: color-mix(in srgb, #d9534f 70%, transparent);
+}
+
+#gm_spawn_chip.gm_spawn_enemy > i {
+    color: #d9534f;
+}
+
+/* Dismiss-all button: dim until hovered. */
+#gm_spawn_chip .gm_spawn_dismiss {
+    margin-left: 4px;
+    color: var(--SmartThemeBodyColor, #ddd);
+    opacity: 0.45;
+    animation: none;
+}
+
+#gm_spawn_chip .gm_spawn_dismiss:hover {
+    opacity: 1;
+    color: #d9534f;
+}
+
+@keyframes gm_spawn_in {
+    from { transform: translateY(10px); opacity: 0; }
+    to   { transform: translateY(0);     opacity: 1; }
+}
+
+@keyframes gm_spawn_pulse {
+    0%, 100% { transform: scale(1);   opacity: 1; }
+    50%      { transform: scale(1.15); opacity: 0.75; }
+}
+
 /* Inline feedback line for unlock attempts (why a node is locked). */
 .gm_tree_hint {
     font-size: 11px;

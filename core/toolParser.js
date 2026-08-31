@@ -20,6 +20,9 @@
 //                       secrets; edit-mode-only UI, pre/post-pass see them)
 //   <enemies>         — add/update/remove context-based enemies (removed ones
 //                       are archived, not deleted, and restored on return)
+//   <new_characters>  — report NEW characters/enemies entering the scene as
+//                       briefs; with spawn review on they are queued for the
+//                       generate + review flow instead of being auto-created
 //   <deaths>          — report a party character's death (<death char="Name"
 //                       reason="..."/>); only the user (edit mode) revives
 //   <knockouts>       — knock a party character out (<ko char="Name"
@@ -34,11 +37,13 @@ import { extensionName } from "./constants.js";
 import { stateManager } from "./stateManager.js";
 import { progression } from "./progression.js";
 import { logDebug } from "./debug.js";
+import { characterSpawner, spawnReviewEnabled } from "./characterSpawner.js";
 
-const BLOCK_TAGS = ["change_values", "set_attributes", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies", "deaths", "knockouts"];
+const BLOCK_TAGS = ["change_values", "set_attributes", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies", "deaths", "knockouts", "new_characters"];
 const BLOCK_RE = new RegExp(`<(${BLOCK_TAGS.join("|")})>([\\s\\S]*?)<\\/\\1>`, "gi");
 const INNER_RE = /<(char|target|resource|item|attribute|entry|status|warning|warning_clear|thread|thread_clear|passive|skill|exp|death|ko|ko_clear)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const ENEMY_RE = /<enemy\b([^>]*?)(?:\/>|>([\s\S]*?)<\/enemy>)/gi;
+const NEWCHAR_RE = /<char\b([^>]*?)(?:\/>|>([\s\S]*?)<\/char>)/gi;
 
 // Shared with the other LLM-output parsers (prePass, setupWizard).
 export function decodeEntities(str) {
@@ -93,6 +98,28 @@ export function parseToolBlocks(text) {
         blocks.push(block);
     }
     return blocks;
+}
+
+// Extracts new-character briefs from a <new_characters> block's raw content:
+// <char name="..." kind="party|enemy" details="..." level="N"/>. kind
+// defaults to party; level is only meaningful with progression on.
+export function extractNewCharacterBriefs(raw) {
+    const briefs = [];
+    if (!raw) return briefs;
+    NEWCHAR_RE.lastIndex = 0;
+    let m;
+    while ((m = NEWCHAR_RE.exec(raw)) !== null) {
+        const attrs = parseAttrs(m[1] || "");
+        const name = String(attrs.name ?? "").trim();
+        if (!name) continue;
+        briefs.push({
+            name,
+            kind: String(attrs.kind || "party").toLowerCase() === "enemy" ? "enemy" : "party",
+            details: String(attrs.details ?? "").trim(),
+            level: Number(attrs.level) || null,
+        });
+    }
+    return briefs;
 }
 
 function applyAction(blockType, char, action) {
@@ -228,6 +255,14 @@ function applyEnemiesBlock(raw) {
         }
         let enemy = stateManager.getEnemy(name);
         if (!enemy) {
+            // Spawn review on: new enemies are NOT minimal-auto-created —
+            // the name goes to the spawner for the full generate + review
+            // flow instead (the nested tags here are skipped; the richer
+            // brief comes via <new_characters> when the LLM uses it).
+            if (spawnReviewEnabled()) {
+                characterSpawner.queueBrief({ name, kind: "enemy", details: "" });
+                continue;
+            }
             enemy = stateManager.addEnemy(name);
             applied++;
         } else if (action === "add") {
@@ -245,6 +280,15 @@ export function applyToolBlocks(blocks, { autoCreateChars = false } = {}) {
         // Enemies have their own nested format — handled separately.
         if (block.type === "enemies") {
             applied += applyEnemiesBlock(block.raw);
+            continue;
+        }
+        // New-character briefs: queued for the spawn-review flow, never
+        // applied directly — the user builds the sheet in the review page.
+        if (block.type === "new_characters") {
+            if (!spawnReviewEnabled()) continue;
+            for (const brief of extractNewCharacterBriefs(block.raw)) {
+                if (characterSpawner.queueBrief(brief)) applied++;
+            }
             continue;
         }
         // Warnings are party-level — no character scoping.

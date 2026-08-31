@@ -22,6 +22,12 @@ export const defaultSettings = {
     // character or preset, or an LLM-generated sheet with a review page.
     feature_character_creator: true,
 
+    // Spawn review — when the post-pass tracker detects a NEW character or
+    // enemy (<new_characters> tag), queue a review chip instead of
+    // auto-creating a minimal sheet: clicking it generates the full sheet
+    // and opens the review page. Requires Character Creator + Agentic updates.
+    feature_spawn_review: true,
+
     // Deep context — send character card, persona, author's note and activated
     // World Info to the extension's LLMs (wizard + pre/post pass). Off by
     // default: it raises the token cost of every call.
@@ -99,6 +105,7 @@ export async function loadSettings() {
     $("#gm_setting_pre_pass").prop("checked", !!s.pre_pass);
     $("#gm_setting_feat_wizard").prop("checked", !!s.feature_setup_wizard);
     $("#gm_setting_feat_char_creator").prop("checked", !!s.feature_character_creator);
+    $("#gm_setting_spawn_review").prop("checked", !!s.feature_spawn_review);
     $("#gm_setting_deep_context").prop("checked", !!s.deep_context);
     $("#gm_setting_deep_context_engines").prop("checked", !!s.deep_context_engines);
     $("#gm_setting_feat_warnings").prop("checked", !!s.feature_warnings);
@@ -139,6 +146,7 @@ export function saveSettings() {
     s.pre_pass = $("#gm_setting_pre_pass").prop("checked");
     s.feature_setup_wizard = $("#gm_setting_feat_wizard").prop("checked");
     s.feature_character_creator = $("#gm_setting_feat_char_creator").prop("checked");
+    s.feature_spawn_review = $("#gm_setting_spawn_review").prop("checked");
     s.deep_context = $("#gm_setting_deep_context").prop("checked");
     s.deep_context_engines = $("#gm_setting_deep_context_engines").prop("checked");
     s.feature_warnings = $("#gm_setting_feat_warnings").prop("checked");
@@ -166,7 +174,7 @@ export function saveSettings() {
 
 export function initSettingsListeners() {
     $("#gm_setting_enabled, #gm_setting_auto_update, #gm_setting_debug_mode, #gm_setting_open_panel, #gm_setting_legacy, #gm_setting_pre_pass, " +
-      "#gm_setting_feat_wizard, #gm_setting_feat_char_creator, #gm_setting_deep_context, #gm_setting_deep_context_engines, " +
+      "#gm_setting_feat_wizard, #gm_setting_feat_char_creator, #gm_setting_spawn_review, #gm_setting_deep_context, #gm_setting_deep_context_engines, " +
       "#gm_setting_feat_warnings, #gm_setting_feat_dice, #gm_setting_feat_transactions, #gm_setting_feat_injection, " +
       "#gm_setting_feat_enemies, #gm_setting_feat_rewrite, #gm_setting_feat_progression, #gm_setting_feat_skill_tree, " +
       "#gm_setting_feat_combat, #gm_setting_feat_ally_ai, #gm_setting_feat_death, " +

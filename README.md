@@ -81,6 +81,7 @@ Bring any scenario or character and set everything up with **one button** (Party
 ## Agentic features
 
 - **Warnings** - the pre-pass/post-pass can set/clear short remarks ("You have about two days of food left"). They appear as a dismissible note strip in the panel (for you) and are injected via the low-priority macro (for the story LLM) so resource scarcity becomes a real issue.
+- **Spawn review** - when the post-pass detects a NEW character or enemy entering the scene (`<new_characters>` tool tag), it queues a review chip instead of auto-creating a minimal sheet: clicking the chip generates the full sheet from the LLM's brief (name, kind, details, level) and opens the Character Creator review page, where you can edit, refine or discard before it touches state. Multiple newcomers in one turn queue up one by one. Requires Character Creator + Agentic updates.
 - **Dice rolls** - when the pre-pass judges your action's outcome genuinely uncertain (naming a skill is a hint, not a requirement), the dice LLM provides a title + four ordered chance tiers (Critical Failure / Failure / Success / Critical Success) with outcome lines. A dice bubble animates **above the input bar** while the tiers stream in one by one with animated chance bars; the weighted result pops in, is rendered as a compact bubble on your message (DOM-only - **your message text is never edited**) and queued for high-priority injection. Swiping/deleting the message rolls the state back.
 - **Transactions (fair use)** - when the pre-pass detects an implied spend/gain of a shared resource (no verbatim name needed), the transaction flow computes the current value, transaction value, value after, and a plain-language comparison ("Could buy a week's worth of food"). The result is injected as high-priority context and applied to the shared resource.
 
@@ -88,7 +89,7 @@ Both the pre-pass/post-pass and the pre-master LLM calls (router, dice, transact
 
 ## Current status
 
-- The pre-pass router judges every fresh action (no keyword guessing) and the XML tool-tag parser (`<change_values>`, `<warnings>`, etc.
+- The pre-pass router judges every fresh action (no keyword guessing) and the XML tool-tag parser (`<change_values>`, `<warnings>`, `<new_characters>`, etc.
 - Future plans (kept modular via `core/schemas.js`): skill trees, robust combat system, maps.
 
 ## 📄 License

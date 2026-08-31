@@ -5,8 +5,9 @@
 // review page with the same features as the Scenario Setup Wizard (editable
 // sheet editor, refine with feedback, rollback). NOTHING touches state until
 // Create/Apply. When progression is on, BOTH modes carry a level picker that
-// calibrates the generated sheet — enemy mode applies through
-// stateManager.addEnemy, party mode through stateManager.addCharacter.
+// calibrates the generated sheet (empty = the LLM infers the level from the
+// context) — enemy mode applies through stateManager.addEnemy, party mode
+// through stateManager.addCharacter.
 
 import { extension_settings } from "../../../../extensions.js";
 import { extensionName } from "../core/constants.js";
@@ -44,6 +45,25 @@ export const characterCreator = {
         this._history = [];
         this._refinements = 0;
         this._renderInput();
+    },
+
+    // Spawner entry: opens the review page directly with an already-generated
+    // proposal — the tracker detected this character and the sheet was built
+    // from its brief (core/characterSpawner.js). Skips the input step; the
+    // brief is kept so Refine reuses the same context.
+    openWithProposal({ char, mode = "party", level = null, details = "" } = {}) {
+        const s = extension_settings[extensionName];
+        if (!s.enabled || !s.feature_character_creator || !char) return false;
+        this._name = char.name;
+        this._details = String(details || "");
+        this._reference = "";
+        this._mode = mode === "enemy" ? "enemy" : "party";
+        this._level = level ?? null;
+        this._proposal = char;
+        this._history = [];
+        this._refinements = 0;
+        this._renderReview();
+        return true;
     },
 
     _isEnemy() {
@@ -162,17 +182,18 @@ export const characterCreator = {
         body.append(refRow);
 
         // Level picker (progression on): calibrates the generated sheet to a
-        // chosen level instead of the party's average — a threat for enemies,
-        // a starting point for party members.
+        // chosen level — a threat for enemies, a starting point for party
+        // members. Empty = AUTO: the LLM infers the level from the context.
         if (progression.isEnabled()) {
             const lvlRow = $("<div>").addClass("gm_field gm_field_inline");
             const lvlInput = $("<input>").addClass("gm_input")
-                .attr({ type: "number", min: 1, title: this._isEnemy()
-                    ? "Enemy level — calibrates the generated sheet against the party's progression"
-                    : "Starting level — calibrates the generated sheet against the party's progression" })
-                .val(this._level ?? progression.partyLevel());
+                .attr({ type: "number", min: 1, placeholder: "auto", title: this._isEnemy()
+                    ? "Enemy level — calibrates the generated sheet against the party's progression (empty = inferred from the context)"
+                    : "Starting level — calibrates the generated sheet against the party's progression (empty = inferred from the context)" })
+                .val(this._level ?? "");
             lvlInput.on("input", () => {
-                this._level = Math.max(1, Math.trunc(Number(lvlInput.val()) || 1));
+                const v = Math.trunc(Number(lvlInput.val()));
+                this._level = Number.isFinite(v) && v >= 1 ? v : null;
             });
             lvlRow.append($("<label>").text("Level"), lvlInput);
             body.append(lvlRow);
@@ -241,6 +262,9 @@ export const characterCreator = {
             return;
         }
         this._proposal = char;
+        // Auto mode: adopt the LLM-inferred level for the review display
+        // and the progression stamping on Apply.
+        if (progression.isEnabled() && char.level) this._level = char.level;
         this._history = [];
         this._refinements = 0;
         this._renderReview();
@@ -248,12 +272,12 @@ export const characterCreator = {
 
     // Brief for the generator calls; references resolve to their sheets.
     // Enemy mode tags the kind; both modes carry the target level for
-    // progression anchoring.
+    // progression anchoring (null = the LLM infers it from the context).
     _brief() {
         const refs = this._reference ? [this._resolveReference()].filter(Boolean) : [];
         const brief = { name: this._name, details: this._details, references: refs.map(r => r.sheet) };
         if (this._isEnemy()) brief.kind = "enemy";
-        if (progression.isEnabled()) brief.level = this._level ?? progression.partyLevel();
+        if (progression.isEnabled()) brief.level = this._level;
         return brief;
     },
 
@@ -264,7 +288,8 @@ export const characterCreator = {
         const modal = this._overlay();
         const char = this._proposal;
         const refinedTag = this._refinements ? ` (refined ×${this._refinements})` : "";
-        this._header(modal, `Review Character — ${char.name}${refinedTag}`);
+        const lvlTag = progression.isEnabled() && this._level ? ` — Lv ${this._level}` : "";
+        this._header(modal, `Review Character — ${char.name}${lvlTag}${refinedTag}`);
 
         const body = $("<div>").addClass("gm_wizard_body");
 
@@ -301,6 +326,7 @@ export const characterCreator = {
             this._history.push(this._proposal);
             if (this._history.length > 5) this._history.shift();
             this._proposal = refined;
+            if (progression.isEnabled() && refined.level) this._level = refined.level;
             this._refinements++;
             this._renderReview();
         });

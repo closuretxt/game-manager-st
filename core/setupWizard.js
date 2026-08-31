@@ -178,7 +178,9 @@ export function sanitizeProposal(parsed) {
     const party = (Array.isArray(parsed.party) ? parsed.party : []).slice(0, partyCap)
         .map(raw => {
             if (!raw?.name) return null;
-            const char = { name: String(raw.name).slice(0, 60) };
+            // Optional progression level (character generator auto-mode).
+            const lvl = Math.trunc(Number(raw.level));
+            const char = { name: String(raw.name).slice(0, 60), level: Number.isFinite(lvl) && lvl >= 1 ? lvl : null };
             for (const container of CHARACTER_CONTAINERS) {
                 const type = Object.keys(GM_SCHEMA).find(t => GM_SCHEMA[t].container === container);
                 char[container] = sanitizeList(type, raw[container]);
@@ -257,7 +259,7 @@ export function parseSetupXml(text) {
     while ((m = charRe.exec(inner)) !== null) {
         const attrs = parseAttrs(m[1] || m[2] || "");
         if (!attrs.name) continue;
-        const char = { name: attrs.name };
+        const char = { name: attrs.name, level: attrs.level };
         for (const container of Object.values(CONTAINER_TAGS)) char[container] = [];
         const body = m[3] || "";
         for (const [tag, container] of Object.entries(CONTAINER_TAGS)) {
@@ -350,7 +352,12 @@ const PROMPT_CONTAINER_TAGS = { resources: "resource", attributes: "attribute", 
 // Serializes a single character sheet to the LLM wire shape (internal ids
 // stripped) — used as reference context by the character generator.
 export function characterToXml(c) {
-    const lines = [`  <char name="${escAttr(c?.name)}">`];
+    // Level rides along when known — the character generator uses reference
+    // levels to infer a new character's level in auto mode. Live sheets
+    // (party AND enemies) keep it on the progression track; proposals carry
+    // it as a plain field.
+    const lvl = Math.trunc(Number(c?.level ?? c?.progression?.level));
+    const lines = [`  <char name="${escAttr(c?.name)}"${Number.isFinite(lvl) && lvl >= 1 ? ` level="${lvl}"` : ""}>`];
     for (const [container, tag] of Object.entries(PROMPT_CONTAINER_TAGS)) {
         for (const e of c?.[container] || []) {
             const attrs = Object.entries(e)

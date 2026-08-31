@@ -18,7 +18,7 @@ import { buildDeepContext } from "../util/loreContext.js";
 const CHAR_RESPONSE_SHAPE = [
     '<setup name="<short source/title>">',
     "  <party>",
-    '    <char name="...">  <!-- exactly ONE char; give only the containers that matter for them -->',
+    '    <char name="..." level="N">  <!-- exactly ONE char; level = progression level (see rules); give only the containers that matter for them -->',
     '      <resource name="Health" value="80" min="0" max="100" description="..."/>',
     '      <attribute name="Strength" value="5" description="..."/>',
     '      <item name="Rope" qty="1" description="..."/>',
@@ -44,6 +44,7 @@ const CHAR_PROMPT_HEADER = [
     "- Every entry gets a short, IN-WORLD description — a fact about the thing itself, never meta commentary ('tracks', 'resource for', 'important for this character'). Never leave descriptions empty.",
     "- Resources are turn-to-turn meters updated during play (Health, Stamina, Ammo, Sanity, Stress) with sensible custom ranges (Health 0-100, Ammo 0-36 = one revolver loadout). Attributes are milestone stats (Strength, Fortitude, Dexterity, Charisma) without hard caps, changed rarely.",
     "- CALIBRATE NUMBERS to the world: starting quantities and ranges must imply real scale. Anchor non-obvious scales in the description (e.g. 'a meal costs about 15').",
+    "- LEVEL: when the prompt states a level, use it; when progression is active WITHOUT a stated level, INFER it from the context (recent chat, details, reference levels) and report it in level (whole number, at least 1). Without progression, omit the attribute.",
     "- Omit tags that do not apply. Never invent entries outside the given shapes.",
 ].join("\n");
 
@@ -58,6 +59,7 @@ const CHAR_REFINE_PROMPT_HEADER = [
     "- Preserve everything the feedback does not ask to change — especially entries the user may have edited by hand.",
     "- Keep the character's name exactly as proposed.",
     "- Every entry carries a short, IN-WORLD description — a fact about the thing itself, never meta commentary. Fill any that are missing, vague or meta.",
+    "- LEVEL: keep the character's level from the current proposal unless the feedback asks to change it.",
     "- Omit tags that do not apply. Never invent entries outside the given shapes.",
 ].join("\n");
 
@@ -87,19 +89,23 @@ async function runCharLLM(systemPrompt, userContent, name) {
 // characters receive a level-appropriate attribute budget so they spawn
 // as real peers for the party — the numbers are code-owned, the LLM only
 // distributes them across attribute names. An explicit targetLevel (enemy
-// mode, or a party member with a chosen starting level) overrides the
-// party level as the calibration anchor.
+// mode, or a party member with a chosen starting level) pins the anchor;
+// without one the LLM INFERS the level from context and reports it back
+// via the <char level> attribute, calibrating against a budget table.
 function progressionBlocks(targetLevel = null, isEnemy = false) {
     if (!progression.isEnabled()) return [];
     const partyLevel = progression.partyLevel();
     const explicit = Math.max(1, Math.trunc(Number(targetLevel) || 0));
-    const level = explicit || partyLevel;
-    const budget = progression.attrBudgetForLevel(level);
-    const anchor = isEnemy
-        ? `THIS ENEMY is level ${level} (the party is around level ${partyLevel}) — calibrate its total attribute points to roughly ${budget} and scale starting resources (Health and similar) to that threat level.`
-        : explicit
-            ? `THIS CHARACTER joins the party at level ${level} (the party is around level ${partyLevel}) — calibrate their total attribute points to roughly ${budget} and scale starting resources (Health and similar) to that level.`
-            : `Calibrate THIS character's total attribute points to roughly ${budget} (the expected budget for level ${level}) — a rival or boss may exceed it, a weak minion fall well short. Scale starting resources (Health and similar) proportionately for stronger or weaker characters.`;
+    const budget = lvl => progression.attrBudgetForLevel(lvl);
+    // Budget table around the party level — the LLM picks the row matching
+    // the level it infers; the math itself stays code-owned.
+    const lo = Math.max(1, partyLevel - 3);
+    const table = Array.from({ length: 9 }, (_, i) => `L${lo + i}=${budget(lo + i)}`).join(", ");
+    const anchor = explicit
+        ? (isEnemy
+            ? `THIS ENEMY is level ${explicit} (the party is around level ${partyLevel}) — calibrate its total attribute points to roughly ${budget(explicit)} and scale starting resources (Health and similar) to that threat level.`
+            : `THIS CHARACTER joins the party at level ${explicit} (the party is around level ${partyLevel}) — calibrate their total attribute points to roughly ${budget(explicit)} and scale starting resources (Health and similar) to that level.`)
+        : `No level was given — INFER this character's level from the context (recent chat, details, reference levels${isEnemy ? "; a fair fight sits at the party's level, a boss above it, a minion below it" : ""}) and report it in the <char level="..."> attribute. Expected TOTAL attribute points by level: ${table}. Calibrate to the row you infer and scale starting resources (Health and similar) proportionately.`;
     return [
         "PROGRESSION ACTIVE: the party is around level " + partyLevel + ".",
         anchor,
