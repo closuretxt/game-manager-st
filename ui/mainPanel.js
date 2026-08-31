@@ -530,9 +530,21 @@ class MainPanel {
             $("<span>").addClass("gm_section_hint").text("Context-based threats. Removed ones are archived and return with their last state."),
         );
         if (edit) {
+            const s = extension_settings[extensionName];
             const addBtn = $("<div>").addClass("menu_button gm_add_btn").append(
                 $("<i>").addClass("fa-solid fa-plus"), $("<span>").text(" Add Enemy"));
             addBtn.on("click", () => {
+                // Character Creator modal in enemy mode (instant copy or
+                // LLM-generated sheet with level + review); legacy prompt
+                // flow when the feature is off.
+                if (s.feature_character_creator) {
+                    characterCreator.onApplied = (enemy) => {
+                        this.selectedEnemyId = enemy.id;
+                        this.render();
+                    };
+                    characterCreator.open({ mode: "enemy" });
+                    return;
+                }
                 const name = window.prompt("Enemy name:");
                 if (name?.trim()) {
                     const e = stateManager.addEnemy(name.trim(), settingsUI.getTemplateEntries());

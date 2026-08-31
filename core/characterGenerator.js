@@ -86,29 +86,48 @@ async function runCharLLM(systemPrompt, userContent, name) {
 // Progression anchoring: when the scenario has progression, generated
 // characters receive a level-appropriate attribute budget so enemies spawn
 // as real peers for the party — the numbers are code-owned, the LLM only
-// distributes them across attribute names.
-function progressionBlocks() {
+// distributes them across attribute names. An explicit targetLevel (enemy
+// mode) overrides the party level as the calibration anchor.
+function progressionBlocks(targetLevel = null, isEnemy = false) {
     if (!progression.isEnabled()) return [];
-    const level = progression.partyLevel();
+    const partyLevel = progression.partyLevel();
+    const level = Math.max(1, Math.trunc(Number(targetLevel) || 0)) || partyLevel;
     const budget = progression.attrBudgetForLevel(level);
+    const anchor = isEnemy
+        ? `THIS ENEMY is level ${level} (the party is around level ${partyLevel}) — calibrate its total attribute points to roughly ${budget} and scale starting resources (Health and similar) to that threat level.`
+        : `Calibrate THIS character's total attribute points to roughly ${budget} (the expected budget for level ${level}) — a rival or boss may exceed it, a weak minion fall well short. Scale starting resources (Health and similar) proportionately for stronger or weaker characters.`;
     return [
-        "PROGRESSION ACTIVE: the party is around level " + level + ".",
-        `Calibrate THIS character's total attribute points to roughly ${budget} (the expected budget for level ${level}) — a rival or boss may exceed it, a weak minion fall well short. Scale starting resources (Health and similar) proportionately for stronger or weaker characters.`,
+        "PROGRESSION ACTIVE: the party is around level " + partyLevel + ".",
+        anchor,
+    ];
+}
+
+//
+
+// Enemy-mode blocks: the sheet describes a HOSTILE threat for the Enemies
+// tracker, not a party member — combat-relevant containers first.
+function enemyBlocks() {
+    return [
+        "ENEMY SHEET: this character is a HOSTILE threat tracked in the Enemies tab, not a party member.",
+        "- Bias toward combat-relevant containers: Health-style resources, attributes, skills and passives. Inventory only when they carry loot; statuses only for conditions they ALREADY start with.",
+        "- Calibrate danger against the party: a fair fight at the party's level, a boss above it, a minion below it.",
     ];
 }
 
 // Brief blocks shared by generation and refinement: field shapes, existing
 // names, recent chat and the character brief (+ references when given).
-function briefBlocks({ name, details, references }) {
+function briefBlocks({ name, details, references, level = null, kind = "party" }) {
     const s = extension_settings[extensionName];
     const d = stateManager.getData();
     const existing = {
         party: (d.characters || []).map(c => c.name),
         roster: (d.roster || []).map(r => r.name),
+        ...(kind === "enemy" ? { enemies: (d.enemies || []).map(e => e.name) } : {}),
     };
     const blocks = [
         `ENTRY FIELD SHAPES: resource {${fieldKeysFor("resource")}}, attribute {${fieldKeysFor("attribute")}}, item {${fieldKeysFor("item")}}, skill {${fieldKeysFor("skill")}}, passive {${fieldKeysFor("passive")}} (ptype: special|stat), status {${fieldKeysFor("status")}}.`,
-        ...progressionBlocks(),
+        ...progressionBlocks(level, kind === "enemy"),
+        ...(kind === "enemy" ? enemyBlocks() : []),
         "",
         `EXISTING SETUP (names only — the new character must not duplicate them): ${JSON.stringify(existing)}`,
         "",
@@ -142,12 +161,12 @@ async function deepContextBlocks(details) {
 
 // Runs the generation call. Returns a sanitized character (wizard party-entry
 // shape) or null on failure.
-export async function generateCharacterProposal({ name, details, references = [] } = {}) {
+export async function generateCharacterProposal({ name, details, references = [], level = null, kind = "party" } = {}) {
     const s = extension_settings[extensionName];
     if (!s.enabled) return null;
     try {
         const blocks = [
-            ...briefBlocks({ name, details, references }),
+            ...briefBlocks({ name, details, references, level, kind }),
             ...(await deepContextBlocks(details)),
         ];
         const char = await runCharLLM(CHAR_PROMPT_HEADER, blocks.join("\n"), name);
@@ -167,12 +186,12 @@ export async function generateCharacterProposal({ name, details, references = []
 // Recursive refinement: feeds the (possibly user-edited) character back
 // through the LLM. Returns a NEW sanitized character or null (the caller
 // keeps the current one).
-export async function refineCharacterProposal(char, feedback, { name, details, references = [] } = {}) {
+export async function refineCharacterProposal(char, feedback, { name, details, references = [], level = null, kind = "party" } = {}) {
     const s = extension_settings[extensionName];
     if (!s.enabled || !char) return null;
     try {
         const blocks = [
-            ...briefBlocks({ name, details, references }),
+            ...briefBlocks({ name, details, references, level, kind }),
             ...(await deepContextBlocks(details)),
             "",
             "CURRENT PROPOSAL (improve THIS — keep what works, deepen what is shallow):",
