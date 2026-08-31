@@ -84,18 +84,22 @@ async function runCharLLM(systemPrompt, userContent, name) {
 }
 
 // Progression anchoring: when the scenario has progression, generated
-// characters receive a level-appropriate attribute budget so enemies spawn
+// characters receive a level-appropriate attribute budget so they spawn
 // as real peers for the party — the numbers are code-owned, the LLM only
 // distributes them across attribute names. An explicit targetLevel (enemy
-// mode) overrides the party level as the calibration anchor.
+// mode, or a party member with a chosen starting level) overrides the
+// party level as the calibration anchor.
 function progressionBlocks(targetLevel = null, isEnemy = false) {
     if (!progression.isEnabled()) return [];
     const partyLevel = progression.partyLevel();
-    const level = Math.max(1, Math.trunc(Number(targetLevel) || 0)) || partyLevel;
+    const explicit = Math.max(1, Math.trunc(Number(targetLevel) || 0));
+    const level = explicit || partyLevel;
     const budget = progression.attrBudgetForLevel(level);
     const anchor = isEnemy
         ? `THIS ENEMY is level ${level} (the party is around level ${partyLevel}) — calibrate its total attribute points to roughly ${budget} and scale starting resources (Health and similar) to that threat level.`
-        : `Calibrate THIS character's total attribute points to roughly ${budget} (the expected budget for level ${level}) — a rival or boss may exceed it, a weak minion fall well short. Scale starting resources (Health and similar) proportionately for stronger or weaker characters.`;
+        : explicit
+            ? `THIS CHARACTER joins the party at level ${level} (the party is around level ${partyLevel}) — calibrate their total attribute points to roughly ${budget} and scale starting resources (Health and similar) to that level.`
+            : `Calibrate THIS character's total attribute points to roughly ${budget} (the expected budget for level ${level}) — a rival or boss may exceed it, a weak minion fall well short. Scale starting resources (Health and similar) proportionately for stronger or weaker characters.`;
     return [
         "PROGRESSION ACTIVE: the party is around level " + partyLevel + ".",
         anchor,

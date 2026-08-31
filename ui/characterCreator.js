@@ -4,9 +4,9 @@
 // a full sheet (name + details + reference sheets as context) and opens a
 // review page with the same features as the Scenario Setup Wizard (editable
 // sheet editor, refine with feedback, rollback). NOTHING touches state until
-// Create/Apply. ENEMY MODE applies through stateManager.addEnemy and carries
-// a level picker that calibrates the generated sheet to the party's
-// progression.
+// Create/Apply. When progression is on, BOTH modes carry a level picker that
+// calibrates the generated sheet — enemy mode applies through
+// stateManager.addEnemy, party mode through stateManager.addCharacter.
 
 import { extension_settings } from "../../../../extensions.js";
 import { extensionName } from "../core/constants.js";
@@ -26,7 +26,7 @@ export const characterCreator = {
     _details: "",
     _reference: "",   // "party:<id>" | "roster:<id>" | "enemy:<id>" | ""
     _mode: "party",   // "party" | "enemy"
-    _level: null,     // enemy mode: target level (progression calibration)
+    _level: null,     // target level (progression calibration, both modes)
     _proposal: null,  // sanitized char (wizard party-entry shape)
     _history: [],     // previous proposals for rollback
     _refinements: 0,
@@ -161,12 +161,15 @@ export const characterCreator = {
         refRow.append($("<label>").text("Copy from"), refSel);
         body.append(refRow);
 
-        // Level picker (enemy mode, progression on): calibrates the generated
-        // sheet to a chosen threat level instead of the party's average.
-        if (this._isEnemy() && progression.isEnabled()) {
+        // Level picker (progression on): calibrates the generated sheet to a
+        // chosen level instead of the party's average — a threat for enemies,
+        // a starting point for party members.
+        if (progression.isEnabled()) {
             const lvlRow = $("<div>").addClass("gm_field gm_field_inline");
             const lvlInput = $("<input>").addClass("gm_input")
-                .attr({ type: "number", min: 1, title: "Enemy level — calibrates the generated sheet against the party's progression" })
+                .attr({ type: "number", min: 1, title: this._isEnemy()
+                    ? "Enemy level — calibrates the generated sheet against the party's progression"
+                    : "Starting level — calibrates the generated sheet against the party's progression" })
                 .val(this._level ?? progression.partyLevel());
             lvlInput.on("input", () => {
                 this._level = Math.max(1, Math.trunc(Number(lvlInput.val()) || 1));
@@ -192,14 +195,20 @@ export const characterCreator = {
 
     //
 
+    // Progression stamping: the chosen level is written onto the new
+    // character's track (party and enemy alike) so they spawn as real peers
+    // for the party's progression.
+    _stampLevel(char) {
+        if (progression.isEnabled()) {
+            char.progression = { ...progression.trackOf(char), level: this._level ?? progression.partyLevel() };
+        }
+        return char;
+    },
+
     // Enemy apply path: addEnemy restores archived sheets with the same name;
     // the chosen level is stamped onto the (new or restored) progression track.
     _applyEnemy(template) {
-        const enemy = stateManager.addEnemy(this._name, template);
-        if (progression.isEnabled()) {
-            enemy.progression = { ...progression.trackOf(enemy), level: this._level ?? progression.partyLevel() };
-        }
-        return enemy;
+        return this._stampLevel(stateManager.addEnemy(this._name, template));
     },
 
     // Create: instant — reference clone or preset template, no LLM.
@@ -210,7 +219,9 @@ export const characterCreator = {
         }
         const ref = this._resolveReference();
         const template = ref ? this._cloneSheet(ref.sheet) : settingsUI.getTemplateEntries();
-        const char = this._isEnemy() ? this._applyEnemy(template) : stateManager.addCharacter(this._name, template);
+        const char = this._isEnemy()
+            ? this._applyEnemy(template)
+            : this._stampLevel(stateManager.addCharacter(this._name, template));
         logDebug(`characterCreator: created "${char.name}" (${this._mode}) from ${ref ? `reference ${ref.label}` : "preset template"}`);
         gmNotify(`Created ${char.name}${ref ? ` (copy of ${ref.label})` : ""}.`, "success");
         this._finish(char);
@@ -236,14 +247,13 @@ export const characterCreator = {
     },
 
     // Brief for the generator calls; references resolve to their sheets.
-    // Enemy mode tags the kind and the target level for progression anchoring.
+    // Enemy mode tags the kind; both modes carry the target level for
+    // progression anchoring.
     _brief() {
         const refs = this._reference ? [this._resolveReference()].filter(Boolean) : [];
         const brief = { name: this._name, details: this._details, references: refs.map(r => r.sheet) };
-        if (this._isEnemy()) {
-            brief.kind = "enemy";
-            if (progression.isEnabled()) brief.level = this._level ?? progression.partyLevel();
-        }
+        if (this._isEnemy()) brief.kind = "enemy";
+        if (progression.isEnabled()) brief.level = this._level ?? progression.partyLevel();
         return brief;
     },
 
@@ -319,7 +329,9 @@ export const characterCreator = {
             $("<i>").addClass("fa-solid fa-check"), $("<span>").text(" Apply"));
         apply.on("click", () => {
             const sheet = this._cloneSheet(this._proposal);
-            const created = this._isEnemy() ? this._applyEnemy(sheet) : stateManager.addCharacter(this._name, sheet);
+            const created = this._isEnemy()
+                ? this._applyEnemy(sheet)
+                : this._stampLevel(stateManager.addCharacter(this._name, sheet));
             gmNotify(`Created ${created.name} from the generated sheet.`, "success");
             logDebug(`characterCreator: applied generated sheet (${this._mode})`);
             this._finish(created);
