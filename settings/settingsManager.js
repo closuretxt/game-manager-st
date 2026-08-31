@@ -59,6 +59,16 @@ export const defaultSettings = {
     legacy_api: false, // LEGACY: swap the active connection profile for extension AI calls instead of per-request profiles.
     edit_mode: false, // When off, all resource/entry mutation controls are hidden (view-only, hardcore feel).
     window_opacity: 95, // Floating window background opacity in percent.
+
+    // Notifications — toastr popups for game-state events. Suppressed while
+    // edit mode is on (the user's own edits would be pure noise).
+    notify_enabled: true,     // Master switch for every notification.
+    notify_stats: true,       // Resource/attribute changes.
+    notify_items: true,       // Items gained or lost.
+    notify_skills: true,      // Skills used (cooldown started) and earned (tree unlocks, grants).
+    notify_progression: true, // EXP grants and level-ups.
+    notify_states: true,      // Deaths, knockouts, recoveries and status effects.
+    notify_enemies: false,    // Also notify for enemy sheets (HP changes, skill use...).
 };
 
 export async function loadSettings() {
@@ -99,6 +109,13 @@ export async function loadSettings() {
     $("#gm_setting_feat_death").prop("checked", !!s.feature_death);
     $("#gm_setting_bg_opacity").val(Number.isFinite(+s.window_opacity) ? +s.window_opacity : 95);
     $("#gm_bg_opacity_value").text(`${s.window_opacity}%`);
+    $("#gm_setting_notify").prop("checked", !!s.notify_enabled);
+    $("#gm_setting_notify_stats").prop("checked", !!s.notify_stats);
+    $("#gm_setting_notify_items").prop("checked", !!s.notify_items);
+    $("#gm_setting_notify_skills").prop("checked", !!s.notify_skills);
+    $("#gm_setting_notify_progression").prop("checked", !!s.notify_progression);
+    $("#gm_setting_notify_states").prop("checked", !!s.notify_states);
+    $("#gm_setting_notify_enemies").prop("checked", !!s.notify_enemies);
 
     // Initialize the game-state store (characters, shared resources, ids).
     stateManager.init();
@@ -127,6 +144,13 @@ export function saveSettings() {
     s.feature_combat = $("#gm_setting_feat_combat").prop("checked");
     s.feature_ally_ai = $("#gm_setting_feat_ally_ai").prop("checked");
     s.feature_death = $("#gm_setting_feat_death").prop("checked");
+    s.notify_enabled = $("#gm_setting_notify").prop("checked");
+    s.notify_stats = $("#gm_setting_notify_stats").prop("checked");
+    s.notify_items = $("#gm_setting_notify_items").prop("checked");
+    s.notify_skills = $("#gm_setting_notify_skills").prop("checked");
+    s.notify_progression = $("#gm_setting_notify_progression").prop("checked");
+    s.notify_states = $("#gm_setting_notify_states").prop("checked");
+    s.notify_enemies = $("#gm_setting_notify_enemies").prop("checked");
     saveSettingsDebounced();
 }
 
@@ -135,6 +159,8 @@ export function initSettingsListeners() {
       "#gm_setting_feat_wizard, #gm_setting_feat_char_creator, #gm_setting_deep_context, #gm_setting_deep_context_engines, " +
       "#gm_setting_feat_warnings, #gm_setting_feat_dice, #gm_setting_feat_transactions, #gm_setting_feat_injection, " +
       "#gm_setting_feat_enemies, #gm_setting_feat_rewrite, #gm_setting_feat_progression, #gm_setting_feat_skill_tree, " +
-      "#gm_setting_feat_combat, #gm_setting_feat_ally_ai, #gm_setting_feat_death").on("change", saveSettings);
+      "#gm_setting_feat_combat, #gm_setting_feat_ally_ai, #gm_setting_feat_death, " +
+      "#gm_setting_notify, #gm_setting_notify_stats, #gm_setting_notify_items, #gm_setting_notify_skills, " +
+      "#gm_setting_notify_progression, #gm_setting_notify_states, #gm_setting_notify_enemies").on("change", saveSettings);
 }
 

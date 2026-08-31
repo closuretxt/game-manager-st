@@ -13,6 +13,7 @@ export { logDebug };
 // UI
 import { mainPanel } from "./ui/mainPanel.js";
 import { settingsUI } from "./ui/settingsUI.js";
+import { notifications } from "./ui/notifications.js";
 // Injection
 import { initMacros } from "./inject/macro.js";
 import { initPreTurn } from "./inject/preTurn.js";
@@ -40,6 +41,7 @@ jQuery(async () => {
         await loadSettings();
         initSettingsListeners();
         settingsUI.init();
+        notifications.init();
         mainPanel.init();
         initMacros();
         initPreTurn();
