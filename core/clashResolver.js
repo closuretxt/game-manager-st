@@ -7,8 +7,9 @@
 //
 // Grouping rules live in the system prompt: one enemy action opposes at most
 // one party-side action per group; unopposed actions become single-sided
-// groups; chances reflect the stat sheets fairly (dodging/shielding are
-// first-class); speed decides initiative flavor in the outcome lines.
+// groups; chances are earned harshly from the stat sheets (health, attributes,
+// passives, statuses; unknown abilities are impossible); speed decides
+// initiative flavor in the outcome lines.
 
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
@@ -21,17 +22,24 @@ import { buildDeepContext } from "../util/loreContext.js";
 const MAX_CONTEXT_MESSAGES = 8;
 
 const SYSTEM_PROMPT = [
-    "You are the CLASH RESOLVER of a tabletop-style roleplay game system: you turn both sides' combat actions into fair, opposed probability groups.",
+    "You are the CLASH RESOLVER of a tabletop-style roleplay game system: you turn both sides' combat actions into opposed probability groups. REALISM FIRST: chances are EARNED from the sheets, never generous by default. Every tier must be justifiable by a stat, skill, passive, status or resource — if nothing on the sheet supports a chance, lower it.",
     "",
     "WHAT YOU RECEIVE:",
     "- RECENT SCENE: the last few messages of the roleplay.",
     "- PARTY-SIDE ACTIONS: what the player (and any AI-commanded allies) are doing this round, with initiative speeds.",
     "- ENEMY-SIDE ACTIONS: what each enemy is doing this round, with initiative speeds.",
-    "- ACTOR SHEETS: full stats (resources, attributes, skills, statuses) of EVERY actor in the round.",
+    "- ACTOR SHEETS: resources (current health!), attributes, skills, passives, statuses of EVERY actor in the round.",
+    "",
+    "HARD RESOLUTION RULES:",
+    "- UNKNOWN ABILITIES = IMPOSSIBLE. If an action names an ability/technique/spell NOT on the actor's sheet, Success and Critical Success are 0%: only Failure/Critical Failure tiers describing the fumble (doesn't know the technique, move misfires, nothing happens). A swordsman without 'Dimensional Slash' cannot use it.",
+    "- HEALTH CAPS PERFORMANCE. Check current resources: below ~25% health, agile/acrobatic actions are near-impossible and attack tiers shift hard toward Failure. Near-death actors cannot perform demanding maneuvers at all.",
+    "- ATTRIBUTES & PASSIVES DECIDE. Match each action to its relevant attribute (Strength for melee, Dexterity for dodging...) and read passives/stat modifiers — they must visibly shift the tiers. Large stat gaps skew tiers strongly: the weaker side rarely exceeds ~30% Success.",
+    "- STATUSES APPLY. Wounded, slowed, blinded, buffed — apply their modifiers to the chances.",
+    "- Higher speed acts first when both sides would succeed — reflect that in the outcome lines.",
+    "- Non-combat struggles (grappling, pinning, escapes, arm wrestling) resolve the same way, judged by the relevant attributes instead of weapons and armor.",
     "",
     "YOUR OBJECTIVE:",
-    "Pair the actions into clash groups and, for each group, provide exactly 4 ordered chance tiers (Critical Failure / Failure / Success / Critical Success) with short outcome lines. Chances are percentages of a 100% total and MUST reflect the stat sheets fairly: a dodging or shielding action with high Dexterity shifts tiers toward the defender; heavy armor shifts outcomes toward mitigation; a skilled attacker shifts them toward success. Higher speed acts first when both sides would succeed — reflect that in the outcome lines.",
-    "Clashes are NOT always combat: any opposed struggle resolves the same way — grappling, pinning, struggling free of a hold, wrestling over an object, tug-of-war, escape attempts, arm wrestling. Judge those by the relevant attributes (Strength, Dexterity...) instead of weapons and armor.",
+    "Pair the actions into clash groups and, for each group, provide exactly 4 ordered chance tiers (Critical Failure / Failure / Success / Critical Success) with short outcome lines. Chances are percentages of a 100% total.",
     "",
     "OUTPUT FORMAT:",
     "Respond with ONLY XML — no markdown fences, no prose:",
@@ -68,6 +76,7 @@ function collectContext(playerAction, partyActions, enemyActions) {
         resources: (c.resources || []).map(r => ({ name: r.name, value: r.value, max: r.max })),
         attributes: (c.attributes || []).map(a => ({ name: a.name, value: a.value })),
         skills: (c.skills || []).map(s => s.name),
+        passives: (c.passives || []).map(p => ({ name: p.name, description: p.description || "" })),
         statuses: (c.statuses || []).map(s => ({ name: s.name, modifiers: s.modifiers || "" })),
     });
 
