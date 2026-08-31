@@ -553,12 +553,24 @@
     z-index: 1;
 }
 
+/* Soft dark scrim behind the name/chips side so attributes stay readable
+   on bright pictures (sits above the picture, below the content). */
+.gm_party_row::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0.15) 45%, rgba(0, 0, 0, 0.45) 100%);
+    pointer-events: none;
+}
+
 /* Bigger avatar + name to match the taller picture button. */
 .gm_party_row .gm_avatar {
     width: 44px;
     height: 44px;
     flex: 0 0 44px;
     border-radius: 10px;
+    /* Lift the picture off the row's background image. */
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.18);
 }
 
 .gm_party_row .gm_avatar i {
@@ -574,16 +586,23 @@
     flex-wrap: wrap;
     gap: 4px;
     justify-content: flex-end;
+    /* Wrapped chip rows stay centered against the avatar/name. */
+    align-items: center;
+    align-content: center;
 }
 
 .gm_party_chip {
     font-size: 11px;
-    opacity: 0.7;
-    border: 1px solid var(--gm-line);
+    opacity: 0.9;
+    border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 999px;
     padding: 1px 8px;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
+    /* Dark pill + halo keeps numbers legible over any picture. */
+    background: rgba(0, 0, 0, 0.45);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
 .gm_char_tab_bar {
@@ -1557,7 +1576,9 @@ textarea.gm_input {
     font-size: 11px;
     font-weight: 600;
     color: #ffd700;
-    background: rgba(255, 215, 0, 0.12);
+    /* Gold tint layered over the dark pill backing from gm_party_chip. */
+    background: linear-gradient(rgba(255, 215, 0, 0.12), rgba(255, 215, 0, 0.12)), rgba(0, 0, 0, 0.45);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
     box-shadow: 0 0 6px rgba(255, 215, 0, 0.35);
     white-space: nowrap;
 }
