@@ -275,7 +275,10 @@ class MainPanel {
     }
 
     _renderTabs() {
-        const bar = $("#gm_tab_bar").empty();
+        const bar = $("#gm_tab_bar");
+        // .empty() collapses the scroll width, which resets scrollLeft to 0.
+        const prevScroll = bar[0] ? bar[0].scrollLeft : 0;
+        bar.empty();
         const s = extension_settings[extensionName];
         const enemyCount = (stateManager.getData().enemies || []).length;
         for (const tab of TABS) {
@@ -291,6 +294,18 @@ class MainPanel {
             });
             bar.append(btn);
         }
+        bar[0].scrollLeft = prevScroll;
+    }
+
+    // A freshly rebuilt tab bar starts at scroll position 0; nudge the scroll
+    // so the active tab is fully visible (no-op when it already is).
+    _scrollActiveTabIntoView(bar) {
+        const el = bar[0], tab = bar.find(".gm_tab.active")[0];
+        if (!el || !tab) return;
+        const barRect = el.getBoundingClientRect();
+        const tabRect = tab.getBoundingClientRect();
+        if (tabRect.left < barRect.left) el.scrollLeft += tabRect.left - barRect.left;
+        else if (tabRect.right > barRect.right) el.scrollLeft += tabRect.right - barRect.right;
     }
 
     _renderContent() {
@@ -766,6 +781,7 @@ class MainPanel {
             bar.append(btn);
         }
         content.append(bar);
+        this._scrollActiveTabIntoView(bar);
 
         const body = $("<div>");
         switch (this.activeEnemyTab) {
@@ -873,6 +889,7 @@ class MainPanel {
             bar.append(btn);
         }
         content.append(bar);
+        this._scrollActiveTabIntoView(bar);
 
         const body = $("<div>");
         switch (this.activeCharTab) {
