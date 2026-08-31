@@ -10,7 +10,6 @@ import { getConnectionProfiles, getProfileNameById, resolveConnectionProfile } f
 export const settingsUI = {
     init() {
         this.populatePresets();
-        this.populateProfiles();
         $("#gm_preset_select").on("change", () => {
             extension_settings[extensionName].active_preset = $("#gm_preset_select").val();
             saveSettingsDebounced();
@@ -19,19 +18,24 @@ export const settingsUI = {
         $("#gm_preset_load").on("click", () => this.loadPreset());
         $("#gm_preset_delete").on("click", () => this.deletePreset());
 
-        // Connection profiles (list refreshed on open since the Connection
-        // Manager extension may load after us).
-        $("#gm_profile_select").on("mousedown focus", () => this.populateProfiles());
+        // Connection profiles — populated ONCE at startup, exactly like the
+        // Recast reference (populateConnectionDropdown is only called when the
+        // UI element is created). The selects are NEVER touched during user
+        // interaction: rebuilding or re-valuing options while the native
+        // dropdown picker is open glitches the selection out. Delayed
+        // refreshes only exist to catch the Connection Manager extension
+        // loading after us — at that point no picker can be open.
+        this.populateProfiles();
+        setTimeout(() => this.populateProfiles(), 1000);
+        setTimeout(() => this.populateProfiles(), 3000);
         $("#gm_profile_select").on("change", () => {
             extension_settings[extensionName].connection_profile = $("#gm_profile_select").val();
             saveSettingsDebounced();
         });
-        $("#gm_premaster_profile_select").on("mousedown focus", () => this.populateProfiles());
         $("#gm_premaster_profile_select").on("change", () => {
             extension_settings[extensionName].premaster_profile = $("#gm_premaster_profile_select").val();
             saveSettingsDebounced();
         });
-        $("#gm_wizard_profile_select").on("mousedown focus", () => this.populateProfiles());
         $("#gm_wizard_profile_select").on("change", () => {
             extension_settings[extensionName].wizard_profile = $("#gm_wizard_profile_select").val();
             saveSettingsDebounced();
@@ -103,28 +107,14 @@ export const settingsUI = {
     },
 
     // ---------- connection profiles ----------
-    // Signature-cached: the selects are only rebuilt when the profile list
-    // (ids + names) actually changed. Rebuilding the <option> elements while
-    // the browser's native dropdown picker is open glitches the selection
-    // out, so an unchanged list must never touch the DOM.
-    _profileSignature: null,
+    // Same pattern as the Recast reference's populateConnectionDropdown():
+    // rebuild the options and select the stored value. Only ever called at
+    // startup / delayed startup refreshes — NEVER during user interaction,
+    // because touching the options while the native dropdown picker is open
+    // glitches the selection out.
     populateProfiles() {
         const s = this._settings();
         const profiles = getConnectionProfiles();
-        const signature = profiles.map(p => `${p.id}:${p.name}`).join("|") + `#${profiles.length}`;
-        const rebuild = signature !== this._profileSignature;
-        this._profileSignature = signature;
-
-        // Value sync is cheap and never glitches — always keep the selected
-        // option in sync with the stored settings. Only the rebuild (which
-        // destroys the <option> elements) is skipped when nothing changed.
-        if (!rebuild) {
-            $("#gm_profile_select").val(profiles.some(p => p.id === s.connection_profile) ? s.connection_profile : "");
-            $("#gm_premaster_profile_select").val(profiles.some(p => p.id === s.premaster_profile) ? s.premaster_profile : "");
-            $("#gm_wizard_profile_select").val(profiles.some(p => p.id === s.wizard_profile) ? s.wizard_profile : "");
-            return;
-        }
-
         const agenticSel = $("#gm_profile_select").empty();
         const premasterSel = $("#gm_premaster_profile_select").empty();
         const wizardSel = $("#gm_wizard_profile_select").empty();
