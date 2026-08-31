@@ -19,6 +19,7 @@ import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { progression } from "./progression.js";
 import { parseToolBlocks, applyToolBlocks, escAttr } from "./toolParser.js";
+import { getLastInjections } from "./injection.js";
 import { captureSnapshot } from "./snapshots.js";
 import { sendRequestViaProfile, resolveConnectionProfile, getProfileNameById } from "../util/connectionService.js";
 import { swapProfile } from "../util/profileSwapper.js";
@@ -171,13 +172,23 @@ async function buildSystemPrompt(exchange = []) {
 }
 
 function buildUserPrompt(exchange) {
+    // What the pre-master injected into this turn's story prompt (dice rolls,
+    // transactions, action rewrites, one-shot notes) — placed BEFORE the
+    // exchange so the tracker reads the raw results with the narration that
+    // followed them. Raw chat text alone never contains the actual numbers.
+    const injections = getLastInjections();
     const blocks = [
         "STATE SNAPSHOT (XML):",
         buildStateSummaryXml(),
         "",
+    ];
+    if (injections) {
+        blocks.push("GAME SYSTEM RESULTS (injected into this turn's story prompt):", injections, "");
+    }
+    blocks.push(
         "RECENT EXCHANGE:",
         ...exchange.map(m => `${m.role}: ${m.text}`),
-    ];
+    );
     return blocks.join("\n");
 }
 

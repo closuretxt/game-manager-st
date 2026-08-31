@@ -36,7 +36,7 @@ import { runCombatTurn } from "./combatEngine.js";
 import { runTransaction } from "./transactions.js";
 import { runPrePass } from "./prePass.js";
 import { restoreSnapshot } from "./snapshots.js";
-import { queueLowOnce, queueLowNote, queueRewrite, replayHigh, stashHigh } from "./injection.js";
+import { queueLowOnce, queueLowNote, queueRewrite, replayHigh, stashHigh, resetInjectionRecord } from "./injection.js";
 import { attachRewriteToMessage } from "../ui/rewriteTag.js";
 import { statusBubble } from "../ui/statusBubble.js";
 
@@ -121,6 +121,9 @@ function planFromTriggers(hits) {
 export async function handlePreTurn(type = "normal") {
     const s = extension_settings[extensionName];
     if (!s.enabled) return;
+    // Fresh per-turn injection record: whatever the macros consume during
+    // THIS prompt assembly is what the post-pass tracker will see.
+    resetInjectionRecord();
     if (_running) {
         console.info("[GM DIAG] handlePreTurn skipped: already running");
         return;

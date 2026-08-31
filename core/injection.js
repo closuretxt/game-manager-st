@@ -21,6 +21,16 @@ import { stateManager } from "./stateManager.js";
 let _pendingHigh = [];
 let _pendingLow = [];
 
+// Record of what the macros actually injected into THIS turn's story prompt:
+// the drained high-priority payload and the one-shot low-priority lines. The
+// post-pass tracker reads it (getLastInjections) so its LLM sees the same
+// ground-truth results the story engine saw — raw chat text alone never
+// contains the roll numbers or transaction outcomes. Reset per generation by
+// resetInjectionRecord (called from handlePreTurn), so a turn where the macro
+// was not placed (or nothing was queued) never leaks the previous turn's data.
+let _lastHigh = "";
+let _lastLow = "";
+
 function enabled() {
     const s = extension_settings[extensionName];
     return !!(s.enabled && s.feature_injection);
@@ -106,6 +116,7 @@ export function consumeHigh() {
     if (!enabled() || _pendingHigh.length === 0) return "";
     const out = _pendingHigh.join("\n");
     _pendingHigh = [];
+    _lastHigh = out;
     return `<gamemaster_result note="Outcomes just resolved by the game system (dice rolls, transactions, action rewrites). Treat as ground truth; narrate accordingly, do not repeat the numbers or the tags themselves.">\n${out}\n</gamemaster_result>`;
 }
 
@@ -157,9 +168,35 @@ export function buildLowPriority() {
 
     // One-shot lines queued by the pre-pass for THIS turn only.
     if (_pendingLow.length) {
-        parts.push(..._pendingLow.splice(0, _pendingLow.length));
+        const oneShot = _pendingLow.splice(0, _pendingLow.length);
+        _lastLow = oneShot.join("\n");
+        parts.push(...oneShot);
     }
 
     if (!parts.length) return "";
     return `<gamemaster_context note="Ground-truth tracked state the story engine must not recount or track itself; warnings describe imminent needs.">\n${parts.join("\n")}\n</gamemaster_context>`;
+}
+
+// ---------- post-pass visibility ----------
+
+// Clears the per-turn injection record. Called at the start of every
+// generation (handlePreTurn), before prompt assembly — so the record always
+// describes exactly what THIS generation's macros injected, even when the
+// macro is missing from the prompt or nothing was queued.
+export function resetInjectionRecord() {
+    _lastHigh = "";
+    _lastLow = "";
+}
+
+// What the macros injected into this turn's story prompt, as one XML block.
+// Empty when nothing was injected this turn. Consumed by the post-pass
+// tracker (core/agentRunner.js) so it judges the exchange with the same
+// ground-truth results (dice, transactions, rewrites, one-shot notes) the
+// story engine saw.
+export function getLastInjections() {
+    if (!_lastHigh && !_lastLow) return "";
+    const parts = [];
+    if (_lastHigh) parts.push(_lastHigh);
+    if (_lastLow) parts.push(_lastLow);
+    return `<gamemaster_injections note="Results and context the game system injected into this turn's story prompt (dice rolls, transactions, action rewrites, one-shot notes). Treat as ground truth when reading the exchange.">\n${parts.join("\n")}\n</gamemaster_injections>`;
 }
