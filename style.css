@@ -61,6 +61,43 @@
     border-radius: 10px;
 }
 
+/* Post-pass busy state: rotating conic sweep clipped to the window's border
+   ring (same technique as .menu_button.gm_busy) while the tracker LLM runs. */
+#gm_floating_window.gm_agent_busy::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 2px;
+    background: conic-gradient(from var(--gm-busy-angle, 0deg),
+        transparent 0deg,
+        color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 85%, transparent) 80deg,
+        transparent 160deg);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+            mask-composite: exclude;
+    animation: gm_busy_orbit 1.2s linear infinite;
+    pointer-events: none;
+    z-index: 3;
+}
+
+/* Header "Processing..." chip, next to the title (hidden until the pass runs). */
+#gm_agent_busy {
+    align-items: center;
+    gap: 6px;
+    margin-left: 10px;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--SmartThemeEmColor, #aaa);
+    opacity: 0.9;
+}
+
+#gm_agent_busy .fa-solid {
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
+    animation: gm_status_turn 1.1s linear infinite;
+}
+
 /* Left header group: title + the rerun button (kept far from the edit
    toggle on the right so exiting edit mode never triggers a rerun). */
 #gm_window_left {
@@ -765,7 +802,11 @@ textarea.gm_input {
 #gm_status_bubble.gm_dice_fadeout {
     opacity: 0;
     transition: opacity 0.35s ease;
+    /* The gm_dice_in fill (both) keeps forcing opacity: 1 and overrides
+       transitions — drop it or the fade never renders. */
+    animation: none;
 }
+
 
 .gm_status_head {
     display: flex;
@@ -815,6 +856,14 @@ textarea.gm_input {
     padding: 2px 0;
 }
 
+/* Headerless notification bubbles (gm_note_only): the lines ARE the bubble —
+   drop the separator that only makes sense under a header row. */
+#gm_status_bubble.gm_note_only .gm_status_lines {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+}
+
 /* Notification highlights (notifications.js composes lines as HTML with
    these classes; all dynamic values are escaped before interpolation). */
 .gm_status_line .gm_n_name {
@@ -848,6 +897,8 @@ textarea.gm_input {
     opacity: 0;
     transform: translateY(8px);
     transition: opacity 0.6s ease, transform 0.6s ease;
+    /* Same gm_dice_in fill conflict as above. */
+    animation: none;
 }
 
 .gm_status_done .gm_status_text {

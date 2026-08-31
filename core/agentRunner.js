@@ -28,6 +28,15 @@ import { buildDeepContext } from "../util/loreContext.js";
 const MAX_CONTEXT_MESSAGES = 6;
 let _running = false;
 
+// Side-panel busy indicator: rotating outline on the window border + header
+// "Processing..." chip (index.html), so the tracker wait is never dead UI.
+// Direct DOM on purpose — importing mainPanel here would create an import
+// cycle (mainPanel -> postTurn -> agentRunner -> mainPanel).
+function setPanelBusy(on) {
+    $("#gm_floating_window").toggleClass("gm_agent_busy", !!on);
+    $("#gm_agent_busy").css("display", on ? "flex" : "none");
+}
+
 // Renders the tracked state as a compact XML snapshot: ONE line per actor,
 // tracked names used directly as attribute keys (the agent must echo those
 // exact names in its tool tags). Legends live once in the header note.
@@ -209,6 +218,7 @@ export async function runAgentPass(reason = "manual", mesId = null) {
     }
     _running = true;
     try {
+        setPanelBusy(true);
         const st = getContext();
         const exchange = collectRecentMessages();
         const messages = [
@@ -241,6 +251,7 @@ export async function runAgentPass(reason = "manual", mesId = null) {
         const blocks = parseToolBlocks(reply || "");
         if (!blocks.length) {
             logDebug(`agent pass (${reason}): no changes reported`);
+            setPanelBusy(false);
             return 0;
         }
         // Baseline for rollback: the state before this message's first changes.
@@ -250,9 +261,11 @@ export async function runAgentPass(reason = "manual", mesId = null) {
         captureSnapshot(snapId);
         const applied = applyToolBlocks(blocks);
         logDebug(`agent pass (${reason}): applied ${applied} change(s)`);
+        setPanelBusy(false);
         return applied;
     } catch (e) {
         console.error("[Game Manager] agent pass failed:", e);
+        setPanelBusy(false);
         return 0;
     } finally {
         _running = false;

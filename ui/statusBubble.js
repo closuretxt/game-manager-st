@@ -34,17 +34,22 @@ class StatusBubble {
         });
     }
 
-    _build(text) {
+    // `withHead` = false builds a headerless bubble (notifications): just the
+    // result lines, no spinner/check icon and no status text row.
+    _build(text, withHead = true) {
         this.close(true);
         clearTimeout(this._closeTimer);
         this._isNotification = false;
         this.el = $("<div>").attr("id", "gm_status_bubble").appendTo("body");
-        this.head = $("<div>").addClass("gm_status_head");
-        this.icon = $("<i>").addClass("fa-solid fa-compass gm_status_spin");
-        this.status = $("<span>").addClass("gm_status_text").text(text || "");
-        this.head.append(this.icon, this.status);
+        if (withHead) {
+            this.head = $("<div>").addClass("gm_status_head");
+            this.icon = $("<i>").addClass("fa-solid fa-compass gm_status_spin");
+            this.status = $("<span>").addClass("gm_status_text").text(text || "");
+            this.head.append(this.icon, this.status);
+            this.el.append(this.head);
+        }
         this.lines = $("<div>").addClass("gm_status_lines");
-        this.el.append(this.head, this.lines);
+        this.el.append(this.lines);
         this._position();
         return this;
     }
@@ -113,10 +118,10 @@ class StatusBubble {
             return this.result(text, html);
         }
         if (!this.el) {
-            this._build("");
+            // Standalone notification bubble: lines only — no header, no check.
+            this._build("", false);
             this._isNotification = true;
-            this.icon.attr("class", "fa-solid fa-circle-check gm_status_check");
-            this.el.addClass("gm_status_done");
+            this.el.addClass("gm_note_only");
         }
         this.lines.append(this._line(text, html));
         this._position();
