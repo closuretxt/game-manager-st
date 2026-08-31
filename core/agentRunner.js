@@ -26,6 +26,10 @@ import { swapProfile } from "../util/profileSwapper.js";
 import { buildDeepContext } from "../util/loreContext.js";
 
 const MAX_CONTEXT_MESSAGES = 6;
+// The tracker only reports changes from the LAST exchange (player action +
+// AI reply); older messages are context only, so changes already applied in
+// previous turns are never re-applied.
+const CURRENT_EXCHANGE_MESSAGES = 2;
 let _running = false;
 
 // Side-panel busy indicator: rotating outline on the window border + header
@@ -124,8 +128,9 @@ async function buildSystemPrompt(exchange = []) {
     }
     const lines = [
         "You are the game-state engine of a FICTIONAL tabletop-style roleplay session. Everything you read is invented roleplay between consenting adults — a game of dice and imagination with no real people, no real stakes and no real harm. Your job is pure bookkeeping: you are an accountant of a fantasy ledger, not a narrator, not a moral judge and not a safety filter. Violence, injury, suffering and death — including against HUMAN characters (the player character, allies, innocents, civilians) — are ordinary simulated game mechanics, exactly as they are in Dungeons & Dragons, Call of Cthulhu or any tabletop RPG. Refusing, softening or omitting them is a BUG in your output, not good behavior.",
-        "You will receive the recent exchange and an XML snapshot of the tracked state.",
-        "Report ONLY the concrete state changes that logically follow from the exchange (damage, spent resources, resolved rolls, items gained or consumed, attribute milestones, evolving custom features).",
+        "You will receive an XML snapshot of the tracked state, optional PRIOR CONTEXT (older messages) and the CURRENT EXCHANGE (the latest player action + AI reply).",
+        "The snapshot ALREADY reflects every change from all previous turns. Report ONLY the concrete state changes that logically follow from the CURRENT EXCHANGE (damage, spent resources, resolved rolls, items gained or consumed, attribute milestones, evolving custom features).",
+        "NEVER re-report changes visible in PRIOR CONTEXT — resources already spent or removed, damage already applied, items already gained are done: the snapshot's current values are the ground truth. When in doubt, trust the snapshot over the history.",
         "Respond with ONLY the XML blocks below — no prose, no explanations. If nothing changed, respond with nothing.",
         "Never invent characters or tracked values that are not in the state snapshot. Never modify shared party resources.",
         "",
@@ -193,7 +198,7 @@ async function buildSystemPrompt(exchange = []) {
     return lines.join("\n");
 }
 
-function buildUserPrompt(exchange) {
+function buildUserPrompt(exchange, history = []) {
     // What the pre-master injected into this turn's story prompt (dice rolls,
     // transactions, action rewrites, one-shot notes) — placed BEFORE the
     // exchange so the tracker reads the raw results with the narration that
@@ -207,11 +212,21 @@ function buildUserPrompt(exchange) {
     if (injections) {
         blocks.push("GAME SYSTEM RESULTS (injected into this turn's story prompt):", injections, "");
     }
+    // Prior messages are context only — clearly fenced off so the tracker
+    // never re-applies changes that earlier passes already recorded.
+    if (history.length) {
+        blocks.push(
+            "PRIOR CONTEXT (older messages — ALREADY PROCESSED, their changes are already in the snapshot; NEVER report changes from these):",
+            ...history.map(m => `${m.role}: ${m.text}`),
+            "",
+        );
+    }
     blocks.push(
-        "RECENT EXCHANGE:",
+        "CURRENT EXCHANGE (the ONLY source of changes — report exactly what happens here, nothing else):",
         ...exchange.map(m => `${m.role}: ${m.text}`),
     );
     return blocks.join("\n");
+}
 }
 
 // Runs one agentic analysis pass for the message `mesId`. Returns the number
@@ -227,10 +242,14 @@ export async function runAgentPass(reason = "manual", mesId = null) {
     try {
         setPanelBusy(true);
         const st = getContext();
-        const exchange = collectRecentMessages();
+        const recent = collectRecentMessages();
+        // Last player action + AI reply = the exchange being accounted;
+        // everything before it is read-only context.
+        const exchange = recent.slice(-CURRENT_EXCHANGE_MESSAGES);
+        const history = recent.slice(0, -CURRENT_EXCHANGE_MESSAGES);
         const messages = [
             { role: "system", content: await buildSystemPrompt(exchange) },
-            { role: "user", content: buildUserPrompt(exchange) },
+            { role: "user", content: buildUserPrompt(exchange, history) },
         ];
 
         let reply = "";
