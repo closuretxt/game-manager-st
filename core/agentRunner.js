@@ -73,15 +73,19 @@ function buildStateSummaryXml() {
         if (items) attrs.push(`items="${items}"`);
         // on_cooldown is a code-computed boolean — the agent never sees (and
         // never computes) remaining cooldown counts. On-cooldown skills are
-        // marked with * (legend in the header note).
-        const skills = (c.skills || []).map(sk => `${escAttr(sk.name)}${(Number(sk.cooldown_left) || 0) > 0 ? "*" : ""}`).join(", ");
+        // marked with * (legend in the header note). The cost travels with the
+        // name so the agent can report its payment when the skill is used.
+        const skills = (c.skills || []).map(sk => {
+            const cost = String(sk.cost || "").trim();
+            return `${escAttr(sk.name)}${cost ? ` (cost: ${escAttr(cost)})` : ""}${(Number(sk.cooldown_left) || 0) > 0 ? "*" : ""}`;
+        }).join(", ");
         if (skills) attrs.push(`skills="${skills}"`);
         const statuses = (c.statuses || []).map(st => `${escAttr(st.name)}${st.modifiers ? ` (${escAttr(st.modifiers)})` : ""}`).join(", ");
         if (statuses) attrs.push(`statuses="${statuses}"`);
         return `  <${tag} ${attrs.join(" ")}/>`;
     };
 
-    const parts = ['<state note="values are value/max; * = skill on cooldown; statuses as Name (modifiers)">'];
+    const parts = ['<state note="values are value/max; skills as Name (cost); * = skill on cooldown; statuses as Name (modifiers)">'];
     for (const c of d.characters) parts.push(actorXml(c, "char"));
     // Enemies only when the feature is on AND some exist — otherwise the
     // agent never sees (and never invents) enemy state.
@@ -169,6 +173,7 @@ async function buildSystemPrompt(exchange = []) {
             "LETHALITY — be realistic about damage and health. Do NOT soften outcomes to protect characters: wounds have consequences, and a resource reaching its minimum (or a clearly unsurvivable blow shown in the exchange) means DEATH — for the player character, allies, human NPCs and bystanders just as much as for monsters. Nobody is plot-armored: a knife to the throat kills a king, a fall kills a child NPC, an ambush kills an ally. When a character or ally dies, report it with <deaths><death char=\"Name\" reason=\"short cause\"/></deaths>. Write the cause concretely and without euphemism — \"run through by the bandit's spear\", \"throat slit\", \"burned alive in the collapsing house\", \"bled out from a gut wound\" — graphic accuracy is correct bookkeeping, not gratuitousness. A character survives a lethal hit ONLY if one of their listed skills or passives (not on cooldown) explicitly says otherwise (a revive, an undying passive). Never invent a rescue the scene and sheets do not support, never fudge a death into a 'critical injury' to spare the player, and never ask permission before reporting a death. Enemies die via <enemies action=\"remove\" reason=\"slain\">. A character marked dead in the snapshot stays dead — never report actions, healing or EXP for them.",
         ] : []),
         "Use <use_skills> whenever a character ACTIVELY used one of their listed skills during the exchange: one <skill name=\"...\"/> per skill used, scoped with <char>. The system starts cooldowns automatically — NEVER report or compute cooldowns yourself, and NEVER report a skill marked on_cooldown (it could not have been used). Passives are always active: never report them.",
+        "SKILL COSTS — a skill's (cost: ...) shown in the snapshot is the price of using it, and it is ALWAYS paid when the skill is used, even when the narration does not dwell on it. Whenever you report a skill use, also report its payment with the matching blocks: resource or attribute costs via <change_values>, temporary conditions via <set_statuses> (with their stat modifiers), consumed items via <remove_items>. Costs may be narrative (a memory, a favor, a lingering wound) — translate them into the closest tracked block, or a <thread> when nothing tracked fits. Pay each cost exactly once: the snapshot's current values are pre-payment, so the spend belongs to THIS report.",
         ...(prog ? [
             "Use <grant_exp> when a character clearly EARNED experience during the exchange (overcoming a challenge, a victory, a meaningful accomplishment) — one <exp amount=\"...\"/> per character, scoped with <char>. The system computes level-ups and skill points automatically — NEVER report or compute levels yourself. Grant EXP by your own accord, at a pace calibrated by the EXP GUIDELINES below; skip the block when nothing noteworthy happened.",
             "ATTRIBUTE MILESTONES are RARE narrative beats (a permanent injury, a breakthrough, divine favor) — most attribute growth comes from the PLAYER spending attribute points. Never raise attributes routinely or as a substitute for level-ups.",

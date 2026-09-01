@@ -305,7 +305,7 @@ export async function handlePreTurn(type = "normal") {
             if (s.feature_skill_suggest && plan.skills?.length) {
                 for (const sk of plan.skills) {
                     logDebug(`pre-turn: skill suggested "${sk.char}" -> "${sk.name}"`);
-                    queueSkillUse(sk.char, sk.name);
+                    queueSkillUse(sk.char, sk.name, sk.cost);
                 }
             }
         }

@@ -323,7 +323,9 @@ function sanitizePlan(parsed) {
             if (!char || char.state?.mode) return null;
             const skill = (char.skills || []).find(x => String(x.name || "").toLowerCase() === String(sk?.name ?? "").toLowerCase());
             if (!skill || (Number(skill.cooldown_left) || 0) > 0) return null;
-            return { char: char.name, name: skill.name };
+            // Cost travels with the suggestion so the story engine can narrate
+            // the price being paid (resource, stat or purely narrative).
+            return { char: char.name, name: skill.name, cost: String(skill.cost || "").trim() };
         })
         .filter(Boolean)
         .slice(0, 1); // at most one suggestion per turn

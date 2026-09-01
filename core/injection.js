@@ -107,11 +107,13 @@ export function queueRewrite(text) {
 // the story engine should narrate the character using the skill this turn.
 // The cooldown itself is NOT applied here — the post-pass <use_skills> report
 // stays the only cooldown writer. XML-escaped on queue.
-export function queueSkillUse(character, skill) {
+export function queueSkillUse(character, skill, cost = "") {
     const c = esc(String(character ?? "").trim());
     const sk = esc(String(skill ?? "").trim());
+    const co = esc(String(cost ?? "").trim());
     if (!c || !sk) return;
-    queueHigh(`  <skill_use character="${c}" skill="${sk}" note="The game system judged this tracked skill to fit the player's action; narrate the character using it. Its cooldown is applied by the tracker afterwards."/>`);
+    const costNote = co ? ` Its cost (${co}) must be narrated as paid — resource, stat or narrative, exactly as the skill describes.` : "";
+    queueHigh(`  <skill_use character="${c}" skill="${sk}" note="The game system judged this tracked skill to fit the player's action; narrate the character using it.${costNote} Its cooldown is applied by the tracker afterwards."/>`);
 }
 
 // Queues a ONE-SHOT low-priority line (e.g. a shared resource value the
