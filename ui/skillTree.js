@@ -128,7 +128,7 @@ export const skillTreeView = {
         const detail = $("<div>").addClass("gm_stree_detail");
         const hint = $("<div>").addClass("gm_tree_hint");
         const extend = $("<div>").addClass("menu_button gm_small_btn gm_stree_extend")
-            .append($("<i>").addClass("fa-solid fa-arrows-down-to-line"), $("<span>").text(" Extend Tree (+3 tiers)"))
+            .append($("<i>").addClass("fa-solid fa-arrows-down-to-line"), $("<span>").text(" Extend Tree (+6 tiers)"))
             .hide();
         const bottom = $("<div>").addClass("gm_stree_bottom").append(hint, extend);
         const footer = $("<div>").addClass("gm_stree_footer").append(detail, bottom);
@@ -224,7 +224,7 @@ export const skillTreeView = {
         p.extend.toggle(skillTree.shouldExtend(char.id));
         p.bottom.toggle(!!p.hint.text() || p.extend.is(":visible"));
 
-        // Frontier reached: offer the next 3 tiers (once per character until
+        // Frontier reached: offer the next 6 tiers (once per character until
         // a segment is generated).
         if (skillTree.shouldExtend(char.id) && !_frontierPrompted.has(char.id)) {
             _frontierPrompted.add(char.id);
@@ -604,10 +604,10 @@ export const skillTreeView = {
         const overlay = $("<div>").addClass("gm_modal_overlay");
         const dialog = $("<div>").addClass("gm_modal");
         const title = mode === "frontier"
-            ? "Extend skill tree (next 3 tiers)"
+            ? "Extend skill tree (next 6 tiers)"
             : "Generate skill tree";
         const hint = mode === "frontier"
-            ? "You reached the frontier of the current tree. Describe what you want next (or leave empty) and generate 3 more tiers."
+            ? "You reached the frontier of the current tree. Describe what you want next (or leave empty) and generate 6 more tiers."
             : "Describe what you want from this skill tree (or leave empty) and it will be generated for this character.";
 
         const textarea = $("<textarea>").addClass("gm_modal_textarea")
@@ -682,7 +682,7 @@ export const skillTreeView = {
 
         dialog.append(
             $("<b>").text("Refine skill tree"),
-            $("<div>").addClass("gm_modal_hint").text("The latest 3 tiers are regenerated with your feedback. Earlier tiers stay untouched."),
+            $("<div>").addClass("gm_modal_hint").text("The latest 6 tiers are regenerated with your feedback. Earlier tiers stay untouched."),
             textarea,
             $("<div>").addClass("gm_modal_actions").append(cancel, go),
         );

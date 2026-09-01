@@ -1,10 +1,10 @@
-// Skill trees — per-character node graphs generated in 3-tier segments.
+// Skill trees — per-character node graphs generated in 6-tier segments.
 // The LLM only PROPOSES structure (names, costs, requirements); the code owns
 // all the math: point spending, requirement checks and reward syncing into
 // the sheet. Same contract as progression (LLMs never compute anything).
 //
-// A tree grows lazily: the first segment (tiers 1-3) is generated on demand,
-// and whenever an unlocked node reaches the frontier the next 3 tiers can be
+// A tree grows lazily: the first segment (tiers 1-6) is generated on demand,
+// and whenever an unlocked node reaches the frontier the next 6 tiers can be
 // generated. Unlocked rewards are synced into the sheet as normal entries
 // tagged with from_tree, so they surface everywhere (injection, lists) for
 // free — the tree structure itself is NEVER injected into the story prompt.
@@ -18,8 +18,8 @@ import { genId } from "./schemas.js";
 import { sendRequestViaProfile, resolveWizardProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 
-// Tiers generated per LLM call (the "3 levels deep" from the spec).
-const SEGMENT_TIERS = 3;
+// Tiers generated per LLM call (passives make long segments work fine).
+const SEGMENT_TIERS = 6;
 const NODE_TYPES = ["active", "passive", "stat", "upgrade"];
 
 function settings() {
@@ -91,7 +91,7 @@ export const skillTree = {
             "- BUILDS MUST MATTER: give each branch a clear identity (burst vs sustain, offense vs defense, mobility vs control...), offer competing paths inside a tier so two players pick differently, and prefer trade-offs and signature moments over generic small bonuses.",
             "- FORK, DON'T CHAIN: open 2-4 distinct branch roots in the segment's first tier and fork branches again deeper down (a node may have several children) — the tree must WIDEN as it deepens, never run as single-file chains.",
             "- Balance against the character's LEVEL and tier: a node should feel meaningful at the level it is unlocked, never game-breaking.",
-            "- tier: integers continuing from the frontier given below. Produce exactly 3 tiers, 3-5 nodes per tier.",
+            "- tier: integers continuing from the frontier given below. Produce exactly 6 tiers, 3-5 nodes per tier.",
             "- cost: skill points, integer >= 1, set by the node's POWER (not its position): incremental or utility effects cost 1-2, solid build-defining effects 3-4, powerful signature effects 5-6, and only truly transformative capstones go higher.",
             "- requires: space-separated node ids that must be unlocked first (frontier nodes and/or same-segment nodes). Segment-entry nodes should chain from the frontier when it makes sense; every deeper node must depend on at least one earlier node, and no single node may be the sole gateway to an entire tier.",
             "- ACTIVE SKILL USAGE: an active node's description must read like a usable skill — what the character does, the concrete effect, and any resource cost — and MUST end with \"Cooldown: N turns\" (1 turn = 1 player message). N is never below 2 and scales with strength: minor or utility effects 2, solid combat effects 3, powerful effects 4, transformative capstones 5 or more. Never omit the cooldown and never phrase it differently.",
