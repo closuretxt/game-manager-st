@@ -127,6 +127,62 @@ function planFromTriggers(hits) {
     };
 }
 
+// Swipe/regenerate recovery for a missing stash (page reload, chat switch,
+// or the original turn never stashed): re-judge the ORIGINAL player action —
+// the user message right before the swiped reply — and re-queue only the
+// NON-mutating results (warnings, relevant values, notes, rewrite, skill
+// suggestion). Dice/combat/transactions are skipped: the first generation
+// already resolved them, and without a baseline rollback re-running them
+// would re-roll dice and double-spend.
+async function recoverSwipePlan(targetMsgId) {
+    const s = extension_settings[extensionName];
+    const st = getContext();
+    const prev = st.chat?.[targetMsgId - 1];
+    const action = prev?.is_user ? String(prev.mes ?? "").trim() : "";
+    if (!action) return null;
+
+    console.info(`[GM DIAG] recoverSwipePlan: stash missed — re-judging original action for message ${targetMsgId}`);
+    statusBubble.show(s.pre_pass ? "Judging action..." : "Checking action...");
+    const plan = await runPrePass(action);
+    if (!plan || plan.nothing) return null;
+
+    // Warnings are idempotent set/clear — safe to re-apply on the
+    // rolled-back (or unchanged) state.
+    if (s.feature_warnings) {
+        for (const w of plan.warnings) {
+            if (w.action === "clear") stateManager.clearWarning(w.name);
+            else stateManager.setWarning({ name: w.name, text: w.text });
+        }
+    }
+
+    // Same one-shot lines the first generation saw.
+    if (s.feature_injection) {
+        for (const rel of plan.relevant) {
+            if (rel.entry) {
+                if (rel.entry.always_inject) continue;
+                queueLowOnce(`  <resource name="${rel.entry.name}" value="${rel.entry.qty}"/>`);
+            } else if (rel.skill) {
+                if (rel.cooldown > 0) {
+                    queueLowOnce(`  <skill_cooldown character="${rel.character}" skill="${rel.name}" turns="${rel.cooldown}"/>`);
+                } else {
+                    queueLowOnce(`  <skill_ready character="${rel.character}" skill="${rel.name}"/>`);
+                }
+            } else {
+                queueLowOnce(`  <character_stat character="${rel.character}" name="${rel.name}" value="${rel.value}"/>`);
+            }
+        }
+        for (const note of plan.notes) queueLowNote(note);
+    }
+
+    // High-priority re-queues; the first generation's DOM rewrite tag on the
+    // message is left untouched.
+    if (s.feature_rewrite && plan.rewrite) queueRewrite(plan.rewrite);
+    if (s.feature_skill_suggest) {
+        for (const sk of plan.skills) queueSkillUse(sk.char, sk.name, sk.cost);
+    }
+    return plan;
+}
+
 // Called from the awaited GENERATION_AFTER_COMMANDS handler before prompt
 // assembly. `type` is the generation type ("normal", "swipe", ...).
 export async function handlePreTurn(type = "normal") {
@@ -210,12 +266,17 @@ export async function handlePreTurn(type = "normal") {
         console.info(`[GM DIAG] pre-pass returned: ${plan ? `roll=${!!plan.roll} tx=${plan.transactions.length} warn=${plan.warnings.length} relevant=${plan.relevant.length} notes=${plan.notes.length} skills=${plan.skills.length} rewrite=${!!plan.rewrite} nothing=${plan.nothing}` : "NULL (fell back to keywords)"}`);
         if (!plan) plan = planFromTriggers(detectTriggers(action));
     }
-    // Swipes/regenerates never re-run the pre-pass (the plan was already
-    // judged when the action was first sent), but the re-generated prompt
-    // still needs THIS turn's results — the previous generation's macro
-    // already consumed the high-priority buffer. Re-queue the stashed
-    // payload for the message being re-generated.
-    if (!isPlayerAction) replayHigh(targetMsgId);
+    // Swipes/regenerates never re-run the pre-pass while the stash holds the
+    // original turn's results (the previous generation's macro already
+    // consumed the live buffers — replayHigh re-queues the stashed payload).
+    // When the stash is gone (page reload, chat switch, or the original turn
+    // never stashed), re-judge the ORIGINAL player action so the swipe still
+    // receives the pre-pass context instead of an empty prompt.
+    if (!isPlayerAction) {
+        if (!replayHigh(targetMsgId)) {
+            plan = await recoverSwipePlan(targetMsgId);
+        }
+    }
 
     if (!plan || plan.nothing) {
         console.info("[GM DIAG] plan empty/nothing — no specialists will run");

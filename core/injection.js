@@ -83,7 +83,7 @@ export function replayHigh(mesId) {
     const stored = _stashedHigh.get(Number(mesId));
     if (!stored) {
         console.info(`[GM DIAG] replayHigh: MISS for message ${mesId} (stashed keys=[${[..._stashedHigh.keys()]}])`);
-        return;
+        return false; // caller decides the fallback (swipe recovery)
     }
     logDebug(`injection: replaying stashed results for message ${mesId} (swipe/regenerate)`);
     console.info(`[GM DIAG] replayHigh: HIT for message ${mesId} (high=${stored.high.length} chars, low=${stored.low.length} chars re-queued)`);
@@ -93,6 +93,7 @@ export function replayHigh(mesId) {
         // generation's macro — re-queue them verbatim for this one.
         _pendingLow.push(...stored.low.split("\n").filter(Boolean));
     }
+    return true;
 }
 
 // Queues a ONE-SHOT high-priority action rewrite produced by the pre-pass.
