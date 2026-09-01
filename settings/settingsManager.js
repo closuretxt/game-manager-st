@@ -52,6 +52,7 @@ export const defaultSettings = {
     combat_max_enemy_actions: 6,  // Sanity cap on enemy actions per combat round.
     combat_rich_clash_ui: false,  // Rich clash bubble: face-off title, role chips, VS badge. Off = simple layout.
     roll_attachment: true,        // Roll/combat results render as file-style chips under the player's message.
+    roll_duration: 1600,          // Dice roll animation length in ms (a random ±200ms variation is added per roll).
     feature_death: true,          // Permadeath: the post-pass may kill characters (<deaths> tag); only the user revives.
 
     // Standing instructions injected verbatim into the specialists' prompt
@@ -124,6 +125,8 @@ export async function loadSettings() {
     $("#gm_setting_feat_ally_ai").prop("checked", !!s.feature_ally_ai);
     $("#gm_setting_rich_clash").prop("checked", !!s.combat_rich_clash_ui);
     $("#gm_setting_roll_attachment").prop("checked", !!s.roll_attachment);
+    $("#gm_setting_roll_duration").val(Number.isFinite(+s.roll_duration) ? +s.roll_duration : 1600);
+    $("#gm_roll_duration_value").text(`${((Number(s.roll_duration) || 1600) / 1000).toFixed(1)}s`);
     $("#gm_setting_feat_death").prop("checked", !!s.feature_death);
     $("#gm_setting_bg_opacity").val(Number.isFinite(+s.window_opacity) ? +s.window_opacity : 95);
     $("#gm_bg_opacity_value").text(`${s.window_opacity}%`);
@@ -168,6 +171,7 @@ export function saveSettings() {
     s.feature_ally_ai = $("#gm_setting_feat_ally_ai").prop("checked");
     s.combat_rich_clash_ui = $("#gm_setting_rich_clash").prop("checked");
     s.roll_attachment = $("#gm_setting_roll_attachment").prop("checked");
+    s.roll_duration = Number($("#gm_setting_roll_duration").val()) || 1600;
     s.feature_death = $("#gm_setting_feat_death").prop("checked");
     s.notify_enabled = $("#gm_setting_notify").prop("checked");
     s.notify_stats = $("#gm_setting_notify_stats").prop("checked");
@@ -194,6 +198,13 @@ export function initSettingsListeners() {
         const val = Number($("#gm_setting_sound_volume").val()) || 60;
         extension_settings[extensionName].sound_volume = val;
         $("#gm_sound_volume_value").text(`${val}%`);
+        saveSettingsDebounced();
+    });
+    // Rolling-time slider: live label + persist on input.
+    $("#gm_setting_roll_duration").off("input.gm").on("input.gm", () => {
+        const val = Number($("#gm_setting_roll_duration").val()) || 1600;
+        extension_settings[extensionName].roll_duration = val;
+        $("#gm_roll_duration_value").text(`${(val / 1000).toFixed(1)}s`);
         saveSettingsDebounced();
     });
 }

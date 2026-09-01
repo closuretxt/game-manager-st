@@ -176,8 +176,12 @@ export async function rollDice(playerAction, mesId, { title = null } = {}) {
         }
 
         const winner = weightedRoll(tiers);
-        playRoll(1600); // tumbling dice while the animation breathes
-        await new Promise(r => setTimeout(r, 1600)); // let the animation breathe
+        // Rolling time setting with a ±200ms random variation so repeated
+        // rolls don't feel mechanical.
+        const rollMs = Math.max(300, Math.round((Number(s.roll_duration) || 1600) + (Math.random() * 400 - 200)));
+        bubble.startRoll(); // slot-machine sweep across the streamed tiers
+        playRoll(rollMs); // tumbling dice while the animation breathes
+        await new Promise(r => setTimeout(r, rollMs)); // let the animation breathe
         bubble.resolve(winner);
         playTierResult(winner.name);
 

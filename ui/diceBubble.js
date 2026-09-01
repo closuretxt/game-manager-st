@@ -23,6 +23,7 @@ class DiceBubble {
         this.el = null;
         this.tierEls = new Map();
         this._faceTimer = null;
+        this._sweepTimer = null;
         this._closeTimer = null;
         this._faceIndex = 0;
     }
@@ -54,6 +55,27 @@ class DiceBubble {
                 .removeClass(DICE_FACES.join(" "))
                 .addClass(DICE_FACES[this._faceIndex]);
         }, 130);
+    }
+
+    // Slot-machine sweep (same feel as the combat bubble's group roll): a
+    // highlight cycles the tier rows until resolve() lands on the winner.
+    // Idempotent — the first tier starts it, later calls keep it running.
+    startRoll() {
+        if (!this.el || !this.tierEls.size || this._sweepTimer) return;
+        const names = [...this.tierEls.keys()];
+        let i = 0;
+        this._sweepTimer = setInterval(() => {
+            for (const [name, info] of this.tierEls) {
+                info.row.toggleClass("gm_dice_tier_rolling", name === names[i % names.length]);
+            }
+            i++;
+        }, 130);
+    }
+
+    stopRoll() {
+        clearInterval(this._sweepTimer);
+        this._sweepTimer = null;
+        for (const info of this.tierEls.values()) info.row.removeClass("gm_dice_tier_rolling");
     }
 
     _stopDiceCycle() {
@@ -99,12 +121,15 @@ class DiceBubble {
         this.tierEls.set(tier.name, { row, bar, pct });
         // Animate the chance bar in.
         requestAnimationFrame(() => bar.css("width", pct + "%"));
+        // First tier starts the slot-machine sweep.
+        this.startRoll();
         this._position();
     }
 
     // Highlights the winning tier with a pop, shows the outcome, and closes.
     resolve(winner) {
         if (!this.el) return;
+        this.stopRoll();
         this._stopDiceCycle();
         this.icon.addClass("gm_dice_win_pop");
         for (const [name, info] of this.tierEls) {
@@ -120,6 +145,7 @@ class DiceBubble {
 
     resolveNoRoll() {
         if (!this.el) return;
+        this.stopRoll();
         this._stopDiceCycle();
         this.status.find(".gm_dice_shimmer").remove();
         this.status.text("No roll needed.");
@@ -136,6 +162,8 @@ class DiceBubble {
         clearTimeout(this._closeTimer);
         clearInterval(this._faceTimer);
         this._faceTimer = null;
+        clearInterval(this._sweepTimer);
+        this._sweepTimer = null;
         if (!this.el) return;
         const el = this.el;
         this.el = null;
