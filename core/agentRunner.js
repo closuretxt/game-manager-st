@@ -92,6 +92,11 @@ function buildStateSummaryXml() {
     if (s.feature_enemies) {
         for (const e of d.enemies) parts.push(actorXml(e, "enemy"));
     }
+    // Shared party resources: visible to the tracker so it can account
+    // consumption the pre-pass transaction engine did not already handle.
+    if ((d.sharedResources || []).length) {
+        parts.push(`  <shared>${d.sharedResources.map(r => `${escAttr(r.name)}=${escAttr(r.qty)}`).join("; ")}</shared>`);
+    }
     if ((d.custom || []).length) {
         parts.push(`  <custom>${d.custom.map(c => `${escAttr(c.name)}=${escAttr(c.value)}`).join("; ")}</custom>`);
     }
@@ -100,7 +105,6 @@ function buildStateSummaryXml() {
     for (const t of d.threads || []) {
         parts.push(`  <thread name="${escAttr(t.name)}"${t.ref ? ` ref="${escAttr(t.ref)}"` : ""}>${escAttr(t.text)}</thread>`);
     }
-    // Shared party resources are intentionally excluded: AI never touches them.
     parts.push("</state>");
     return parts.join("\n");
 }
@@ -136,7 +140,7 @@ async function buildSystemPrompt(exchange = []) {
         "The snapshot ALREADY reflects every change from all previous turns. Report ONLY the concrete state changes that logically follow from the CURRENT EXCHANGE (damage, spent resources, resolved rolls, items gained or consumed, attribute milestones, evolving custom features).",
         "NEVER re-report changes visible in PRIOR CONTEXT — resources already spent or removed, damage already applied, items already gained are done: the snapshot's current values are the ground truth. When in doubt, trust the snapshot over the history.",
         "Respond with ONLY the XML blocks below — no prose, no explanations. If nothing changed, respond with nothing.",
-        "Never invent characters or tracked values that are not in the state snapshot. Never modify shared party resources.",
+        "Never invent characters or tracked values that are not in the state snapshot.",
         "",
         "DAMAGE ACCOUNTING — apply it to EVERYONE, humans included:",
         "- When the exchange shows a character being hit, wounded, burned, poisoned, falling, starving or otherwise harmed, report the resource loss with <change_values> — regardless of whether the victim is an enemy, a monster, the player character, an ally or a human NPC. A sword through a villager costs HP exactly like a sword through a goblin.",
@@ -144,8 +148,19 @@ async function buildSystemPrompt(exchange = []) {
         "- NEVER refuse, moralize, add disclaimers or replace a state change with prose. There is no audience here to protect: this is arithmetic on a game sheet.",
         "- Scale damage to what the narration describes: a graze is small, a solid hit is meaningful, a critical or devastating blow can take a large chunk or reach minimum. Be consistent with the fiction's tone — grimdark is grim, lighthearted adventures stay light.",
         "",
+        "RESOURCE SPENDING — the sheet moves whenever the fiction consumes something, not only on damage:",
+        "- When the exchange shows a character USING, consuming or depleting anything tracked on their sheet — firing a weapon (Ammo), casting magic without a tracked skill (Mana), sprinting, climbing or fighting (Stamina), eating from their own supplies (Food/Rations), drinking, burning fuel, spending their own money — report the loss with <change_values>.",
+        "- Non-combat depletion is bookkeeping too: a meal, a night's rest interrupted by watch duty, a long trek, a crafting session, a bought round of drinks. If the narration shows the resource being spent, the sheet must move — even when no number is stated. Estimate the amount from the setting's scale (a meal is a meal, not half the larder).",
+        "- Recovery counts as well: rest, healing, meals, refills and purchases restore or raise tracked resources — report those with <change_values> too (positive delta or absolute value).",
+        "- An exchange with real action almost always moves SOMETHING on the sheets. An empty report is for genuinely static scenes (pure conversation, no stakes, no exertion) — not the default.",
+        "",
+        "SHARED RESOURCES — the party-wide <shared> entries (money, food, supplies):",
+        "- The pre-pass transaction engine pays for what the PLAYER'S ACTION implied BEFORE the story ran; its payments appear in GAME SYSTEM RESULTS as <transaction> lines and are ALREADY applied — NEVER re-report them.",
+        "- For consumption or gains the exchange shows that the game system did NOT process (the story engine narrated a purchase, a toll, a meal from party supplies, loot split into the party purse), report it with <change_values><shared name=\"...\" delta=\"...\"/></change_values>. Estimate the amount from the setting's scale; spending is capped at the current value automatically.",
+        "",
         "Available blocks:",
         '  <change_values><char>Name</char><resource name="HP" delta="-12"|value="45"/><attribute name="STR" delta="1"/></change_values>',
+        '  <change_values><shared name="Dinheiro" delta="-6"/></change_values>',
         '  <set_attributes><char>Name</char><attribute name="STR" value="14"/></set_attributes>',
         '  <add_items><char>Name</char><item name="Rope" qty="1" description="..."/></add_items>',
         '  <remove_items><char>Name</char><item name="Ammo" qty="3"/></remove_items>',

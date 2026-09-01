@@ -42,7 +42,7 @@ import { characterSpawner, spawnReviewEnabled } from "./characterSpawner.js";
 
 const BLOCK_TAGS = ["change_values", "set_attributes", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies", "deaths", "knockouts", "new_characters"];
 const BLOCK_RE = new RegExp(`<(${BLOCK_TAGS.join("|")})>([\\s\\S]*?)<\\/\\1>`, "gi");
-const INNER_RE = /<(char|target|enemy|resource|item|attribute|entry|status|warning|warning_clear|thread|thread_clear|passive|skill|exp|death|ko|ko_clear)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
+const INNER_RE = /<(char|target|enemy|shared|resource|item|attribute|entry|status|warning|warning_clear|thread|thread_clear|passive|skill|exp|death|ko|ko_clear)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const ENEMY_RE = /<enemy\b([^>]*?)(?:\/>|>([\s\S]*?)<\/enemy>)/gi;
 const NEWCHAR_RE = /<char\b([^>]*?)(?:\/>|>([\s\S]*?)<\/char>)/gi;
 
@@ -344,6 +344,17 @@ export function applyToolBlocks(blocks, { autoCreateChars = false } = {}) {
                 } else if (stateManager.setState(target.id, "ko", action.attrs.reason ?? action.content ?? "")) applied++;
             }
             continue;
+        }
+        // <shared> actions inside <change_values> are party-level: applied by
+        // name against the shared resources, no character scoping.
+        if (block.type === "change_values" && block.actions.some(a => a.tag === "shared")) {
+            for (const action of block.actions) {
+                if (action.tag !== "shared") continue;
+                const name = action.attrs.name ?? action.content ?? "";
+                if (stateManager.applySharedDelta(name, { delta: action.attrs.delta, value: action.attrs.value })) applied++;
+            }
+            block.actions = block.actions.filter(a => a.tag !== "shared");
+            if (!block.actions.length) continue;
         }
         const char = block.char ? stateManager.getSheet(block.char) : stateManager.getActiveCharacter();
         if (!char) {

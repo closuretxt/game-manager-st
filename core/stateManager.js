@@ -552,6 +552,25 @@ export const stateManager = {
         return true;
     },
 
+    // Change a party-wide shared resource by delta or to an absolute value.
+    // Matches by name (case-insensitive); spending below zero clamps to 0.
+    applySharedDelta(name, { delta, value } = {}) {
+        const d = this.getData();
+        const needle = String(name ?? "").toLowerCase();
+        const entry = (d.sharedResources || []).find(e => String(e.name).toLowerCase() === needle);
+        if (!entry) {
+            logDebug(`applySharedDelta: shared resource '${name}' not found`);
+            return false;
+        }
+        if (delta !== undefined && delta !== null && delta !== "") {
+            entry.qty = Math.max(0, (Number(entry.qty) || 0) + Number(delta));
+        } else if (value !== undefined && value !== null && value !== "") {
+            entry.qty = Math.max(0, Number(value) || 0);
+        }
+        this.emitChange("apply_shared_delta");
+        return true;
+    },
+
     addItem(characterId, { name, qty = 1, description = "" } = {}) {
         const char = this.getSheet(characterId);
         if (!char || !name) return false;

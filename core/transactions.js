@@ -6,8 +6,8 @@
 // ("Could buy a week's worth of food").
 //
 // The result is queued for high-priority injection AND applied to the shared
-// resource (snapshotted for rollback), since the agentic state pass never
-// touches shared resources.
+// resource (snapshotted for rollback). The post-pass tracker only accounts
+// shared resources the pre-pass did not already handle (see agentRunner.js).
 
 import { extension_settings } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
