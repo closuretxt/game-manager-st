@@ -6,10 +6,11 @@
 // something actually exists — an empty buffer returns "" so unused macros
 // cost zero tokens ("only inject when relevant").
 //
-// High priority (immediate, one-shot): pending roll results and transaction
-// reports queued by the pre-master flows. Consumed once by the macro at prompt
-// build time; if the macro is not placed in the prompt the buffer is re-emitted
-// until consumed, so a result is never silently lost.
+// High priority (immediate, one-shot): pending roll results, transaction
+// reports and skill-use suggestions queued by the pre-master flows. Consumed
+// once by the macro at prompt build time; if the macro is not placed in the
+// prompt the buffer is re-emitted until consumed, so a result is never
+// silently lost.
 //
 // Everything here is gated by the feature_injection setting in the macros.
 
@@ -46,8 +47,8 @@ function esc(v) {
 
 // ---------- high priority (one-shot queue) ----------
 
-// Queues an immediate report (roll result / transaction / rewrite) for the
-// next prompt.
+// Queues an immediate report (roll result / transaction / rewrite / skill
+// suggestion) for the next prompt.
 export function queueHigh(xmlBlock) {
     if (!xmlBlock) return;
     _pendingHigh.push(xmlBlock);
@@ -102,6 +103,17 @@ export function queueRewrite(text) {
     queueHigh(`  <action_rewrite note="The player's clarified intent for this turn; the original message may be vague or contradictory. Dialogue in the original message still stands.">${t}</action_rewrite>`);
 }
 
+// Queues a ONE-SHOT high-priority skill suggestion produced by the pre-pass:
+// the story engine should narrate the character using the skill this turn.
+// The cooldown itself is NOT applied here — the post-pass <use_skills> report
+// stays the only cooldown writer. XML-escaped on queue.
+export function queueSkillUse(character, skill) {
+    const c = esc(String(character ?? "").trim());
+    const sk = esc(String(skill ?? "").trim());
+    if (!c || !sk) return;
+    queueHigh(`  <skill_use character="${c}" skill="${sk}" note="The game system judged this tracked skill to fit the player's action; narrate the character using it. Its cooldown is applied by the tracker afterwards."/>`);
+}
+
 // Queues a ONE-SHOT low-priority line (e.g. a shared resource value the
 // pre-pass flagged as relevant this turn). Rendered by the next low-priority
 // build, then dropped — unlike always-inject values, it does not persist.
@@ -129,7 +141,7 @@ export function consumeHigh() {
     const out = _pendingHigh.join("\n");
     _pendingHigh = [];
     _lastHigh = out;
-    return `<gamemaster_result note="Outcomes just resolved by the game system (dice rolls, transactions, action rewrites). Treat as ground truth; narrate accordingly, do not repeat the numbers or the tags themselves.">\n${out}\n</gamemaster_result>`;
+    return `<gamemaster_result note="Outcomes just resolved by the game system (dice rolls, transactions, action rewrites, skill uses). Treat as ground truth; narrate accordingly, do not repeat the numbers or the tags themselves.">\n${out}\n</gamemaster_result>`;
 }
 
 export function clearHigh() {

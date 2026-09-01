@@ -13,7 +13,9 @@
 //               ├─ plan.transactions-> transaction (core/transactions.js)
 //               ├─ plan.warnings    -> stateManager warnings
 //               ├─ plan.relevant    -> one-shot low-priority injection
+//               │                      (skill names resolve to cooldown state)
 //               ├─ plan.notes       -> one-shot low-priority notes
+//               ├─ plan.skills      -> high-priority skill-use suggestion
 //               └─ plan.rewrite     -> highlighted tag on the message +
 //                                      high-priority clarified action
 //
@@ -36,7 +38,7 @@ import { runCombatTurn } from "./combatEngine.js";
 import { runTransaction } from "./transactions.js";
 import { runPrePass } from "./prePass.js";
 import { restoreSnapshot } from "./snapshots.js";
-import { queueLowOnce, queueLowNote, queueRewrite, replayHigh, stashHigh, resetInjectionRecord } from "./injection.js";
+import { queueLowOnce, queueLowNote, queueRewrite, queueSkillUse, replayHigh, stashHigh, resetInjectionRecord } from "./injection.js";
 import { attachRewriteToMessage } from "../ui/rewriteTag.js";
 import { statusBubble } from "../ui/statusBubble.js";
 
@@ -111,6 +113,7 @@ function planFromTriggers(hits) {
         warnings: [],
         relevant: [],
         notes: [],
+        skills: [],
         rewrite: null,
         nothing: !hits.length,
     };
@@ -188,7 +191,7 @@ export async function handlePreTurn(type = "normal") {
         // screen would otherwise look frozen.
         statusBubble.show(s.pre_pass ? "Judging action..." : "Checking action...");
         plan = await runPrePass(action);
-        console.info(`[GM DIAG] pre-pass returned: ${plan ? `roll=${!!plan.roll} tx=${plan.transactions.length} warn=${plan.warnings.length} relevant=${plan.relevant.length} notes=${plan.notes.length} rewrite=${!!plan.rewrite} nothing=${plan.nothing}` : "NULL (fell back to keywords)"}`);
+        console.info(`[GM DIAG] pre-pass returned: ${plan ? `roll=${!!plan.roll} tx=${plan.transactions.length} warn=${plan.warnings.length} relevant=${plan.relevant.length} notes=${plan.notes.length} skills=${plan.skills.length} rewrite=${!!plan.rewrite} nothing=${plan.nothing}` : "NULL (fell back to keywords)"}`);
         if (!plan) plan = planFromTriggers(detectTriggers(action));
     }
     // Swipes/regenerates never re-run the pre-pass (the plan was already
@@ -256,6 +259,16 @@ export async function handlePreTurn(type = "normal") {
                     if (rel.entry) {
                         if (rel.entry.always_inject || transacted.has(rel.entry.id)) continue;
                         queueLowOnce(`  <resource name="${rel.entry.name}" value="${rel.entry.qty}"/>`);
+                    } else if (rel.skill) {
+                        // Skill cooldown state (turns 0 = ready) — relevance-gated
+                        // by the pre-pass so the story engine never hallucinates a use.
+                        if (rel.cooldown > 0) {
+                            logDebug(`pre-turn: skill cooldown queued "${rel.character}.${rel.name}" (${rel.cooldown} left)`);
+                            queueLowOnce(`  <skill_cooldown character="${rel.character}" skill="${rel.name}" turns="${rel.cooldown}"/>`);
+                        } else {
+                            logDebug(`pre-turn: skill ready queued "${rel.character}.${rel.name}"`);
+                            queueLowOnce(`  <skill_ready character="${rel.character}" skill="${rel.name}"/>`);
+                        }
                     } else {
                         logDebug(`pre-turn: character stat queued "${rel.character}.${rel.name}" = ${rel.value}`);
                         queueLowOnce(`  <character_stat character="${rel.character}" name="${rel.name}" value="${rel.value}"/>`);
@@ -283,6 +296,17 @@ export async function handlePreTurn(type = "normal") {
                 statusBubble.update("Clarifying action...");
                 attachRewriteToMessage(targetMsgId, plan.rewrite);
                 queueRewrite(plan.rewrite);
+            }
+
+            // Skill suggestions — the pre-pass proposed a tracked skill that
+            // fits the action (ally-AI-style autonomy, outside combat).
+            // High-priority so the story engine narrates the use; the cooldown
+            // itself is still applied by the post-pass <use_skills> report.
+            if (s.feature_skill_suggest && plan.skills?.length) {
+                for (const sk of plan.skills) {
+                    logDebug(`pre-turn: skill suggested "${sk.char}" -> "${sk.name}"`);
+                    queueSkillUse(sk.char, sk.name);
+                }
             }
         }
     } catch (e) {

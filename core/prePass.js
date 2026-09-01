@@ -8,7 +8,9 @@
 //   transactions — implied shared-resource spends/gains (signed delta)
 //   warnings     — imminent-need remarks to set/clear
 //   relevant     — shared resources and per-character stats/resources worth
-//                  injecting this turn
+//                  injecting this turn (skills resolve to cooldown state)
+//   skill        — a SUGGESTION that a tracked skill fits the action (the
+//                  story engine is told to narrate its use)
 //   notes        — free-form contextual remarks worth injecting this turn
 //   rewrite      — clarified version of a vague/contradictory action
 //                  (actions only, dialogue cropped out)
@@ -53,6 +55,7 @@ const SYSTEM_PROMPT = [
     '  <transaction resource="<shared resource name>" delta="<signed number, negative = spending>" comparison="<plain-language note, under 12 words>"/>',
     '  <warning action="set" name="<short name>" text="<under 15 words>"/>  or  <warning action="clear" name="<short name>"/>',
     '  <relevant names="<comma-separated shared resource names whose value matters this turn>"/>',
+    '  <skill char="<party member name>" name="<skill name>"/>',
     '  <note text="<short contextual remark the story engine should know this turn>"/>',
     '  <rewrite text="<clarified version of the player\'s action, actions only>"/>',
     "  <nothing/>",
@@ -62,7 +65,8 @@ const SYSTEM_PROMPT = [
     "- <combat>: INSTEAD of <roll>, when the action ENGAGES tracked enemies (attacking, defending under threat, fleeing from them, using a skill on one). Casual talk with an enemy present does NOT count. speed is the actor's initiative judged from their attributes/statuses (Dexterity, Haste...), 0 when unknown. The combat engine runs the opposed resolution (enemy AI + clash + dice); you only decide IF and the speed. Never emit <roll> together with <combat>.",
     "- <transaction>: ONLY for the party-wide shared resources listed in the snapshot, when the action implies spending or gaining. delta is negative when spending, positive when gaining; the transaction engine validates amounts against the current value. Use delta=\"0\" only when the action involves the resource but the amount is unclear — the engine will judge it. The comparison is a plain-language sense of scale (\"Could buy a week's worth of food\").",
     "- <warning>: ONLY for imminent, concrete needs the player should prepare for (supplies running out, deadlines, approaching dangers). action=\"set\" adds or updates one; action=\"clear\" removes one whose cause is resolved. Never re-emit a warning that is already true and unchanged.",
-    "- <relevant>: values whose CURRENT VALUE the story engine needs to know this turn even though nothing was spent. Without a character attribute, names are party-wide SHARED resources (haggling, showing off wealth, checking supplies). With character=\"<name>\", names are THAT character's own resources or attributes/stats (checking one's own HP or Mana, flexing a specific attribute to impress). Resources flagged always-inject are already visible — never list them.",
+    "- <relevant>: values whose CURRENT VALUE the story engine needs to know this turn even though nothing was spent. Without a character attribute, names are party-wide SHARED resources (haggling, showing off wealth, checking supplies). With character=\"<name>\", names are THAT character's own resources, attributes/stats (checking one's own HP or Mana, flexing a specific attribute to impress) or SKILLS — name a skill when the story engine needs its cooldown state this turn (e.g. it might otherwise have the character use it). Resources flagged always-inject are already visible — never list them.",
+    "- <skill>: a light SUGGESTION, not a command — when the action clearly matches the purpose of one of the character's tracked skills that the action does not already name, propose it (\"I charge the ogre with everything I have\" -> Power Attack). At most one per turn; never suggest a skill marked on_cooldown; omit freely when no skill fits — most turns need none.",
     "- <note>: brief free-form information the story engine would otherwise miss and that affects how the scene should unfold right now (local prices, an NPC's hidden intent, a rule of the location). At most two per turn, under 25 words each. This is NOT for tracked values — those go in <relevant> — and NOT for anything the scene text already establishes.",
     "- Knocked-out characters (state=\"ko\") cannot act. When someone is knocked out and the scene allows, a <note> nudging the story toward rest or a timeskip so they can recover is welcome — only where it fits naturally.",
     "- <rewrite>: ONLY when the action is vague, ambiguous, or self-contradictory AND clarifying it changes what should happen next (\"I grab the coins in my pocket and I hand it to the seller\" -> the amount and target become explicit). Rules: rewrite ONLY what the player DOES — CROP OUT all dialogue (quoted speech stays the player's own; the story engine already sees the original message); NEVER invent actions the player did not imply; NEVER answer or extend dialogue; keep it under 40 words, plain declarative description of the action. If the action is already clear, omit the tag entirely.",
@@ -80,6 +84,7 @@ const SYSTEM_PROMPT = [
     "- \"I flaunt my wealth to impress the merchant\" -> <relevant names=\"Dinheiro\"/>",
     "- \"I check our supplies before leaving\" -> <relevant names=\"Food, Water\"/>",
     "- \"I glance at my Mana to see if I can still cast\" -> <relevant character=\"Kira\" names=\"Mana\"/>",
+    "- \"I charge the ogre with everything I have\" (Kira has Power Attack) -> <skill char=\"Kira\" name=\"Power Attack\"/>",
     "- \"I grab the coins in my pocket and I hand it to the seller. Here you go, friend.\" -> <transaction resource=\"Dinheiro\" delta=\"0\" comparison=\"\"/> <rewrite text=\"I count out a handful of coins from my pocket and hand them to the seller as payment\"/>",
 ].join("\n");
 
@@ -157,7 +162,7 @@ async function collectContext(playerAction) {
 // fast path. Returns a raw plan or null when no recognizable tag is present.
 function parseReply(text) {
     if (!text) return null;
-    const plan = { roll: null, combat: null, transactions: [], warnings: [], relevant: [], notes: [], rewrite: null, nothing: /<nothing\b/i.test(text) };
+    const plan = { roll: null, combat: null, transactions: [], warnings: [], relevant: [], notes: [], skills: [], rewrite: null, nothing: /<nothing\b/i.test(text) };
     let m;
 
     const rollM = text.match(/<roll\b([^>]*?)(?:\/>|>[\s\S]*?<\/roll>)/i);
@@ -196,6 +201,15 @@ function parseReply(text) {
         if (names.length) plan.relevant.push({ character: a.character ? String(a.character).trim() : null, names });
     }
 
+    // Skill suggestions — at most one is honored downstream, but parse all.
+    const skillRe = /<skill\b([^>]*?)(?:\/>|>[\s\S]*?<\/skill>)/gi;
+    while ((m = skillRe.exec(text)) !== null) {
+        const a = parseAttrs(m[1]);
+        const char = String(a.char || a.character || "").trim();
+        const name = String(a.name || a.skill || "").trim();
+        if (char && name) plan.skills.push({ char, name });
+    }
+
     const noteRe = /<note\b([^>]*?)(?:\/>|>([\s\S]*?)<\/note>)/gi;
     while ((m = noteRe.exec(text)) !== null) {
         const a = parseAttrs(m[1]);
@@ -210,7 +224,7 @@ function parseReply(text) {
         if (rewrite) plan.rewrite = rewrite;
     }
 
-    const empty = !plan.roll && !plan.combat && !plan.transactions.length && !plan.warnings.length && !plan.relevant.length && !plan.notes.length && !plan.rewrite;
+    const empty = !plan.roll && !plan.combat && !plan.transactions.length && !plan.warnings.length && !plan.relevant.length && !plan.notes.length && !plan.skills.length && !plan.rewrite;
     if (empty && !plan.nothing) {
         logDebug("prePass: no recognizable plan tags in reply");
         return null;
@@ -223,7 +237,7 @@ function parseReply(text) {
 function sanitizePlan(parsed) {
     if (!parsed || typeof parsed !== "object") return null;
     if (parsed.nothing === true) {
-        return { roll: null, combat: null, transactions: [], warnings: [], relevant: [], notes: [], rewrite: null, nothing: true };
+        return { roll: null, combat: null, transactions: [], warnings: [], relevant: [], notes: [], skills: [], rewrite: null, nothing: true };
     }
 
     const d = stateManager.getData();
@@ -280,7 +294,14 @@ function sanitizePlan(parsed) {
                     continue;
                 }
                 const attr = (char.attributes || []).find(a => String(a.name || "").toLowerCase() === needle);
-                if (attr) relevant.push({ character: char.name, name: attr.name, value: String(attr.value ?? "") });
+                if (attr) {
+                    relevant.push({ character: char.name, name: attr.name, value: String(attr.value ?? "") });
+                    continue;
+                }
+                // Skills resolve to their cooldown state (0 = ready) instead of
+                // a value — the story engine only needs on/off + turns left.
+                const skill = (char.skills || []).find(sk => String(sk.name || "").toLowerCase() === needle);
+                if (skill) relevant.push({ character: char.name, name: skill.name, skill: true, cooldown: Math.trunc(Number(skill.cooldown_left) || 0) });
             }
         } else {
             for (const name of rel?.names || []) {
@@ -294,10 +315,23 @@ function sanitizePlan(parsed) {
         .map(n => String(n || "").trim().slice(0, 200))
         .filter(Boolean);
 
+    // Skill suggestions: character must be tracked and able to act, the skill
+    // must exist and be off cooldown — anything else is silently dropped.
+    const skills = (Array.isArray(parsed.skills) ? parsed.skills : [])
+        .map(sk => {
+            const char = findChar(sk?.char);
+            if (!char || char.state?.mode) return null;
+            const skill = (char.skills || []).find(x => String(x.name || "").toLowerCase() === String(sk?.name ?? "").toLowerCase());
+            if (!skill || (Number(skill.cooldown_left) || 0) > 0) return null;
+            return { char: char.name, name: skill.name };
+        })
+        .filter(Boolean)
+        .slice(0, 1); // at most one suggestion per turn
+
     const rewrite = parsed.rewrite ? String(parsed.rewrite).trim().slice(0, 300) : null;
 
-    const nothing = !roll && !combat && !transactions.length && !warnings.length && !relevant.length && !notes.length && !rewrite;
-    return { roll, combat, transactions, warnings, relevant, notes, rewrite, nothing };
+    const nothing = !roll && !combat && !transactions.length && !warnings.length && !relevant.length && !notes.length && !skills.length && !rewrite;
+    return { roll, combat, transactions, warnings, relevant, notes, skills, rewrite, nothing };
 }
 
 //
@@ -361,7 +395,7 @@ export async function runPrePass(playerAction) {
             logDebug("prePass: malformed reply — caller will fall back to keyword triggers");
             return null;
         }
-        logDebug(`prePass: plan — combat=${!!plan.combat} roll=${!!plan.roll} tx=${plan.transactions.length} warn=${plan.warnings.length} relevant=${plan.relevant.length} notes=${plan.notes.length} rewrite=${!!plan.rewrite} nothing=${plan.nothing}`);
+        logDebug(`prePass: plan — combat=${!!plan.combat} roll=${!!plan.roll} tx=${plan.transactions.length} warn=${plan.warnings.length} relevant=${plan.relevant.length} notes=${plan.notes.length} skills=${plan.skills.length} rewrite=${!!plan.rewrite} nothing=${plan.nothing}`);
         return plan;
     } catch (e) {
         console.error("[GM DIAG] pre-pass failed (exception):", e);

@@ -44,6 +44,7 @@ export const defaultSettings = {
     feature_injection: true,      // {{gamemaster-*}} macros inject warnings/context into prompts.
     feature_enemies: true,        // Context-based enemies (AI-managed sheets, archived when irrelevant).
     feature_rewrite: true,        // Pre-pass rewrites vague/contradictory actions (highlighted tag + high-priority injection).
+    feature_skill_suggest: true,  // Pre-pass suggests a tracked skill that fits the action (high-priority narration hint).
     feature_progression: true,    // EXP/levels/skill points (per-scenario curve, <grant_exp> tool tag).
     feature_skill_tree: true,     // Per-character skill trees (LLM-generated segments, unlocked with skill points).
     feature_combat: true,         // Combat Mode (Text): opposed resolution (ally AI + enemy AI + clash + dice).
@@ -115,6 +116,7 @@ export async function loadSettings() {
     $("#gm_setting_feat_injection").prop("checked", !!s.feature_injection);
     $("#gm_setting_feat_enemies").prop("checked", !!s.feature_enemies);
     $("#gm_setting_feat_rewrite").prop("checked", !!s.feature_rewrite);
+    $("#gm_setting_feat_skill_suggest").prop("checked", !!s.feature_skill_suggest);
     $("#gm_setting_feat_progression").prop("checked", !!s.feature_progression);
     $("#gm_setting_feat_skill_tree").prop("checked", !!s.feature_skill_tree);
     $("#gm_setting_feat_combat").prop("checked", !!s.feature_combat);
@@ -157,6 +159,7 @@ export function saveSettings() {
     s.feature_injection = $("#gm_setting_feat_injection").prop("checked");
     s.feature_enemies = $("#gm_setting_feat_enemies").prop("checked");
     s.feature_rewrite = $("#gm_setting_feat_rewrite").prop("checked");
+    s.feature_skill_suggest = $("#gm_setting_feat_skill_suggest").prop("checked");
     s.feature_progression = $("#gm_setting_feat_progression").prop("checked");
     s.feature_skill_tree = $("#gm_setting_feat_skill_tree").prop("checked");
     s.feature_combat = $("#gm_setting_feat_combat").prop("checked");
@@ -179,7 +182,7 @@ export function initSettingsListeners() {
     $("#gm_setting_enabled, #gm_setting_auto_update, #gm_setting_debug_mode, #gm_setting_open_panel, #gm_setting_legacy, #gm_setting_pre_pass, " +
       "#gm_setting_feat_wizard, #gm_setting_feat_char_creator, #gm_setting_spawn_review, #gm_setting_deep_context, #gm_setting_deep_context_engines, " +
       "#gm_setting_feat_warnings, #gm_setting_feat_dice, #gm_setting_feat_transactions, #gm_setting_feat_injection, " +
-      "#gm_setting_feat_enemies, #gm_setting_feat_rewrite, #gm_setting_feat_progression, #gm_setting_feat_skill_tree, " +
+      "#gm_setting_feat_enemies, #gm_setting_feat_rewrite, #gm_setting_feat_skill_suggest, #gm_setting_feat_progression, #gm_setting_feat_skill_tree, " +
       "#gm_setting_feat_combat, #gm_setting_feat_ally_ai, #gm_setting_rich_clash, #gm_setting_feat_death, " +
       "#gm_setting_notify, #gm_setting_notify_stats, #gm_setting_notify_items, #gm_setting_notify_skills, " +
       "#gm_setting_notify_progression, #gm_setting_notify_states, #gm_setting_notify_enemies, #gm_setting_sound").on("change", saveSettings);
