@@ -9,6 +9,8 @@
 
 import { extension_settings } from "../../../../extensions.js";
 import { extensionName } from "../core/constants.js";
+import { logDebug } from "../core/debug.js";
+import { onMessageRendered } from "../util/messageDom.js";
 
 const DICE_FACES = ["fa-dice-one", "fa-dice-two", "fa-dice-three", "fa-dice-four", "fa-dice-five", "fa-dice-six"];
 
@@ -152,8 +154,13 @@ class DiceBubble {
 // visual — no file is uploaded and msg.mes is never touched.
 export function appendResultChip(mesEl, { icon = "fa-dice-d6", title, tier, outcome }) {
     const chip = $("#message_file_template .mes_file_container").clone();
-    if (!chip.length) return false;
+    if (!chip.length) {
+        console.warn("[Game Manager] roll attachment: #message_file_template not found in this ST version — chip skipped");
+        return false;
+    }
     chip.addClass("gm_roll_file");
+    // Tier-driven hue: failures read red, successes read green.
+    chip.addClass(/failure/i.test(tier) ? "gm_tier_bad" : /success/i.test(tier) ? "gm_tier_good" : "");
     chip.find(".mes_file_icon").removeClass("fa-file-alt").addClass(icon);
     chip.find(".mes_file_name").text(title).attr("title", title);
     chip.find(".mes_file_size").text(tier).attr("title", tier);
@@ -163,6 +170,7 @@ export function appendResultChip(mesEl, { icon = "fa-dice-d6", title, tier, outc
     const wrap = mesEl.querySelector(".mes_file_wrapper");
     if (wrap) $(wrap).append(chip);
     else $(mesEl.querySelector(".mes_text")).after(chip);
+    logDebug("roll attachment: chip appended", { title, tier, wrapper: !!wrap });
     return true;
 }
 
@@ -170,17 +178,19 @@ export function appendResultChip(mesEl, { icon = "fa-dice-d6", title, tier, outc
 // The message text (msg.mes) is NEVER modified — this is purely visual; the
 // LLM gets the result via the high-priority injection. Gated by the "Roll
 // attachments" setting (off = nothing is attached). Safe to call repeatedly
-// (idempotent per mesId).
+// (idempotent per mesId). Waits for the message to render: the dice flow runs
+// while the player's message is still held unrendered by ST.
 export function attachRollToMessage(mesId, title, winner) {
     if (!rollAttachment()) return;
-    const mesEl = document.querySelector(`#chat .mes[mesid="${mesId}"]`);
-    if (!mesEl || mesEl.querySelector(".gm_roll_file")) return; // already rendered
     const pct = Math.max(0, Math.min(100, Math.round(Number(winner.chance) || 0)));
-    appendResultChip(mesEl, {
-        icon: "fa-dice-d6",
-        title,
-        tier: `${winner.name} (${pct}%)`,
-        outcome: winner.outcome,
+    onMessageRendered(mesId, (mesEl) => {
+        if (mesEl.querySelector(".gm_roll_file")) return; // already rendered
+        appendResultChip(mesEl, {
+            icon: "fa-dice-d6",
+            title,
+            tier: `${winner.name} (${pct}%)`,
+            outcome: winner.outcome,
+        });
     });
 }
 

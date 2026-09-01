@@ -13,6 +13,7 @@
 import { extension_settings } from "../../../../extensions.js";
 import { extensionName } from "../core/constants.js";
 import { appendResultChip, rollAttachment } from "./diceBubble.js";
+import { onMessageRendered } from "../util/messageDom.js";
 
 const DICE_FACES = ["fa-dice-one", "fa-dice-two", "fa-dice-three", "fa-dice-four", "fa-dice-five", "fa-dice-six"];
 
@@ -305,17 +306,20 @@ function fillTitle(el, title) {
 // repeatedly (idempotent per mesId).
 export function attachCombatToMessage(mesId, groups, winners) {
     if (!rollAttachment()) return;
-    const mesEl = document.querySelector(`#chat .mes[mesid="${mesId}"]`);
-    if (!mesEl || mesEl.querySelector(".gm_roll_file")) return; // already rendered
-    (groups || []).forEach((g, i) => {
-        const w = winners?.[i];
-        if (!w) return;
-        const pct = Math.max(0, Math.min(100, Math.round(Number(w.chance) || 0)));
-        appendResultChip(mesEl, {
-            icon: "fa-hand-fist",
-            title: g.title,
-            tier: `${w.name} (${pct}%)`,
-            outcome: w.outcome,
+    // Waits for the message to render: the combat pipeline runs while the
+    // player's message is still held unrendered by ST.
+    onMessageRendered(mesId, (mesEl) => {
+        if (mesEl.querySelector(".gm_roll_file")) return; // already rendered
+        (groups || []).forEach((g, i) => {
+            const w = winners?.[i];
+            if (!w) return;
+            const pct = Math.max(0, Math.min(100, Math.round(Number(w.chance) || 0)));
+            appendResultChip(mesEl, {
+                icon: "fa-hand-fist",
+                title: g.title,
+                tier: `${w.name} (${pct}%)`,
+                outcome: w.outcome,
+            });
         });
     });
 }

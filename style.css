@@ -1098,22 +1098,64 @@ textarea.gm_input {
 
 /* ---------- roll result attachment chip (DOM-only, ST message-file style) ---------- */
 
-/* The chip clones ST's own #message_file_template, so theming comes from the
-   native .mes_file_container — only the roll-specific touches live here. */
+/* The chip clones ST's own #message_file_template, but the native pill box is
+   melted down to a near-invisible strip so the result reads as part of the
+   message instead of a foreign widget. */
 
 .gm_roll_file {
-    flex-wrap: wrap;
-    animation: gm_dice_in 0.3s ease-out both;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    column-gap: 10px;
+    row-gap: 2px;
+    align-items: center;
+    margin-top: 2px;
+    padding: 2px 6px;
+    background: transparent;
+    border: none;
+    border-left: 2px solid color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 30%, transparent);
+    border-radius: 2px;
+    animation: gm_dice_in 0.4s ease-out both;
 }
 
 .gm_roll_file .mes_file_icon {
+    grid-row: 1 / span 2;
+    font-size: 14px;
+    color: color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 75%, transparent);
+}
+
+.gm_roll_file .mes_file_name {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 12px;
+    opacity: 0.9;
+}
+
+.gm_roll_file .mes_file_size {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    font-size: 11px;
+    font-weight: 600;
+    text-align: right;
     color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
 }
 
+/* Tier-driven hue: failures read red, successes read green. */
+.gm_roll_file.gm_tier_bad .mes_file_icon,
+.gm_roll_file.gm_tier_bad .mes_file_size {
+    color: var(--gm-danger, #c07067);
+}
+
+.gm_roll_file.gm_tier_good .mes_file_icon,
+.gm_roll_file.gm_tier_good .mes_file_size {
+    color: var(--gm-ok, #4caf7d);
+}
+
 .gm_roll_file_outcome {
-    flex-basis: 100%;
+    grid-column: 2;
+    grid-row: 2;
     font-size: 12px;
     font-style: italic;
+    opacity: 0.7;
     color: var(--SmartThemeEmColor, #aaa);
 }
 
@@ -1121,34 +1163,36 @@ textarea.gm_input {
 
 .gm_rewrite_tag {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     flex-wrap: wrap;
-    gap: 6px 8px;
-    margin: 6px 0 2px;
-    padding: 6px 10px;
+    gap: 4px 7px;
+    margin: 4px 0 0;
+    padding: 0 6px;
     font-size: 12px;
-    border-radius: var(--gm-radius, 8px);
-    border: 1px solid color-mix(in srgb, var(--gm-ok, #4caf7d) 45%, transparent);
-    background: color-mix(in srgb, var(--gm-ok, #4caf7d) 10%, transparent);
-    animation: gm_dice_in 0.3s ease-out both;
+    background: transparent;
+    border: none;
+    border-left: 2px solid color-mix(in srgb, var(--gm-ok, #4caf7d) 25%, transparent);
+    border-radius: 2px;
+    animation: gm_dice_in 0.4s ease-out both;
 }
 
 .gm_rewrite_tag i {
-    color: var(--gm-ok, #4caf7d);
-    font-size: 13px;
+    color: color-mix(in srgb, var(--gm-ok, #4caf7d) 65%, transparent);
+    font-size: 11px;
 }
 
 .gm_rewrite_tag_label {
-    color: var(--gm-ok, #4caf7d);
-    font-weight: 700;
+    color: color-mix(in srgb, var(--gm-ok, #4caf7d) 75%, transparent);
+    font-weight: 600;
     text-transform: uppercase;
-    font-size: 10px;
-    letter-spacing: 0.5px;
+    font-size: 9px;
+    letter-spacing: 0.8px;
 }
 
 .gm_rewrite_tag_text {
-    color: var(--SmartThemeBodyColor, #ccc);
+    color: var(--SmartThemeEmColor, #aaa);
     font-style: italic;
+    opacity: 0.85;
 }
 
 /* ---------- open threads (edit-mode-only section in the Custom tab) ---------- */
