@@ -9,7 +9,7 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
-import { parseAttrs } from "./toolParser.js";
+import { parseAttrs, escAttr } from "./toolParser.js";
 import { hasConnectionProfile, resolvePremasterProfile, sendRequestViaProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 
@@ -19,9 +19,9 @@ const SYSTEM_PROMPT = [
     "You are the ENEMY AI of a tabletop-style roleplay game system: you decide what the hostile side does each combat round.",
     "",
     "WHAT YOU RECEIVE:",
-    "- RECENT SCENE: the last few messages of the roleplay.",
-    "- ENEMY SHEETS: full stats of every tracked enemy (resources, attributes, skills, statuses).",
-    "- PARTY SUMMARY: the opposing party's names and visible state. You do NOT see the player's current action — the enemy side must decide WITHOUT knowing what the party chose this round.",
+    "- <scene>: the last few messages of the roleplay.",
+    "- <enemy_sheets>: full stats of every tracked enemy (resources, attributes, skills, statuses).",
+    "- <party_summary>: the opposing party's names and visible state. You do NOT see the player's current action — the enemy side must decide WITHOUT knowing what the party chose this round.",
     "",
     "YOUR OBJECTIVE:",
     "Decide ONE action per enemy for this round. Any kind of action is valid — attacking, dodging, shielding an ally, repositioning, fleeing, using a skill — choose what a competent hostile would do given its stats, statuses and the scene. An enemy may take more than one action ONLY if its sheet justifies it (an extra-action status or similar).",
@@ -48,35 +48,42 @@ function collectContext(maxActions) {
         .map(m => `${m.is_user ? "Player" : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 1200)}`);
 
     const d = stateManager.getData();
-    const sheetOf = c => ({
-        name: c.name,
-        resources: (c.resources || []).map(r => ({ name: r.name, value: r.value, max: r.max })),
-        attributes: (c.attributes || []).map(a => ({ name: a.name, value: a.value })),
-        skills: (c.skills || []).map(s => {
-            const skill = { name: s.name };
-            if ((Number(s.cooldown_left) || 0) > 0) skill.on_cooldown = true;
-            return skill;
-        }),
-        statuses: (c.statuses || []).map(s => ({ name: s.name, modifiers: s.modifiers || "" })),
-    });
+
+    // One line per actor: resources as value/max, * = skill on cooldown.
+    const sheetXml = c => {
+        const attrs = [`name="${escAttr(c.name)}"`];
+        for (const r of c.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}"`);
+        for (const a of c.attributes || []) attrs.push(`${escAttr(a.name)}="${a.value}"`);
+        const skills = (c.skills || []).map(s => `${escAttr(s.name)}${(Number(s.cooldown_left) || 0) > 0 ? "*" : ""}`).join(", ");
+        if (skills) attrs.push(`skills="${skills}"`);
+        const statuses = (c.statuses || []).map(s => `${escAttr(s.name)}${s.modifiers ? ` (${escAttr(s.modifiers)})` : ""}`).join(", ");
+        if (statuses) attrs.push(`statuses="${statuses}"`);
+        return `  <enemy ${attrs.join(" ")}/>`;
+    };
+
+    // Visible state only: special states stay visible (a downed fighter is
+    // scene information) but the enemy AI must not target them as active.
+    const partyXml = c => {
+        const attrs = [`name="${escAttr(c.name)}"`];
+        if (c.state?.mode) attrs.push(`state="${c.state.mode}"`);
+        for (const r of c.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}"`);
+        const statuses = (c.statuses || []).map(s => escAttr(s.name)).join(", ");
+        if (statuses) attrs.push(`statuses="${statuses}"`);
+        return `  <char ${attrs.join(" ")}/>`;
+    };
 
     const blocks = [
-        "RECENT SCENE:",
-        ...history,
-        "",
-        "ENEMY SHEETS (you control these):",
-        JSON.stringify((d.enemies || []).map(sheetOf)),
-        "",
-        "PARTY SUMMARY (opposition, visible state only):",
-        JSON.stringify((d.characters || []).filter(c => c.state?.mode !== "dead").map(c => ({
-            name: c.name,
-            // Special states stay visible (a downed fighter is scene
-            // information) but the enemy AI must not target them as active.
-            state: c.state?.mode || undefined,
-            resources: (c.resources || []).map(r => ({ name: r.name, value: r.value, max: r.max })),
-            statuses: (c.statuses || []).map(s => s.name),
-        }))),
-        "",
+        "<enemy_ai_context>",
+        "  <scene>",
+        ...history.map(l => `  ${l}`),
+        "  </scene>",
+        "  <enemy_sheets>",
+        ...(d.enemies || []).map(sheetXml),
+        "  </enemy_sheets>",
+        "  <party_summary>",
+        ...(d.characters || []).filter(c => c.state?.mode !== "dead").map(partyXml),
+        "  </party_summary>",
+        "</enemy_ai_context>",
         `Decide the enemy actions for this round (at most ${maxActions} <action> entries).`,
     ];
     return blocks.join("\n");

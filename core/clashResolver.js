@@ -15,7 +15,7 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
-import { parseAttrs } from "./toolParser.js";
+import { parseAttrs, escAttr } from "./toolParser.js";
 import { hasConnectionProfile, resolvePremasterProfile, sendRequestViaProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 
@@ -25,10 +25,9 @@ const SYSTEM_PROMPT = [
     "You are the CLASH RESOLVER of a tabletop-style roleplay game system: you turn both sides' combat actions into opposed probability groups. REALISM FIRST: chances are EARNED from the sheets, never generous by default. Every tier must be justifiable by a stat, skill, passive, status or resource — if nothing on the sheet supports a chance, lower it.",
     "",
     "WHAT YOU RECEIVE:",
-    "- RECENT SCENE: the last few messages of the roleplay.",
-    "- PARTY-SIDE ACTIONS: what the player (and any AI-commanded allies) are doing this round, with initiative speeds.",
-    "- ENEMY-SIDE ACTIONS: what each enemy is doing this round, with initiative speeds.",
-    "- ACTOR SHEETS: resources (current health!), attributes, skills, passives, statuses of EVERY actor in the round.",
+    "- <scene>: the last few messages of the roleplay.",
+    "- <party_actions> / <enemy_actions>: what each side is doing this round, with initiative speeds.",
+    "- <sheets>: resources (current health!), attributes, skills, passives, statuses of EVERY actor in the round.",
     "",
     "HARD RESOLUTION RULES:",
     "- UNKNOWN ABILITIES = IMPOSSIBLE. If an action names an ability/technique/spell NOT on the actor's sheet, Success and Critical Success are 0%: only Failure/Critical Failure tiers describing the fumble (doesn't know the technique, move misfires, nothing happens). A swordsman without 'Dimensional Slash' cannot use it.",
@@ -71,35 +70,47 @@ function collectContext(playerAction, partyActions, enemyActions) {
         .map(m => `${m.is_user ? "Player" : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 1200)}`);
 
     const d = stateManager.getData();
-    const sheetOf = c => ({
-        name: c.name,
-        resources: (c.resources || []).map(r => ({ name: r.name, value: r.value, max: r.max })),
-        attributes: (c.attributes || []).map(a => ({ name: a.name, value: a.value })),
-        skills: (c.skills || []).map(s => s.name),
-        passives: (c.passives || []).map(p => ({ name: p.name, description: p.description || "" })),
-        statuses: (c.statuses || []).map(s => ({ name: s.name, modifiers: s.modifiers || "" })),
-    });
+
+    // One line per actor: resources as value/max; passives keep their
+    // descriptions (chances are earned from them).
+    const sheetXml = c => {
+        const attrs = [`name="${escAttr(c.name)}"`];
+        for (const r of c.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}"`);
+        for (const a of c.attributes || []) attrs.push(`${escAttr(a.name)}="${a.value}"`);
+        const skills = (c.skills || []).map(s => escAttr(s.name)).join(", ");
+        if (skills) attrs.push(`skills="${skills}"`);
+        const passives = (c.passives || []).map(p => `${escAttr(p.name)}${p.description ? `: ${escAttr(p.description)}` : ""}`).join("; ");
+        if (passives) attrs.push(`passives="${passives}"`);
+        const statuses = (c.statuses || []).map(s => `${escAttr(s.name)}${s.modifiers ? ` (${escAttr(s.modifiers)})` : ""}`).join(", ");
+        if (statuses) attrs.push(`statuses="${statuses}"`);
+        return `  <actor ${attrs.join(" ")}/>`;
+    };
+
+    const actionXml = a => `  <action actor="${escAttr(a.actor)}" speed="${Math.max(0, Math.trunc(Number(a.speed) || 0))}">${escAttr(a.action)}</action>`;
 
     // Only actors actually in the round pay tokens for a full sheet.
     const partyNames = new Set(partyActions.map(a => a.actor.toLowerCase()));
     const enemyNames = new Set(enemyActions.map(a => a.actor.toLowerCase()));
     const sheets = [
-        ...(d.characters || []).filter(c => !c.state && partyNames.has(String(c.name).toLowerCase())).map(sheetOf),
-        ...(d.enemies || []).filter(e => enemyNames.has(String(e.name).toLowerCase())).map(sheetOf),
+        ...(d.characters || []).filter(c => !c.state && partyNames.has(String(c.name).toLowerCase())).map(sheetXml),
+        ...(d.enemies || []).filter(e => enemyNames.has(String(e.name).toLowerCase())).map(sheetXml),
     ];
 
     const blocks = [
-        "RECENT SCENE:",
-        ...history,
-        "",
-        "PARTY-SIDE ACTIONS:",
-        JSON.stringify(partyActions),
-        "",
-        "ENEMY-SIDE ACTIONS:",
-        JSON.stringify(enemyActions),
-        "",
-        "ACTOR SHEETS:",
-        JSON.stringify(sheets),
+        "<clash_context>",
+        "  <scene>",
+        ...history.map(l => `  ${l}`),
+        "  </scene>",
+        "  <party_actions>",
+        ...partyActions.map(actionXml),
+        "  </party_actions>",
+        "  <enemy_actions>",
+        ...enemyActions.map(actionXml),
+        "  </enemy_actions>",
+        "  <sheets>",
+        ...sheets,
+        "  </sheets>",
+        "</clash_context>",
     ];
     return blocks.join("\n");
 }

@@ -10,7 +10,7 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
-import { parseAttrs } from "./toolParser.js";
+import { parseAttrs, escAttr } from "./toolParser.js";
 import { hasConnectionProfile, resolvePremasterProfile, sendRequestViaProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 
@@ -20,10 +20,10 @@ const SYSTEM_PROMPT = [
     "You are the ALLY AI of a tabletop-style roleplay game system: when the player does not command every member of their party, you decide what the uncommanded allies do this combat round.",
     "",
     "WHAT YOU RECEIVE:",
-    "- RECENT SCENE: the last few messages of the roleplay.",
-    "- PARTY SHEETS: full stats of every tracked party member (resources, attributes, skills, statuses).",
-    "- ENEMY PRESENCE: the hostile side's names and visible state.",
-    "- PLAYER ACTION: what the player themselves is doing. Allies are FRIENDLY — they may coordinate with it, cover the player, or follow its lead.",
+    "- <scene>: the last few messages of the roleplay.",
+    "- <party_sheets>: full stats of every tracked party member (resources, attributes, skills, statuses).",
+    "- <enemy_presence>: the hostile side's names and visible state.",
+    "- <player_action>: what the player themselves is doing. Allies are FRIENDLY — they may coordinate with it, cover the player, or follow its lead.",
     "",
     "YOUR OBJECTIVE:",
     "Decide ONE action for each party member whose behavior the player's action does NOT already cover. Members the player clearly commanded (named, ordered, protected...) get NOTHING — never override the player's orders. If the player's action covers everyone, respond with an empty <ally_actions/>.",
@@ -51,33 +51,41 @@ function collectContext(playerAction) {
         .map(m => `${m.is_user ? "Player" : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 1200)}`);
 
     const d = stateManager.getData();
-    const sheetOf = c => ({
-        name: c.name,
-        resources: (c.resources || []).map(r => ({ name: r.name, value: r.value, max: r.max })),
-        attributes: (c.attributes || []).map(a => ({ name: a.name, value: a.value })),
-        skills: (c.skills || []).map(s => {
-            const skill = { name: s.name };
-            if ((Number(s.cooldown_left) || 0) > 0) skill.on_cooldown = true;
-            return skill;
-        }),
-        statuses: (c.statuses || []).map(s => ({ name: s.name, modifiers: s.modifiers || "" })),
-    });
+
+    // One line per actor: resources as value/max, * = skill on cooldown.
+    const sheetXml = c => {
+        const attrs = [`name="${escAttr(c.name)}"`];
+        for (const r of c.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}"`);
+        for (const a of c.attributes || []) attrs.push(`${escAttr(a.name)}="${a.value}"`);
+        const skills = (c.skills || []).map(s => `${escAttr(s.name)}${(Number(s.cooldown_left) || 0) > 0 ? "*" : ""}`).join(", ");
+        if (skills) attrs.push(`skills="${skills}"`);
+        const statuses = (c.statuses || []).map(s => `${escAttr(s.name)}${s.modifiers ? ` (${escAttr(s.modifiers)})` : ""}`).join(", ");
+        if (statuses) attrs.push(`statuses="${statuses}"`);
+        return `  <char ${attrs.join(" ")}/>`;
+    };
+
+    // Visible state only: the ally AI never sees full enemy sheets.
+    const enemyXml = e => {
+        const attrs = [`name="${escAttr(e.name)}"`];
+        for (const r of e.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}"`);
+        const statuses = (e.statuses || []).map(s => escAttr(s.name)).join(", ");
+        if (statuses) attrs.push(`statuses="${statuses}"`);
+        return `  <enemy ${attrs.join(" ")}/>`;
+    };
 
     const blocks = [
-        "RECENT SCENE:",
-        ...history,
-        "",
-        "PARTY SHEETS (you command the uncommanded):",
-        JSON.stringify((d.characters || []).filter(c => !c.state).map(sheetOf)),
-        "",
-        "ENEMY PRESENCE (visible state only):",
-        JSON.stringify((d.enemies || []).map(e => ({
-            name: e.name,
-            resources: (e.resources || []).map(r => ({ name: r.name, value: r.value, max: r.max })),
-            statuses: (e.statuses || []).map(s => s.name),
-        }))),
-        "",
-        `PLAYER ACTION (allies coordinate with this): ${playerAction}`,
+        "<ally_ai_context>",
+        "  <scene>",
+        ...history.map(l => `  ${l}`),
+        "  </scene>",
+        "  <party_sheets>",
+        ...(d.characters || []).filter(c => !c.state).map(sheetXml),
+        "  </party_sheets>",
+        "  <enemy_presence>",
+        ...(d.enemies || []).map(enemyXml),
+        "  </enemy_presence>",
+        `  <player_action>${escAttr(playerAction)}</player_action>`,
+        "</ally_ai_context>",
     ];
     return blocks.join("\n");
 }
