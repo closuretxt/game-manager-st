@@ -76,15 +76,23 @@ let _running = false;
 // Some send flows fire GENERATION_AFTER_COMMANDS BEFORE the user's message is
 // pushed into chat (last message is still the AI's). inject/preTurn.js captures
 // the action at MESSAGE_SENT and parks it here; handlePreTurn consumes it.
+// Timestamped: in flows where MESSAGE_SENT fires AFTER the turn already ran,
+// the capture lands too late for its own turn and must never be judged as the
+// NEXT action.
 let _pendingAction = "";
+let _pendingActionTs = 0;
+const PENDING_MAX_AGE_MS = 60_000; // GAC fires right after send; older = leftover
 
 export function setPendingAction(text) {
     _pendingAction = String(text ?? "").trim();
+    _pendingActionTs = Date.now();
 }
 
 function takePendingAction() {
-    const t = _pendingAction;
+    const fresh = (Date.now() - _pendingActionTs) <= PENDING_MAX_AGE_MS;
+    const t = fresh ? _pendingAction : "";
     _pendingAction = "";
+    _pendingActionTs = 0;
     return t;
 }
 
@@ -141,22 +149,27 @@ export async function handlePreTurn(type = "normal") {
     let action = "";
     let snapshotId;
     let targetMsgId;
-    if (isPlayerAction && playerMsg?.is_user) {
-        // Usual flow: the user message is already the last chat entry.
-        action = String(playerMsg.mes ?? "").trim();
-        // Consume the MESSAGE_SENT capture (if any) — leaving it parked would
-        // leak THIS action into a later turn that falls back to the capture.
-        takePendingAction();
-        snapshotId = chat.length; // the AI reply will occupy chat.length
-        targetMsgId = playerMsgId;
-    } else if (isPlayerAction) {
-        // Send flow where the user message is NOT in chat yet — use the
-        // MESSAGE_SENT capture, then the send textarea (still holds the typed
-        // text in these flows). The message will land at chat.length and the
-        // AI reply the one after it.
-        action = takePendingAction() || readTextareaAction();
-        targetMsgId = chat.length;
-        snapshotId = chat.length + 1;
+    if (isPlayerAction) {
+        // Player action sources, freshest first: the send textarea (custom
+        // send flows fire this handler BEFORE the message lands in chat — the
+        // typed text is still in the bar), then the chat message (stock flow,
+        // bar already cleared), then the MESSAGE_SENT capture (flows that
+        // clear the bar early; timestamped so a leftover from a previous turn
+        // is never judged).
+        action = readTextareaAction()
+            || (playerMsg?.is_user ? String(playerMsg.mes ?? "").trim() : "")
+            || takePendingAction();
+        if (playerMsg?.is_user) {
+            // Stock flow: the user message is already the last chat entry and
+            // the AI reply will occupy chat.length.
+            snapshotId = chat.length;
+            targetMsgId = playerMsgId;
+        } else {
+            // The message will land at chat.length and the AI reply the one
+            // after it.
+            targetMsgId = chat.length;
+            snapshotId = chat.length + 1;
+        }
     } else {
         // Swipes/regenerates: the AI message already sits at chat.length - 1.
         snapshotId = Math.max(0, chat.length - 1);
@@ -175,7 +188,7 @@ export async function handlePreTurn(type = "normal") {
             }
         }
     }
-    console.info(`[GM DIAG] handlePreTurn: type=${type} lastMsg.is_user=${!!playerMsg?.is_user} actionLength=${action.length} snapshotId=${snapshotId} targetMsgId=${targetMsgId}`);
+    console.info(`[GM DIAG] handlePreTurn: type=${type} lastMsg.is_user=${!!playerMsg?.is_user} actionLength=${action.length} snapshotId=${snapshotId} targetMsgId=${targetMsgId} action="${action.slice(0, 80)}"`);
 
     // Skill cooldowns tick once per fresh player message (never on swipes —
     // the swipe branch above already rolled the state back to the pre-message
