@@ -24,13 +24,14 @@
 //                       briefs; with spawn review on they are queued for the
 //                       generate + review flow instead of being auto-created
 //   <deaths>          — report a party character's death (<death char="Name"
-//                       reason="..."/>); only the user (edit mode) revives
+//                       reason="..."/>; an enemy name removes/archives the
+//                       enemy); only the user (edit mode) revives
 //   <knockouts>       — knock a party character out (<ko char="Name"
 //                       reason="..."/>) or have them recover (<ko_clear
 //                       char="Name"/>); unlike death, the LLM clears it
-// Every block may contain a <char>Name</char> (or <target>) tag to scope it;
-// when omitted the active character is used. <warnings> and <threads> are
-// party-level and <char> resolves party characters AND enemies.
+// Every block may contain a <char>Name</char> (or <target>/<enemy>) tag to
+// scope it; when omitted the active character is used. <warnings> and
+// <threads> are party-level and <char> resolves party characters AND enemies.
 
 import { extension_settings } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
@@ -41,7 +42,7 @@ import { characterSpawner, spawnReviewEnabled } from "./characterSpawner.js";
 
 const BLOCK_TAGS = ["change_values", "set_attributes", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies", "deaths", "knockouts", "new_characters"];
 const BLOCK_RE = new RegExp(`<(${BLOCK_TAGS.join("|")})>([\\s\\S]*?)<\\/\\1>`, "gi");
-const INNER_RE = /<(char|target|resource|item|attribute|entry|status|warning|warning_clear|thread|thread_clear|passive|skill|exp|death|ko|ko_clear)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
+const INNER_RE = /<(char|target|enemy|resource|item|attribute|entry|status|warning|warning_clear|thread|thread_clear|passive|skill|exp|death|ko|ko_clear)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const ENEMY_RE = /<enemy\b([^>]*?)(?:\/>|>([\s\S]*?)<\/enemy>)/gi;
 const NEWCHAR_RE = /<char\b([^>]*?)(?:\/>|>([\s\S]*?)<\/char>)/gi;
 
@@ -89,7 +90,7 @@ export function parseToolBlocks(text) {
             const tag = inner[1].toLowerCase();
             const attrs = parseAttrs(inner[2] || "");
             const content = decodeEntities((inner[3] ?? "").trim());
-            if (tag === "char" || tag === "target") {
+            if (tag === "char" || tag === "target" || tag === "enemy") {
                 block.char = attrs.name || content || block.char;
             } else {
                 block.actions.push({ tag, attrs, content });
@@ -306,17 +307,24 @@ export function applyToolBlocks(blocks, { autoCreateChars = false } = {}) {
             continue;
         }
         // Deaths are per-action scoped: <death char="Name" reason="..."/>.
-        // Party characters only — enemies die via <enemies action="remove">.
+        // Party characters get the dead state; an enemy name removes the
+        // enemy instead (archived, restored automatically if it returns).
         // Feature-gated: with permadeath off the block is ignored entirely.
         if (block.type === "deaths") {
             if (extension_settings[extensionName]?.feature_death === false) continue;
             for (const action of block.actions) {
                 const target = stateManager.getCharacter(action.attrs.char || "");
-                if (!target) {
-                    logDebug("toolParser: skipping death for unknown character:", action.attrs.char || "(none)");
+                if (target) {
+                    if (stateManager.setState(target.id, "dead", action.attrs.reason ?? action.content ?? "")) applied++;
                     continue;
                 }
-                if (stateManager.setState(target.id, "dead", action.attrs.reason ?? action.content ?? "")) applied++;
+                const enemy = stateManager.getEnemy(action.attrs.char || "");
+                if (enemy) {
+                    stateManager.removeEnemy(enemy.id);
+                    applied++;
+                    continue;
+                }
+                logDebug("toolParser: skipping death for unknown character:", action.attrs.char || "(none)");
             }
             continue;
         }
