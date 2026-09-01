@@ -144,6 +144,9 @@ export async function handlePreTurn(type = "normal") {
     if (isPlayerAction && playerMsg?.is_user) {
         // Usual flow: the user message is already the last chat entry.
         action = String(playerMsg.mes ?? "").trim();
+        // Consume the MESSAGE_SENT capture (if any) — leaving it parked would
+        // leak THIS action into a later turn that falls back to the capture.
+        takePendingAction();
         snapshotId = chat.length; // the AI reply will occupy chat.length
         targetMsgId = playerMsgId;
     } else if (isPlayerAction) {
@@ -313,6 +316,10 @@ export async function handlePreTurn(type = "normal") {
         console.error("[Game Manager] pre-turn handling failed:", e);
     } finally {
         _running = false;
+        // Never let a parked action capture outlive its turn: a leftover here
+        // would be judged as the player's NEXT action when a send flow fires
+        // GENERATION_AFTER_COMMANDS before the message lands in chat.
+        _pendingAction = "";
         // Keep this turn's queued results for swipes/regenerates of the
         // upcoming AI message (keyed by its id) — replayHigh re-queues them.
         stashHigh(snapshotId);
