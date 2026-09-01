@@ -125,9 +125,10 @@ function enemyBlocks() {
 }
 
 // Brief blocks shared by generation and refinement: field shapes, existing
-// names, recent chat and the character brief (+ references when given).
+// names and the character brief (+ references when given). Recent chat is
+// NOT part of this — chatBlocks() appends it at the very bottom so the
+// scene the character appears in is the LAST thing the LLM reads.
 function briefBlocks({ name, details, references, level = null, kind = "party" }) {
-    const s = extension_settings[extensionName];
     const d = stateManager.getData();
     const existing = {
         party: (d.characters || []).map(c => c.name),
@@ -140,9 +141,6 @@ function briefBlocks({ name, details, references, level = null, kind = "party" }
         ...(kind === "enemy" ? enemyBlocks() : []),
         "",
         `EXISTING SETUP (names only — the new character must not duplicate them): ${JSON.stringify(existing)}`,
-        "",
-        "RECENT CHAT (context):",
-        ...recentChatLines(s.wizard_chat_messages),
         "",
         "NEW CHARACTER BRIEF:",
         `name: ${name}`,
@@ -164,20 +162,31 @@ async function deepContextBlocks(details) {
     const s = extension_settings[extensionName];
     if (!s.deep_context) return [];
     const deep = await buildDeepContext(String(details || ""));
-    return deep ? ["", "DEEP CONTEXT (card / persona / lore):", deep] : [];
+    return deep ? ["", "<deep_context>", deep, "</deep_context>"] : [];
+}
+
+// Recent chat tail: the LAST context block in the prompt, so the scene the
+// new character/enemy appears in is freshest in the LLM's attention.
+// `count` overrides the wizard_chat_messages setting (the auto-spawn path
+// passes a larger window — the tracker brief alone carries no scene context).
+function chatBlocks(count = null) {
+    const s = extension_settings[extensionName];
+    const lines = recentChatLines(count ?? s.wizard_chat_messages);
+    return lines.length ? ["", "RECENT CHAT (context):", ...lines] : [];
 }
 
 //
 
 // Runs the generation call. Returns a sanitized character (wizard party-entry
 // shape) or null on failure.
-export async function generateCharacterProposal({ name, details, references = [], level = null, kind = "party" } = {}) {
+export async function generateCharacterProposal({ name, details, references = [], level = null, kind = "party", chatMessages = null } = {}) {
     const s = extension_settings[extensionName];
     if (!s.enabled) return null;
     try {
         const blocks = [
             ...briefBlocks({ name, details, references, level, kind }),
             ...(await deepContextBlocks(details)),
+            ...chatBlocks(chatMessages),
         ];
         const char = await runCharLLM(CHAR_PROMPT_HEADER, blocks.join("\n"), name);
         if (char) {
@@ -203,6 +212,7 @@ export async function refineCharacterProposal(char, feedback, { name, details, r
         const blocks = [
             ...briefBlocks({ name, details, references, level, kind }),
             ...(await deepContextBlocks(details)),
+            ...chatBlocks(),
             "",
             "CURRENT PROPOSAL (improve THIS — keep what works, deepen what is shallow):",
             characterToXml(char),

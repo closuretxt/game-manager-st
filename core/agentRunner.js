@@ -183,7 +183,7 @@ async function buildSystemPrompt(exchange = []) {
         ] : []),
     ];
     if (deep) {
-        lines.push("", "DEEP CONTEXT (card / persona / lore):", deep);
+        lines.push("", "<deep_context>", deep, "</deep_context>");
     }
     // User's standing instructions for the post-pass — at the END of the
     // system message, after the deep context. Full ST macro parsing

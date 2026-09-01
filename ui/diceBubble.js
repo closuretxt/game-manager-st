@@ -2,12 +2,19 @@
 // Phase 1 (rolling): a bubble floats centered ABOVE the chat input bar; a dice
 // cycles through its faces while shaking, tier options stream in one by one
 // with animated chance bars.
-// Phase 2 (result): the winner pops with a glow; a compact result bubble is
-// also attached to the player's message IN THE DOM ONLY (the message text
-// itself is never edited) — the LLM receives the result through the
-// high-priority injection instead.
+// Phase 2 (result): the winner pops with a glow; the result is also attached
+// to the player's message as a file-style chip (ST's own message-file markup,
+// DOM only — the message text itself is never edited) — the LLM receives the
+// result through the high-priority injection instead.
+
+import { extension_settings } from "../../../../extensions.js";
+import { extensionName } from "../core/constants.js";
 
 const DICE_FACES = ["fa-dice-one", "fa-dice-two", "fa-dice-three", "fa-dice-four", "fa-dice-five", "fa-dice-six"];
+
+// Roll attachments (setting): render roll/combat results as file-style chips
+// under the player's message. Off = nothing is attached.
+export const rollAttachment = () => !!extension_settings[extensionName]?.roll_attachment;
 
 class DiceBubble {
     constructor() {
@@ -140,23 +147,41 @@ class DiceBubble {
     }
 }
 
-// DOM-only result bubble attached to a chat message. The message text (msg.mes)
-// is NEVER modified — this is purely visual; the LLM gets the result via the
-// high-priority injection. Safe to call repeatedly (idempotent per mesId).
+// Builds one file-style chip from ST's own message-file template and appends
+// it to the message's .mes_file_wrapper (fallback: after .mes_text). Purely
+// visual — no file is uploaded and msg.mes is never touched.
+export function appendResultChip(mesEl, { icon = "fa-dice-d6", title, tier, outcome }) {
+    const chip = $("#message_file_template .mes_file_container").clone();
+    if (!chip.length) return false;
+    chip.addClass("gm_roll_file");
+    chip.find(".mes_file_icon").removeClass("fa-file-alt").addClass(icon);
+    chip.find(".mes_file_name").text(title).attr("title", title);
+    chip.find(".mes_file_size").text(tier).attr("title", tier);
+    // The template's open/delete buttons belong to real files — chips are read-only.
+    chip.find(".mes_file_open, .mes_file_delete").remove();
+    chip.append($("<div>").addClass("gm_roll_file_outcome").text(outcome));
+    const wrap = mesEl.querySelector(".mes_file_wrapper");
+    if (wrap) $(wrap).append(chip);
+    else $(mesEl.querySelector(".mes_text")).after(chip);
+    return true;
+}
+
+// Result chip attached to a chat message (ST message-file style, DOM-only).
+// The message text (msg.mes) is NEVER modified — this is purely visual; the
+// LLM gets the result via the high-priority injection. Gated by the "Roll
+// attachments" setting (off = nothing is attached). Safe to call repeatedly
+// (idempotent per mesId).
 export function attachRollToMessage(mesId, title, winner) {
+    if (!rollAttachment()) return;
     const mesEl = document.querySelector(`#chat .mes[mesid="${mesId}"]`);
-    if (!mesEl) return;
-    if (mesEl.querySelector(".gm_roll_tag")) return; // already rendered
+    if (!mesEl || mesEl.querySelector(".gm_roll_file")) return; // already rendered
     const pct = Math.max(0, Math.min(100, Math.round(Number(winner.chance) || 0)));
-    const tag = $("<div>").addClass("gm_roll_tag");
-    tag.append(
-        $("<i>").addClass("fa-solid fa-dice-d6"),
-        $("<b>").text(title),
-        $("<span>").addClass("gm_roll_tag_tier").text(`${winner.name} (${pct}%)`),
-        $("<span>").addClass("gm_roll_tag_outcome").text(winner.outcome),
-    );
-    const target = mesEl.querySelector(".mes_text");
-    if (target) $(target).after(tag);
+    appendResultChip(mesEl, {
+        icon: "fa-dice-d6",
+        title,
+        tier: `${winner.name} (${pct}%)`,
+        outcome: winner.outcome,
+    });
 }
 
 export const diceBubble = new DiceBubble();

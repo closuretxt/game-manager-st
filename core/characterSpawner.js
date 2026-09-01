@@ -99,6 +99,10 @@ export const characterSpawner = {
                 references: [],
                 level: brief.level,
                 kind: brief.kind,
+                // The tracker brief carries no scene context of its own —
+                // give the generator a wider recent-chat window than the
+                // wizard default so it knows WHERE the character appeared.
+                chatMessages: 10,
             });
             if (!char) {
                 gmNotify(`Could not generate a sheet for ${brief.name} — check the connection profile.`, "error");
@@ -124,12 +128,11 @@ export const characterSpawner = {
         this._renderChip();
     },
 
-    //
-
     // ---------- chip UI ----------
     // Persistent pill while briefs are pending: icon + name/count, tooltip
     // listing everyone waiting, click = review the next one, X = drop all.
-    // Fixed to the lower-right corner, below ST popups (see --gm-window-z).
+    // Anchored ABOVE the chat input area (like a notification) so it never
+    // hides behind the main panel; body fallback keeps the old corner spot.
     _renderChip() {
         $("#gm_spawn_chip").remove();
         if (!this._queue.length || !spawnReviewEnabled()) return;
@@ -152,6 +155,7 @@ export const characterSpawner = {
         });
         chip.append(dismiss);
         chip.on("click", () => this.reviewNext());
-        $("body").append(chip);
+        const host = $("#form_sheld");
+        (host.length ? host : $("body")).append(chip);
     },
 };

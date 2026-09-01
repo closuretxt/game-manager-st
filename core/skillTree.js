@@ -104,7 +104,7 @@ export const skillTree = {
         const s = settings();
         if (s.deep_context) {
             const deep = await buildDeepContext(String(userWish || ""));
-            if (deep) userParts.push(deep);
+            if (deep) userParts.push("<deep_context>", deep, "</deep_context>");
         }
         userParts.push(`CHARACTER SHEET:\n${charSummary(char)}`);
         userParts.push(`EXP CURVE: exp_base=${cfg.exp_base}, exp_growth=${cfg.exp_growth}, skill_points_per_level=${cfg.skill_points_per_level}, bonus_every=${cfg.bonus_every}`);

@@ -347,7 +347,7 @@ async function buildSystemContent(playerAction) {
     let content = SYSTEM_PROMPT;
     if (s.deep_context) {
         const deep = await buildDeepContext(String(playerAction || ""));
-        if (deep) content += `\n\nDEEP CONTEXT (card / persona / lore):\n${deep}`;
+        if (deep) content += `\n\n<deep_context>\n${deep}\n</deep_context>`;
     }
     // User's standing instructions for the pre-pass — at the END of the
     // system message, after the deep context (same layout as the post-pass).

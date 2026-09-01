@@ -6,12 +6,13 @@
 // and the head icon cycles dice faces — the winning tier then pops with a
 // glow per group.
 //
-// The permanent record is DOM-only: attachCombatToMessage appends a compact
-// result tag to the player's message WITHOUT editing its text — the LLM
+// The permanent record is DOM-only: attachCombatToMessage appends file-style
+// result chips to the player's message WITHOUT editing its text — the LLM
 // receives the resolved round through the high-priority injection instead.
 
 import { extension_settings } from "../../../../extensions.js";
 import { extensionName } from "../core/constants.js";
+import { appendResultChip, rollAttachment } from "./diceBubble.js";
 
 const DICE_FACES = ["fa-dice-one", "fa-dice-two", "fa-dice-three", "fa-dice-four", "fa-dice-five", "fa-dice-six"];
 
@@ -297,28 +298,26 @@ function fillTitle(el, title) {
     }
 }
 
-// DOM-only result tag attached to a chat message: one compact line per clash
+// Result chips attached to a chat message: one file-style chip per clash
 // group (title + winning tier + outcome). The message text (msg.mes) is NEVER
-// modified — the LLM gets the round via the high-priority injection. Safe to
-// call repeatedly (idempotent per mesId).
+// modified — the LLM gets the round via the high-priority injection. Gated by
+// the "Roll attachments" setting (off = nothing is attached). Safe to call
+// repeatedly (idempotent per mesId).
 export function attachCombatToMessage(mesId, groups, winners) {
+    if (!rollAttachment()) return;
     const mesEl = document.querySelector(`#chat .mes[mesid="${mesId}"]`);
-    if (!mesEl || mesEl.querySelector(".gm_combat_tag")) return;
-    const tag = $("<div>").addClass("gm_combat_tag");
-    tag.append($("<i>").addClass("fa-solid fa-hand-fist"));
-    const body = $("<div>").addClass("gm_combat_tag_body");
+    if (!mesEl || mesEl.querySelector(".gm_roll_file")) return; // already rendered
     (groups || []).forEach((g, i) => {
         const w = winners?.[i];
         if (!w) return;
-        body.append($("<div>").addClass("gm_combat_tag_line").append(
-            $("<b>").text(g.title),
-            $("<span>").addClass("gm_roll_tag_tier").text(`${w.name} (${Math.round(Number(w.chance) || 0)}%)`),
-            $("<span>").addClass("gm_roll_tag_outcome").text(w.outcome),
-        ));
+        const pct = Math.max(0, Math.min(100, Math.round(Number(w.chance) || 0)));
+        appendResultChip(mesEl, {
+            icon: "fa-hand-fist",
+            title: g.title,
+            tier: `${w.name} (${pct}%)`,
+            outcome: w.outcome,
+        });
     });
-    tag.append(body);
-    const target = mesEl.querySelector(".mes_text");
-    if (target) $(target).after(tag);
 }
 
 export const combatBubble = new CombatBubble();

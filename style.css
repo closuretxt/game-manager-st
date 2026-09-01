@@ -1096,39 +1096,25 @@ textarea.gm_input {
     color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
 }
 
-/* ---------- roll result tag (DOM-only, attached to the player message) ---------- */
+/* ---------- roll result attachment chip (DOM-only, ST message-file style) ---------- */
 
-.gm_roll_tag {
-    display: flex;
-    align-items: center;
+/* The chip clones ST's own #message_file_template, so theming comes from the
+   native .mes_file_container — only the roll-specific touches live here. */
+
+.gm_roll_file {
     flex-wrap: wrap;
-    gap: 6px 8px;
-    margin: 6px 0 2px;
-    padding: 6px 10px;
-    font-size: 12px;
-    border-radius: var(--gm-radius, 8px);
-    border: 1px solid color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 35%, transparent);
-    background: color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 7%, transparent);
     animation: gm_dice_in 0.3s ease-out both;
 }
 
-.gm_roll_tag i {
+.gm_roll_file .mes_file_icon {
     color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
-    font-size: 13px;
 }
 
-.gm_roll_tag b {
-    color: var(--SmartThemeBodyColor, #ccc);
-}
-
-.gm_roll_tag_tier {
-    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
-    font-weight: 600;
-}
-
-.gm_roll_tag_outcome {
-    color: var(--SmartThemeEmColor, #aaa);
+.gm_roll_file_outcome {
+    flex-basis: 100%;
+    font-size: 12px;
     font-style: italic;
+    color: var(--SmartThemeEmColor, #aaa);
 }
 
 /* ---------- action rewrite tag (DOM-only, attached to the player message) ---------- */
@@ -1696,12 +1682,18 @@ textarea.gm_input {
 /* ---------- spawn review chip ---------- */
 /* Persistent pill while the tracker has new-character briefs waiting:
    click = generate + open the review page, X = discard all. Enemy-only
-   queues get the skull + a hostile red tint. */
+   queues get the skull + a hostile red tint. Lives ABOVE the chat input
+   area (notification-style) so the main panel can never cover it. */
+/* Anchor host: the chat input form needs a positioning context. */
+#form_sheld {
+    position: relative;
+}
+
 #gm_spawn_chip {
-    position: fixed;
-    right: 16px;
-    bottom: 16px;
-    z-index: 2999; /* below ST drawers/popups, above the page */
+    position: absolute;
+    right: 12px;
+    bottom: calc(100% + 10px);
+    z-index: 39999; /* above ST drawers/popups and the main panel */
     display: flex;
     align-items: center;
     gap: 8px;
@@ -1747,6 +1739,13 @@ textarea.gm_input {
 #gm_spawn_chip .gm_spawn_dismiss:hover {
     opacity: 1;
     color: #d9534f;
+}
+
+/* Body fallback (no #form_sheld found): old fixed corner spot, still on top. */
+body > #gm_spawn_chip {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
 }
 
 @keyframes gm_spawn_in {
@@ -2502,40 +2501,6 @@ textarea.gm_input {
     animation: gm_dice_in 0.3s ease-out both;
 }
 
-/* Permanent record tag on the player's message (DOM-only). */
-
-.gm_combat_tag {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    margin: 6px 0 2px;
-    padding: 6px 10px;
-    font-size: 12px;
-    border-radius: var(--gm-radius, 8px);
-    border: 1px solid color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 45%, transparent);
-    background: color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 7%, transparent);
-    animation: gm_dice_in 0.3s ease-out both;
-}
-
-.gm_combat_tag > i {
-    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
-    font-size: 13px;
-    margin-top: 2px;
-}
-
-.gm_combat_tag_body {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    min-width: 0;
-}
-
-.gm_combat_tag_line {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 8px;
-    align-items: baseline;
-}
 
 /* ---------- death (permadeath) ---------- */
 

@@ -77,7 +77,7 @@ export async function runTransaction(resource, playerAction, mesId = null, plan 
             let systemContent = SYSTEM_PROMPT;
             if (s.deep_context_engines) {
                 const deep = await buildDeepContext(String(playerAction || ""));
-                if (deep) systemContent += `\n\nDEEP CONTEXT (card / persona / lore):\n${deep}`;
+                if (deep) systemContent += `\n\n<deep_context>\n${deep}\n</deep_context>`;
             }
             const messages = [
                 { role: "system", content: systemContent },

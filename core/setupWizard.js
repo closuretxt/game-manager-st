@@ -131,7 +131,7 @@ async function collectContext(scenarioText) {
     if (s.deep_context) {
         const deep = await buildDeepContext(String(scenarioText || ""));
         logDebug(`setupWizard: deep context block ${deep ? `built (${deep.length} chars)` : "EMPTY — skipped"}`);
-        if (deep) blocks.push("", "DEEP CONTEXT (card / persona / lore):", deep);
+        if (deep) blocks.push("", "<deep_context>", deep, "</deep_context>");
     }
 
     return blocks.join("\n");
@@ -424,7 +424,7 @@ async function collectRefineContext(proposal, feedback, scenarioText) {
     // Deep context (setting-gated), same as the initial generation.
     if (s.deep_context) {
         const deep = await buildDeepContext(String(scenarioText || ""));
-        if (deep) blocks.push("", "DEEP CONTEXT (card / persona / lore):", deep);
+        if (deep) blocks.push("", "<deep_context>", deep, "</deep_context>");
     }
 
     return blocks.join("\n");
