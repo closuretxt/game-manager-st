@@ -59,12 +59,15 @@ class DiceBubble {
 
     // Slot-machine sweep (same feel as the combat bubble's group roll): a
     // highlight cycles the tier rows until resolve() lands on the winner.
-    // Idempotent — the first tier starts it, later calls keep it running.
+    // Started at roll time (startRoll from the dice roller), not while tiers
+    // stream in; the name list is re-read every tick so tiers that streamed
+    // in late are swept too. Idempotent while running.
     startRoll() {
         if (!this.el || !this.tierEls.size || this._sweepTimer) return;
-        const names = [...this.tierEls.keys()];
         let i = 0;
         this._sweepTimer = setInterval(() => {
+            const names = [...this.tierEls.keys()];
+            if (!names.length) return;
             for (const [name, info] of this.tierEls) {
                 info.row.toggleClass("gm_dice_tier_rolling", name === names[i % names.length]);
             }
@@ -121,8 +124,6 @@ class DiceBubble {
         this.tierEls.set(tier.name, { row, bar, pct });
         // Animate the chance bar in.
         requestAnimationFrame(() => bar.css("width", pct + "%"));
-        // First tier starts the slot-machine sweep.
-        this.startRoll();
         this._position();
     }
 
