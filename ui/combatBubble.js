@@ -255,7 +255,7 @@ class CombatBubble {
         this.status.text(text || "Combat resolved.");
         this.el.addClass("gm_dice_resolved");
         clearTimeout(this._closeTimer);
-        this._closeTimer = setTimeout(() => this.close(), 15000);
+        this._closeTimer = setTimeout(() => this.close(), 10000);
         this._position();
     }
 

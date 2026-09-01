@@ -39,6 +39,8 @@ const SYSTEM_PROMPT = [
     "- title is a short third-person action title (\"Cover the flank\").",
     "- The intent line says WHAT the ally attempts and AT WHOM (or for whom) — the clash engine needs a concrete target to pair actions against.",
     "- Any kind of action is valid: attacking, dodging, shielding the player, healing, using a skill — choose what a loyal ally would do given its stats and the scene.",
+    "- USE SKILLS ACTIVELY. Skills are the ally's signature moves: when a ready skill (no * marker) fits the scene, PREFER it over a plain attack — a fire mage should cast, a healer should heal. Name the skill explicitly in the intent line. Never use a skill marked * (on cooldown), and never invent skills that are not on the sheet.",
+    "- Skill costs are real: a skill's (cost: ...) is paid when used — only pick it when the ally can afford it (check current resources).",
     "- Never act for the player themselves; never invent party members that are not in the sheets.",
 ].join("\n");
 
@@ -52,12 +54,13 @@ function collectContext(playerAction) {
 
     const d = stateManager.getData();
 
-    // One line per actor: resources as value/max, * = skill on cooldown.
+    // One line per actor: resources as value/max, skills as Name (cost),
+    // * = skill on cooldown.
     const sheetXml = c => {
         const attrs = [`name="${escAttr(c.name)}"`];
         for (const r of c.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}"`);
         for (const a of c.attributes || []) attrs.push(`${escAttr(a.name)}="${a.value}"`);
-        const skills = (c.skills || []).map(s => `${escAttr(s.name)}${(Number(s.cooldown_left) || 0) > 0 ? "*" : ""}`).join(", ");
+        const skills = (c.skills || []).map(s => `${escAttr(s.name)}${String(s.cost || "").trim() ? ` (cost: ${escAttr(s.cost)})` : ""}${(Number(s.cooldown_left) || 0) > 0 ? "*" : ""}`).join(", ");
         if (skills) attrs.push(`skills="${skills}"`);
         const statuses = (c.statuses || []).map(s => `${escAttr(s.name)}${s.modifiers ? ` (${escAttr(s.modifiers)})` : ""}`).join(", ");
         if (statuses) attrs.push(`statuses="${statuses}"`);

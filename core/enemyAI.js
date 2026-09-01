@@ -26,6 +26,10 @@ const SYSTEM_PROMPT = [
     "YOUR OBJECTIVE:",
     "Decide ONE action per enemy for this round. Any kind of action is valid — attacking, dodging, shielding an ally, repositioning, fleeing, using a skill — choose what a competent hostile would do given its stats, statuses and the scene. An enemy may take more than one action ONLY if its sheet justifies it (an extra-action status or similar).",
     "",
+    "SKILLS:",
+    "- USE SKILLS ACTIVELY. Skills are the enemy's signature moves: when a ready skill (no * marker) fits the scene, PREFER it over a plain attack — a spellcaster should cast, a brute should use its signature maneuver. Name the skill explicitly in the intent line. Never use a skill marked * (on cooldown), and never invent skills that are not on the sheet.",
+    "- Skill costs are real: a skill's (cost: ...) is paid when used — only pick it when the enemy can afford it (check current resources).",
+    "",
     "OUTPUT FORMAT:",
     "Respond with ONLY XML — no markdown fences, no prose:",
     '  <enemy_actions>',
@@ -49,12 +53,13 @@ function collectContext(maxActions) {
 
     const d = stateManager.getData();
 
-    // One line per actor: resources as value/max, * = skill on cooldown.
+    // One line per actor: resources as value/max, skills as Name (cost),
+    // * = skill on cooldown.
     const sheetXml = c => {
         const attrs = [`name="${escAttr(c.name)}"`];
         for (const r of c.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}"`);
         for (const a of c.attributes || []) attrs.push(`${escAttr(a.name)}="${a.value}"`);
-        const skills = (c.skills || []).map(s => `${escAttr(s.name)}${(Number(s.cooldown_left) || 0) > 0 ? "*" : ""}`).join(", ");
+        const skills = (c.skills || []).map(s => `${escAttr(s.name)}${String(s.cost || "").trim() ? ` (cost: ${escAttr(s.cost)})` : ""}${(Number(s.cooldown_left) || 0) > 0 ? "*" : ""}`).join(", ");
         if (skills) attrs.push(`skills="${skills}"`);
         const statuses = (c.statuses || []).map(s => `${escAttr(s.name)}${s.modifiers ? ` (${escAttr(s.modifiers)})` : ""}`).join(", ");
         if (statuses) attrs.push(`statuses="${statuses}"`);
