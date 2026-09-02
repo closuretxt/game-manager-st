@@ -56,7 +56,7 @@ Character details page (All values are customizeable)
 ![alt text](https://github.com/closuretxt/closure-imgdump/blob/main/CharacterDetails.png)
 
 ## Minimal injections
-As said before, your actual LLM just receives relevant information and they are split into high and low priorities. High priorities are intended to go with your author's note and low nested inside lorebooks.
+As said before, your actual LLM just receives relevant information and they are split into high and low priorities. High-priorities are intended to go with your author's note and low-priorities nested inside lorebooks.
 "How does a LLM know what matters?" - The specialists will provide warnings and inject information if relevant. "You have about two days of food left.", "Encounter chance increased.", etc. The details do not matter, your story engine is for creative writing.
 Everything is made through agentic stuff and different API's, setup cheap flash versions with thinking and let them take the bullet.
 This system also doesn't craft lorebook entries or detailed appearance (unless asked to in custom fields), it leaves the autonomy to story and lorebooks still, keeping everything clean and straightforward.
@@ -68,7 +68,7 @@ Extra points that this extension has no features that are outside of the scope o
 
 There's no prompt editing available outside of custom fields. I may do something in the future but I wanted to keep this straightforward and easy to get into. It may sound contradictory since its made for a power user but honestly I tried to strike in the middle since I hate extensions that are filled with prompt fields.
 
-It is intended to survive every kind of shift in priority or scenario, it supports infinite custom fields and complex systems.
+It is intended to survive every future technology shift in roleplay, it supports infinite custom fields and complex systems.
 
 ## Cache
 Cache hit %'s depends on how the specialists go about your scenario and where you put the GM macros.

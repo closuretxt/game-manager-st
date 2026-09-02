@@ -43,6 +43,7 @@ const CHAR_PROMPT_HEADER = [
     "- Without references, YOU decide which systems the character uses: give containers ONLY when they matter for THEM (a brute: resources+attributes; a mage: skills+passives; a quartermaster: inventory). Empty containers are correct when a system does not apply.",
     "- Stats, ranges and quantities must be deliberate — reflect the character's role and the scenario's pressure. No filler.",
     "- Every entry gets a short, IN-WORLD description — a fact about the thing itself, never meta commentary ('tracks', 'resource for', 'important for this character'). Never leave descriptions empty.",
+    "- NO PURPLE PROSE: descriptions are plain and factual — one short sentence, concrete words, no flowery or literary language, no stacked adjectives, no metaphors or atmosphere. Write like a gear tag, not a novel: 'Veteran sergeant, bark commands' — NOT 'a scarred warrior whose weathered gaze carries the weight of a thousand fallen campaigns'.",
     "- Resources are turn-to-turn meters updated during play (Health, Stamina, Ammo, Sanity, Stress) with sensible custom ranges (Health 0-100, Ammo 0-36 = one revolver loadout). Attributes are milestone stats (Strength, Fortitude, Dexterity, Charisma) without hard caps, changed rarely.",
     "- CALIBRATE NUMBERS to the world: starting quantities and ranges must imply real scale. Anchor non-obvious scales in the description (e.g. 'a meal costs about 15').",
     "- LEVEL: when the prompt states a level, use it; when progression is active WITHOUT a stated level, INFER it from the context (recent chat, details, reference levels) and report it in level (whole number, at least 1). Without progression, omit the attribute.",
@@ -60,6 +61,7 @@ const CHAR_REFINE_PROMPT_HEADER = [
     "- Preserve everything the feedback does not ask to change — especially entries the user may have edited by hand.",
     "- Keep the character's name exactly as proposed.",
     "- Every entry carries a short, IN-WORLD description — a fact about the thing itself, never meta commentary. Fill any that are missing, vague or meta.",
+    "- NO PURPLE PROSE: rewrite any flowery or literary description as a plain, factual one-liner — concrete words only, no stacked adjectives, no metaphors or atmosphere.",
     "- LEVEL: keep the character's level from the current proposal unless the feedback asks to change it.",
     "- Omit tags that do not apply. Never invent entries outside the given shapes.",
 ].join("\n");
