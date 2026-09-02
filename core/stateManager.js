@@ -337,7 +337,29 @@ export const stateManager = {
         const entry = d.roster.find(x => x.id === id);
         if (!entry) return null;
         d.roster = d.roster.filter(x => x.id !== id);
-        return this.addCharacter(entry.name, entry.sheet || null);
+        const char = this.addCharacter(entry.name, entry.sheet || null);
+        // Wizard-created allies promote with an empty sheet: carry the
+        // needs-build flag + note so the sheet view prompts an auto build.
+        if (entry.needs_build && !entry.sheet) {
+            char.needs_build = true;
+            char.buildNote = String(entry.note || "");
+        }
+        return char;
+    },
+
+    // Overrides a character's containers with the given proposal-shaped sheet
+    // (fresh entry ids) and clears the needs-build flag — the Setup Wizard
+    // auto build path (Character Creator override mode).
+    applyCharacterSheet(id, sheet) {
+        const char = this.getCharacter(id);
+        if (!char) return null;
+        for (const key of CHARACTER_CONTAINERS) {
+            char[key] = (sheet?.[key] || []).map(e => ({ ...structuredClone(e), id: genId() }));
+        }
+        delete char.needs_build;
+        delete char.buildNote;
+        this.emitChange("apply_character_sheet");
+        return char;
     },
 
     // ---------- character states (death, knockout, ...) ----------

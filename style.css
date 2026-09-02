@@ -1669,6 +1669,34 @@ textarea.gm_input {
     width: 70px;
 }
 
+/* Wizard option row: chat depth + skip toggle on one line (the generic
+   gm_field stacks label-over-input, which is not what we want here). */
+.gm_wizard_opts {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin: 6px 0 0;
+}
+
+.gm_wizard_opts label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    font-size: 11px;
+    white-space: nowrap;
+    cursor: help;
+}
+
+.gm_wizard_opts .gm_input {
+    width: 70px;
+}
+
+.gm_wizard_opts input[type="checkbox"] {
+    margin: 0;
+}
+
 .gm_field_inline select {
     flex: 1;
 }
@@ -2724,4 +2752,40 @@ body > #gm_spawn_chip {
 
 .gm_ko_row {
     opacity: 0.7;
+}
+
+/* Needs-build banner: Setup Wizard allies promoted with an empty sheet. */
+.gm_build_banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 0;
+    padding: 7px 10px;
+    font-size: 12px;
+    border-radius: var(--gm-radius, 8px);
+    border: 1px solid color-mix(in srgb, #e0a94a 50%, transparent);
+    background: color-mix(in srgb, #e0a94a 12%, transparent);
+    animation: gm_dice_in 0.3s ease-out both;
+}
+
+.gm_build_banner > i {
+    color: #e0a94a;
+    font-size: 14px;
+}
+
+.gm_build_banner b {
+    color: #e0a94a;
+    letter-spacing: 1px;
+}
+
+.gm_build_banner span {
+    color: var(--SmartThemeBodyColor, #ccc);
+}
+
+.gm_build_banner .menu_button {
+    margin-left: auto;
+}
+
+.gm_build_chip {
+    color: #e0a94a;
 }

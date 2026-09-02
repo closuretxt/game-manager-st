@@ -31,6 +31,7 @@ export const characterCreator = {
     _proposal: null,  // sanitized char (wizard party-entry shape)
     _history: [],     // previous proposals for rollback
     _refinements: 0,
+    _targetId: null,  // override mode: replace this character's sheet on Apply
     onApplied: null,  // set by the host (mainPanel): (char) => select + render
 
     open({ mode = "party" } = {}) {
@@ -41,6 +42,7 @@ export const characterCreator = {
         this._reference = "";
         this._mode = mode === "enemy" ? "enemy" : "party";
         this._level = null;
+        this._targetId = null;
         this._proposal = null;
         this._history = [];
         this._refinements = 0;
@@ -51,7 +53,7 @@ export const characterCreator = {
     // proposal — the tracker detected this character and the sheet was built
     // from its brief (core/characterSpawner.js). Skips the input step; the
     // brief is kept so Refine reuses the same context.
-    openWithProposal({ char, mode = "party", level = null, details = "" } = {}) {
+    openWithProposal({ char, mode = "party", level = null, details = "", targetCharacterId = null } = {}) {
         const s = extension_settings[extensionName];
         if (!s.enabled || !s.feature_character_creator || !char) return false;
         this._name = char.name;
@@ -59,6 +61,7 @@ export const characterCreator = {
         this._reference = "";
         this._mode = mode === "enemy" ? "enemy" : "party";
         this._level = level ?? null;
+        this._targetId = targetCharacterId || null;
         this._proposal = char;
         this._history = [];
         this._refinements = 0;
@@ -73,6 +76,7 @@ export const characterCreator = {
     close() {
         fadeOutRemove($("#gm_creator_overlay"));
         this._proposal = null;
+        this._targetId = null;
     },
 
     //
@@ -289,7 +293,8 @@ export const characterCreator = {
         const char = this._proposal;
         const refinedTag = this._refinements ? ` (refined ×${this._refinements})` : "";
         const lvlTag = progression.isEnabled() && this._level ? ` — Lv ${this._level}` : "";
-        this._header(modal, `Review Character — ${char.name}${lvlTag}${refinedTag}`);
+        const overrideTag = this._targetId ? " — overrides current sheet" : "";
+        this._header(modal, `Review Character — ${char.name}${lvlTag}${refinedTag}${overrideTag}`);
 
         const body = $("<div>").addClass("gm_wizard_body");
 
@@ -355,6 +360,19 @@ export const characterCreator = {
             $("<i>").addClass("fa-solid fa-check"), $("<span>").text(" Apply"));
         apply.on("click", () => {
             const sheet = this._cloneSheet(this._proposal);
+            // Override mode: replace an existing character's sheet (Setup
+            // Wizard needs-build flow) instead of creating a new one.
+            if (this._targetId) {
+                const updated = this._stampLevel(stateManager.applyCharacterSheet(this._targetId, sheet));
+                if (!updated) {
+                    gmNotify("The character to override no longer exists.", "error");
+                    return;
+                }
+                gmNotify(`Applied the generated sheet to ${updated.name}.`, "success");
+                logDebug("characterCreator: applied generated sheet (override)");
+                this._finish(updated);
+                return;
+            }
             const created = this._isEnemy()
                 ? this._applyEnemy(sheet)
                 : this._stampLevel(stateManager.addCharacter(this._name, sheet));

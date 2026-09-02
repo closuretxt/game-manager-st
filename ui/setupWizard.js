@@ -44,6 +44,8 @@ export const setupWizard = {
                 proposal: this._proposal || null,
                 refinements: this._refinements || 0,
                 history: this._history || [],
+                skipCharacters: !!this._skipCharacters,
+                improvedGrounds: !!this._improvedGrounds,
             };
             st.saveMetadata();
         } catch (e) {
@@ -94,10 +96,14 @@ export const setupWizard = {
         this._refinements = 0;
         this._history = [];
         this._expanded = new Set();
+        this._skipCharacters = false;
+        this._improvedGrounds = false;
         // Resume an interrupted session (crash, accidental close) if one exists.
         const saved = this._sessionLoad();
         if (saved) {
             this._scenario = String(saved.scenario || "");
+            this._skipCharacters = !!saved.skipCharacters;
+            this._improvedGrounds = !!saved.improvedGrounds;
             this._refinements = Number(saved.refinements) || 0;
             this._history = Array.isArray(saved.history) ? saved.history : [];
             if (saved.proposal) {
@@ -168,19 +174,38 @@ export const setupWizard = {
         });
         body.append(ta);
 
-        // How much recent chat the setup LLM sees as context (0 = none).
-        const chatRow = $("<div>").addClass("gm_field gm_field_inline");
+        // Options row — chat depth and the skip toggle, side by side (the
+        // generic gm_field stacks label-over-input; this row stays flat).
+        const optsRow = $("<div>").addClass("gm_wizard_opts");
         const chatInput = $("<input>")
             .addClass("gm_input")
-            .attr({ type: "number", min: "0", max: "100", step: "1", title: "Recent chat messages included as context for the setup LLM" })
+            .attr({ type: "number", min: "0", max: "100", step: "1" })
             .val(Math.max(0, Math.trunc(Number(s.wizard_chat_messages) || 0)));
         chatInput.on("change", () => {
             s.wizard_chat_messages = Math.max(0, Math.trunc(Number(chatInput.val()) || 0));
             chatInput.val(s.wizard_chat_messages);
             saveSettingsDebounced();
         });
-        chatRow.append($("<label>").text("Include Messages"), chatInput);
-        body.append(chatRow);
+        // Skip characters: the proposal covers scenario tracking only
+        // (shared resources, custom features, warnings, progression).
+        const skipInput = $("<input>").attr("type", "checkbox").prop("checked", !!this._skipCharacters);
+        skipInput.on("change", () => {
+            this._skipCharacters = skipInput.prop("checked");
+        });
+        // Improved Grounds: stakes, objectives, pressure, grounded progression.
+        const groundsInput = $("<input>").attr("type", "checkbox").prop("checked", !!this._improvedGrounds);
+        groundsInput.on("change", () => {
+            this._improvedGrounds = groundsInput.prop("checked");
+        });
+        optsRow.append(
+            $("<label>").attr("title", "Recent chat messages included as context for the setup LLM")
+                .append($("<span>").text("Include Messages"), chatInput),
+            $("<label>").attr("title", "Propose no party or roster characters — scenario tracking only")
+                .append(skipInput, $("<span>").text("Skip characters")),
+            $("<label>").attr("title", "Push the scenario toward real stakes, tangible pressure and grounded, earned progression")
+                .append(groundsInput, $("<span>").text("Improved Grounds")),
+        );
+        body.append(optsRow);
 
         const actions = $("<div>").addClass("gm_wizard_actions");
         const cancel = $("<div>").addClass("menu_button gm_small_btn").append(
@@ -191,7 +216,7 @@ export const setupWizard = {
         generate.on("click", async () => {
             generate.addClass("disabled gm_busy").find("span").text(" Generating...");
             this._scenario = String(ta.val() || "").trim();
-            const proposal = await generateProposal(this._scenario);
+            const proposal = await generateProposal(this._scenario, { skipCharacters: !!this._skipCharacters, improvedGrounds: !!this._improvedGrounds });
             if (!proposal) {
                 gmNotify("Setup generation failed — check the connection profile.", "error");
                 generate.removeClass("disabled gm_busy").find("span").text(" Generate Setup");
@@ -234,7 +259,7 @@ export const setupWizard = {
         const partyWrap = $("<div>").addClass("gm_list");
         partyWrap.append($("<div>").addClass("gm_section_header").append(
             $("<b>").text(`Party (${p.party.length})`),
-            $("<span>").addClass("gm_section_hint").text("Fully tracked characters."),
+            $("<span>").addClass("gm_section_hint").text(this._skipCharacters ? "Characters skipped — proposal is scenario-only." : "Fully tracked characters."),
         ));
         const partyList = $("<div>").addClass("gm_entry_list");
         p.party.forEach((char, i) => {
@@ -295,9 +320,11 @@ export const setupWizard = {
                 ally.note = note.val();
                 this._sessionQueue();
             });
-            const promote = iconBtn("fa-solid fa-user-plus").attr("title", "Promote to Party");
+            const promote = iconBtn("fa-solid fa-user-plus").attr("title", "Promote to Party (empty sheet — flagged needs build)");
             promote.on("click", () => {
-                p.party.push({ name: ally.name, resources: [], attributes: [], inventory: [], skills: [], passives: [] });
+                // Empty sheet + needs-build flag: the sheet view prompts an
+                // auto build (fed by the roster note) until one is applied.
+                p.party.push({ name: ally.name, note: ally.note || "", needs_build: true, resources: [], attributes: [], inventory: [], skills: [], passives: [] });
                 p.roster.splice(i, 1);
                 this._renderReview();
             });
@@ -425,7 +452,7 @@ export const setupWizard = {
             $("<span>").text(this._refinements ? ` Refine Again (×${this._refinements})` : " Refine"));
         refineBtn.on("click", async () => {
             refineBtn.addClass("disabled gm_busy").find("span").text(" Refining...");
-            const refined = await refineProposal(this._proposal, String(feedback.val() || "").trim(), this._scenario);
+            const refined = await refineProposal(this._proposal, String(feedback.val() || "").trim(), this._scenario, { skipCharacters: !!this._skipCharacters, improvedGrounds: !!this._improvedGrounds });
             if (!refined) {
                 gmNotify("Refinement failed — keeping the current proposal.", "error");
                 refineBtn.removeClass("disabled gm_busy").find("span")
@@ -478,6 +505,8 @@ export const setupWizard = {
             this._refinements = 0;
             this._history = [];
             this._expanded = new Set();
+            this._skipCharacters = false;
+            this._improvedGrounds = false;
             this._renderInput();
         });
         const cancel = $("<div>").addClass("menu_button gm_small_btn").append(

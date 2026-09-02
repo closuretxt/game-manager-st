@@ -11,6 +11,7 @@ import { extensionName, CHARACTER_STATES } from "../core/constants.js";
 import { gmNotify, logDebug } from "../core/debug.js";
 import { stateManager } from "../core/stateManager.js";
 import { progression } from "../core/progression.js";
+import { generateCharacterProposal } from "../core/characterGenerator.js";
 import { skillTree } from "../core/skillTree.js";
 import { skillTreeView } from "./skillTree.js";
 import { manualRun } from "../inject/postTurn.js";
@@ -499,6 +500,12 @@ class MainPanel {
                     .attr("title", c.state.reason || stateMode.label)
                     .append($("<i>").addClass(stateMode.icon)));
             }
+            // Needs-build chip — empty sheet from the Setup Wizard.
+            if (c.needs_build) {
+                chips.append($("<span>").addClass("gm_party_chip gm_build_chip")
+                    .attr("title", "Needs build — empty sheet from the Setup Wizard. Open the sheet to auto build.")
+                    .append($("<i>").addClass("fa-solid fa-wand-magic-sparkles")));
+            }
             for (const r of c.resources.slice(0, 4)) {
                 chips.append($("<span>").addClass("gm_party_chip").text(`${r.name} ${r.value}/${r.max}`));
             }
@@ -931,6 +938,38 @@ class MainPanel {
                 banner.append(revive);
             }
             content.append(banner);
+        }
+
+        // Needs-build banner — Setup Wizard allies promote with an empty
+        // sheet; the prompt stays every open until a generated sheet is
+        // applied (which clears the flag via applyCharacterSheet).
+        if (char.needs_build) {
+            const buildBanner = $("<div>").addClass("gm_build_banner");
+            buildBanner.append($("<i>").addClass("fa-solid fa-wand-magic-sparkles"));
+            const label = $("<span>").append($("<b>").text("Needs build"));
+            if (char.buildNote) label.append($("<span>").text(` — ${char.buildNote}`));
+            buildBanner.append(label);
+            const buildBtn = $("<div>").addClass("menu_button gm_small_btn gm_accent_btn").append(
+                $("<i>").addClass("fa-solid fa-hammer"), $("<span>").text(" Auto Build"));
+            buildBtn.on("click", async () => {
+                buildBtn.addClass("disabled gm_busy").find("span").text(" Building...");
+                const proposal = await generateCharacterProposal({ name: char.name, details: char.buildNote || "" });
+                if (!proposal) {
+                    gmNotify("Character generation failed — check the connection profile.", "error");
+                    buildBtn.removeClass("disabled gm_busy").find("span").text(" Auto Build");
+                    return;
+                }
+                // Override mode: Apply replaces this character's sheet.
+                characterCreator.onApplied = () => this.render();
+                characterCreator.openWithProposal({
+                    char: proposal,
+                    mode: "party",
+                    details: char.buildNote || "",
+                    targetCharacterId: char.id,
+                });
+            });
+            buildBanner.append(buildBtn);
+            content.append(buildBanner);
         }
 
         const backRow = $("<div>").addClass("gm_sheet_top");

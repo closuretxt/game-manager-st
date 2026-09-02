@@ -36,7 +36,7 @@ const RESPONSE_SHAPE = [
     "  </party>",
     '  <ally name="..." note="<one line: who they are, why they matter>"/>',
     '  <shared name="Dinheiro" qty="150" description="..." always_inject="false"/>',
-    '  <custom name="Seeds" value="Pouch" description="..."/>',
+    '  <custom name="Seeds" value="Pouch" description="..."/>  <!-- gimmick, objective, clock or note -->',
     '  <progression enabled="true" exp_base="100" exp_growth="1.25" skill_points="1" bonus_every="5" attr_points="0" attr_cost_every="10" attr_starting_budget="20">EXP guidelines: how much EXP trivial actions, minor victories and major challenges give</progression>',
     '  <warning name="Food" text="<under 15 words, imminent need>"/>',
     "</setup>",
@@ -56,7 +56,7 @@ const SYSTEM_PROMPT_HEADER = [
     "- Resources are turn-to-turn meters updated during play (Health, Stamina, Ammo, Sanity, Stress) with sensible custom ranges (Health 0-100, Ammo 0-36 = one revolver loadout). Attributes are milestone stats (Strength, Fortitude, Dexterity, Charisma) without hard caps, changed rarely. Only include entries that matter for THIS scenario — no filler.",
     "- CALIBRATE NUMBERS to the world: starting quantities and ranges must imply real scale and purchasing power (e.g. Dollars 150 when a meal costs 15; rations counted in days; Health 30 = badly wounded). Anchor non-obvious scales in the description (e.g. 'a meal costs about 15').",
     "- sharedResources are party-wide and managed by the USER (money, food, expendables). Mark one always_inject: true ONLY if its value is relevant almost every turn (e.g. money).",
-    "- custom features are AI-managed PARTY-WIDE dynamic gimmicks whose value/state evolves during play and which the AI rewrites with tool calls (planted seeds: sprouting, base alert level: rising, ongoing ritual: stage 2/3). They are NOT relationship or intimacy meters, NOT per-character stats or conditions (put those on that character's sheet — temporary conditions like Dazed are <status> entries with explicit modifiers), NOT user-managed supplies (those are sharedResources).",
+    "- custom features are AI-managed PARTY-WIDE entries whose value/state evolves during play and which the AI rewrites with tool calls (planted seeds: sprouting, base alert level: rising, ongoing ritual: stage 2/3). They are NOT relationship or intimacy meters, NOT per-character stats or conditions (put those on that character's sheet — temporary conditions like Dazed are <status> entries with explicit modifiers), NOT user-managed supplies (those are sharedResources). Custom entries are NOT limited to gimmicks: use them for ANYTHING the scenario benefits from tracking — objectives, clocks and deadlines, faction standings, or NOTES (hidden lore, secrets, plans, leads the GM should remember). Notes are visible to the user in the party-wide Custom tab — write them as the scenario's memory, not player-facing spoilers in the name.",
     "- warnings are minimalist imminent-need remarks about the PARTY AS A WHOLE (food, water, approaching danger), under 15 words. They never describe one character's personal state.",
     "- OWNERSHIP TEST — apply to EVERY shared/custom/warning entry: if it is about ONE named character (their hunger, health, mood, condition, stats), it belongs on THAT character's sheet as a resource/attribute/status — NEVER in a party-wide section. Party-wide entries must be true for the whole group and must not name a single character. 'Hunger — Cerberos is starving' is WRONG: it is a Hunger resource on Cerberos's sheet (or, only if the ENTIRE party shares the need, a nameless party-wide warning).",
     "- If the scenario implies survival pressure (food, water, enemies, territory), make it tangible through sharedResources + warnings for the group, and per-character resources/statuses for individual states. If it is purely casual, keep the setup minimal.",
@@ -78,7 +78,7 @@ const REFINE_PROMPT_HEADER = [
     "- CALIBRATE NUMBERS to the world: quantities and ranges must imply real scale and purchasing power (e.g. Dollars 150 when a meal costs 15). Anchor non-obvious scales in the description.",
     "- Preserve everything the feedback does not ask to change — especially names and entries the user may have edited by hand.",
     "- PARTY vs ROSTER: only active companions get full sheets; everyone else stays a roster one-liner. Respect the party cap.",
-    "- sharedResources stay party-wide and user-managed (money, food, expendables); custom features stay AI-managed PARTY-WIDE gimmicks (seeds, alert levels, ongoing effects) — never relationship/intimacy meters or per-character stats; warnings stay minimalist imminent-need remarks about the whole party, under 15 words.",
+    "- sharedResources stay party-wide and user-managed (money, food, expendables); custom features stay AI-managed PARTY-WIDE entries — gimmicks, objectives, clocks, or hidden notes (secrets, plans, leads; visible in the Custom tab, never relationship/intimacy meters or per-character stats); warnings stay minimalist imminent-need remarks about the whole party, under 15 words.",
     "- Preserve the <progression> block exactly as given unless the feedback asks to change it.",
     "- OWNERSHIP TEST — apply to EVERY shared/custom/warning entry: if it is about ONE named character (their hunger, health, mood, condition, stats), MOVE it onto that character's sheet as a resource/attribute/status. Party-wide entries must be true for the whole group and must not name a single character.",
     "- Omit tags that do not apply (an empty <setup> is valid). Never invent entries outside the given shapes.",
@@ -99,7 +99,7 @@ export function recentChatLines(count) {
         .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 800)}`);
 }
 
-async function collectContext(scenarioText) {
+async function collectContext(scenarioText, { skipCharacters = false, improvedGrounds = false } = {}) {
     const s = extension_settings[extensionName];
     const partyCap = Math.max(1, Math.trunc(Number(s.max_party_size) || 6));
     const d = stateManager.getData();
@@ -114,8 +114,19 @@ async function collectContext(scenarioText) {
     const recent = recentChatLines(s.wizard_chat_messages);
 
     const blocks = [
-        `PARTY CAP: ${partyCap} full character sheets maximum.`,
-        `ENTRY FIELD SHAPES: resource {${fieldKeysFor("resource")}}, attribute {${fieldKeysFor("attribute")}}, item {${fieldKeysFor("item")}}, skill {${fieldKeysFor("skill")}}, passive {${fieldKeysFor("passive")}} (ptype: special|stat), status {${fieldKeysFor("status")}}.`,
+        // Improved Grounds: stakes/objectives/progression emphasis.
+        ...(improvedGrounds ? ["IMPROVED GROUNDS: push the scenario toward concrete stakes, tangible pressure and grounded, earned progression."] : []),
+        // Skip characters: no character guidance — but the scenario sections
+        // must get the FULL depth, not a minimal setup.
+        ...(skipCharacters
+            ? [
+                "CHARACTERS: SKIPPED — do NOT propose <party> or <ally> entries, even for named characters.",
+                "THIS IS NOT A MINIMAL SETUP: all the depth that would have gone into character sheets now goes into the scenario itself — richer sharedResources with calibrated quantities and ranges, more custom features, warnings, and progression when growth is implied.",
+            ]
+            : [
+                `PARTY CAP: ${partyCap} full character sheets maximum.`,
+                `ENTRY FIELD SHAPES: resource {${fieldKeysFor("resource")}}, attribute {${fieldKeysFor("attribute")}}, item {${fieldKeysFor("item")}}, skill {${fieldKeysFor("skill")}}, passive {${fieldKeysFor("passive")}} (ptype: special|stat), status {${fieldKeysFor("status")}}.`,
+            ]),
         "",
         "EXISTING SETUP (names only — avoid duplicates unless asked):",
         "<existing>",
@@ -185,6 +196,12 @@ export function sanitizeProposal(parsed) {
             // Optional progression level (character generator auto-mode).
             const lvl = Math.trunc(Number(raw.level));
             const char = { name: String(raw.name).slice(0, 60), level: Number.isFinite(lvl) && lvl >= 1 ? lvl : null };
+            // Needs-build flag rides through sanitization so promoted roster
+            // allies keep prompting for an auto build after a refine pass.
+            if (raw.needs_build) {
+                char.needs_build = true;
+                char.buildNote = String(raw.buildNote || raw.note || "").slice(0, 400);
+            }
             for (const container of CHARACTER_CONTAINERS) {
                 const type = Object.keys(GM_SCHEMA).find(t => GM_SCHEMA[t].container === container);
                 char[container] = sanitizeList(type, raw[container]);
@@ -319,16 +336,39 @@ async function runSetupLLM(systemPrompt, userContent) {
     return sanitizeProposal(parsed);
 }
 
+// Skip-characters system rule: appended to the (refine) header so characters
+// are never proposed even when the response shape still shows the tags.
+const SKIP_CHARACTERS_RULE = "\n- SKIP CHARACTERS MODE is active: propose NO <party> and NO <ally> entries, even if the scenario names characters. This is NOT a minimal setup — redirect ALL of the depth you would have spent on character sheets into the scenario itself: richer sharedResources (calibrated quantities and ranges), more custom features, warnings, and progression when growth is implied. Calibrate everything exactly as the other rules demand.";
+
+// Improved Grounds system rule: pushes the proposal toward stakes, objectives
+// and grounded progression instead of a loose, low-pressure scene.
+const IMPROVED_GROUNDS_RULE = [
+    "",
+    "- IMPROVED GROUNDS is active: ground the scenario HARD and give it teeth.",
+    "  - STAKES: make concrete what the party stands to lose (people, home, time, legitimacy). Anchor the pressure in sharedResources that actually deplete and warnings that name the approaching cost.",
+    "  - NOTES (optional, never obligatory): when the scenario naturally suggests them, custom features may carry notes that hint at goals, leads or opportunities — let players discover direction instead of handing it over.",
+    "  - GROUNDED PROGRESSION: when growth is implied, include a calibrated <progression> block whose exp guidelines match the world's pace — progress must be earned through play, not granted.",
+    "  - CONSEQUENCES: the setup must imply that ignoring the pressure changes the scenario (deadlines pass, rivals act). Reflect that in custom features with states that can worsen.",
+].join("\n");
+
 // Runs the setup LLM call. Returns a sanitized proposal (for the review
 // modal) or null on failure.
-export async function generateProposal(scenarioText) {
+export async function generateProposal(scenarioText, { skipCharacters = false, improvedGrounds = false } = {}) {
     const s = extension_settings[extensionName];
     if (!s.enabled) return null;
     try {
-        const proposal = await runSetupLLM(SYSTEM_PROMPT_HEADER, await collectContext(scenarioText));
+        const systemPrompt = SYSTEM_PROMPT_HEADER
+            + (skipCharacters ? SKIP_CHARACTERS_RULE : "")
+            + (improvedGrounds ? IMPROVED_GROUNDS_RULE : "");
+        const proposal = await runSetupLLM(systemPrompt, await collectContext(scenarioText, { skipCharacters, improvedGrounds }));
         if (!proposal) {
             logDebug("setupWizard: malformed proposal");
             return null;
+        }
+        // Hard guarantee: skip-characters proposals never carry characters.
+        if (skipCharacters) {
+            proposal.party = [];
+            proposal.roster = [];
         }
         logDebug(`setupWizard: proposal — party=${proposal.party.length} roster=${proposal.roster.length} shared=${proposal.sharedResources.length} custom=${proposal.custom.length} warnings=${proposal.warnings.length}`);
         return proposal;
@@ -405,12 +445,21 @@ function proposalToPromptXml(p) {
 
 // Context for a refinement pass: scenario + chat + the current proposal and
 // the user's feedback on what to improve.
-async function collectRefineContext(proposal, feedback, scenarioText) {
+async function collectRefineContext(proposal, feedback, scenarioText, { skipCharacters = false, improvedGrounds = false } = {}) {
     const s = extension_settings[extensionName];
     const partyCap = Math.max(1, Math.trunc(Number(s.max_party_size) || 6));
     const blocks = [
-        `PARTY CAP: ${partyCap} full character sheets maximum.`,
-        `ENTRY FIELD SHAPES: resource {${fieldKeysFor("resource")}}, attribute {${fieldKeysFor("attribute")}}, item {${fieldKeysFor("item")}}, skill {${fieldKeysFor("skill")}}, passive {${fieldKeysFor("passive")}} (ptype: special|stat), status {${fieldKeysFor("status")}}.`,
+        // Improved Grounds: stakes/objectives/progression emphasis for the pass.
+        ...(improvedGrounds ? ["IMPROVED GROUNDS: push the scenario toward concrete stakes, tangible pressure and grounded, earned progression."] : []),
+        ...(skipCharacters
+            ? [
+                "CHARACTERS: SKIPPED — keep the proposal free of <party> and <ally> entries.",
+                "THIS IS NOT A MINIMAL SETUP: deepen sharedResources, custom features, warnings and progression instead.",
+            ]
+            : [
+                `PARTY CAP: ${partyCap} full character sheets maximum.`,
+                `ENTRY FIELD SHAPES: resource {${fieldKeysFor("resource")}}, attribute {${fieldKeysFor("attribute")}}, item {${fieldKeysFor("item")}}, skill {${fieldKeysFor("skill")}}, passive {${fieldKeysFor("passive")}} (ptype: special|stat), status {${fieldKeysFor("status")}}.`,
+            ]),
         "",
         "RECENT CHAT (context):",
         ...recentChatLines(s.wizard_chat_messages),
@@ -437,14 +486,22 @@ async function collectRefineContext(proposal, feedback, scenarioText) {
 // Recursive refinement: feeds a (possibly user-edited) proposal back through
 // the setup LLM to deepen/improve it. Returns a NEW sanitized proposal or null
 // (the caller keeps the current one).
-export async function refineProposal(proposal, feedback, scenarioText) {
+export async function refineProposal(proposal, feedback, scenarioText, { skipCharacters = false, improvedGrounds = false } = {}) {
     const s = extension_settings[extensionName];
     if (!s.enabled || !proposal) return null;
     try {
-        const refined = await runSetupLLM(REFINE_PROMPT_HEADER, await collectRefineContext(proposal, feedback, scenarioText));
+        const systemPrompt = REFINE_PROMPT_HEADER
+            + (skipCharacters ? SKIP_CHARACTERS_RULE : "")
+            + (improvedGrounds ? IMPROVED_GROUNDS_RULE : "");
+        const refined = await runSetupLLM(systemPrompt, await collectRefineContext(proposal, feedback, scenarioText, { skipCharacters, improvedGrounds }));
         if (!refined) {
             logDebug("setupWizard: malformed refined proposal");
             return null;
+        }
+        // Hard guarantee: skip-characters proposals never carry characters.
+        if (skipCharacters) {
+            refined.party = [];
+            refined.roster = [];
         }
         logDebug(`setupWizard: refined proposal — party=${refined.party.length} roster=${refined.roster.length} shared=${refined.sharedResources.length} custom=${refined.custom.length} warnings=${refined.warnings.length}`);
         return refined;
@@ -474,11 +531,19 @@ export function applyProposal(proposal, mode = "replace") {
         for (const container of CHARACTER_CONTAINERS) {
             templateEntries[container] = raw[container] || [];
         }
-        stateManager.addCharacter(String(raw.name || "Unnamed"), templateEntries);
+        const char = stateManager.addCharacter(String(raw.name || "Unnamed"), templateEntries);
+        // Allies promoted in the review modal: carry the needs-build flag
+        // and the roster note (the auto build brief) onto the character.
+        if (raw.needs_build) {
+            char.needs_build = true;
+            char.buildNote = String(raw.buildNote || raw.note || "");
+        }
     }
 
     for (const entry of proposal.roster || []) {
-        stateManager.addRosterEntry({ name: entry.name, note: entry.note || "" });
+        // Wizard roster allies are one-liners: flag them so a later promotion
+        // yields a needs-build character instead of a silent empty sheet.
+        stateManager.addRosterEntry({ name: entry.name, note: entry.note || "", needs_build: true });
     }
     for (const entry of proposal.sharedResources || []) {
         stateManager.addSharedEntry({
