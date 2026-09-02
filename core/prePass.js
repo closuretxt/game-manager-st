@@ -383,6 +383,13 @@ export async function runPrePass(playerAction) {
     }
 
     try {
+        // The current-action copy must never outlive its own action: clear it
+        // BEFORE the request so a failed/malformed run makes the dice GM fall
+        // back to the durable copy (or nothing) instead of reading the
+        // PREVIOUS action's raw as if it were this one.
+        _prevRaw = _lastRaw;
+        _lastRaw = "";
+        _lastRawTs = 0;
         const st = getContext();
         const profileId = resolvePremasterProfile(st, s.premaster_profile, s.connection_profile);
         console.info(`[GM DIAG] runPrePass: calling pre-master profile='${profileId || "<same-as-current>"}'`);
@@ -394,11 +401,17 @@ export async function runPrePass(playerAction) {
         console.info(`[GM DIAG] runPrePass raw reply (${String(reply || "").length} chars):`, String(reply || "").slice(0, 400));
         // Persist the router's full output on the triggering user message so
         // the dice GM (and anything else) can read it — survives reloads,
-        // chat switches and swipes.
+        // chat switches and swipes. The in-memory copy below is what the
+        // specialist calls of THIS turn actually read: the durable store is
+        // best-effort (it needs the user message to already be in chat with
+        // its exact final text — not guaranteed in custom send flows), so it
+        // must never be the primary source for the same-turn dice GM call.
         const raw = String(reply || "").slice(0, 4000);
-        _prevRaw = _lastRaw;
         _lastRaw = raw;
-        storePrePassRaw(playerAction, raw);
+        _lastRawTs = Date.now();
+        if (!storePrePassRaw(playerAction, raw)) {
+            console.warn("[Game Manager] pre-pass: raw output could not be persisted on the user message — this turn's dice GM falls back to the in-memory copy (swipes after a reload will re-judge instead of reusing it)");
+        }
         const plan = sanitizePlan(parseReply(reply || ""));
         if (!plan) {
             console.info("[GM DIAG] runPrePass: malformed reply — caller will fall back to keyword triggers");
@@ -413,21 +426,33 @@ export async function runPrePass(playerAction) {
     }
 }
 
-// Raw pre-pass router outputs (in-memory fallback). The durable copy lives on
-// the triggering user message (gm_prepass), written by storePrePassRaw.
+// Raw pre-pass router outputs. _lastRaw is the CURRENT action's output, set by
+// runPrePass moments before the specialist calls (dice GM) read it — it is the
+// primary source for the same turn. The durable copy lives on the triggering
+// user message (gm_prepass, written by storePrePassRaw) and only serves as a
+// fallback: writing it requires the user message to already sit in chat with
+// its exact final text, which custom send flows do not guarantee.
 let _lastRaw = "";
+let _lastRawTs = 0;
 let _prevRaw = "";
+const RAW_CURRENT_MAX_AGE_MS = 120_000; // a stale memory copy is not "this action's"
 
 // Persists the router's raw output on the triggering user message (see
-// util/chatStore.js — the message scan and guards live there).
+// util/chatStore.js — the message scan and guards live there). Returns true
+// when the durable copy landed.
 function storePrePassRaw(playerAction, raw) {
-    storeActionData(playerAction, "gm_prepass", raw);
+    return storeActionData(playerAction, "gm_prepass", raw);
 }
 
-// The pre-pass router's full raw output for the CURRENT action, read back
-// from the persisted copy on the user's message; falls back to the previous
-// in-memory run when no message carries one.
+// The pre-pass router's full raw output for the CURRENT action. Priority:
+// 1. the in-memory copy of the run that just happened (same pre-turn pass —
+//    always correct for the dice GM call that follows runPrePass);
+// 2. the durable copy on the most recent user message carrying one;
+// 3. the previous in-memory run (better than empty for the keyword fallback).
 export function getPreviousPrePassRaw() {
+    if (_lastRaw && (Date.now() - _lastRawTs) <= RAW_CURRENT_MAX_AGE_MS) {
+        return _lastRaw;
+    }
     try {
         const chat = getContext()?.chat;
         if (Array.isArray(chat)) {

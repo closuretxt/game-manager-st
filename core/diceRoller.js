@@ -148,7 +148,11 @@ export async function rollDice(playerAction, mesId, { title = null } = {}) {
     const s = extension_settings[extensionName];
     if (!s.enabled || !s.feature_dice) return false;
 
-    const bubble = diceBubble.show("Judging action...");
+    // When the pre-pass already decided a roll is needed, surface its title
+    // while the dice LLM computes the tiers — the player sees what is being
+    // judged instead of a generic "Judging action...".
+    const forced = !!title;
+    const bubble = diceBubble.show(title ? `Rolling: ${title}` : "Judging action...");
     try {
         const st = getContext();
         const profileId = resolvePremasterProfile(st, s.premaster_profile, s.connection_profile);
@@ -179,7 +183,6 @@ export async function rollDice(playerAction, mesId, { title = null } = {}) {
         // models that self-close <roll/> with no tiers silently drop the roll.
         systemContent += "\n\nOUTPUT REMINDER: reply with exactly ONE <roll> element and NOTHING else. If a roll is needed, it contains four <tier> children (Critical Failure, Failure, Success, Critical Success) and is NOT self-closing — a reply without all four tiers is a failure. If no roll is needed: <roll needs=\"false\"/>.";
 
-        const forced = !!title; // pre-pass already decided a roll is needed
         const seenTiers = new Set();
         let streamed = "";
         const messages = [
