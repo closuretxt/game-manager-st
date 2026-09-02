@@ -34,15 +34,21 @@
             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
         </div>
         <div class="inline-drawer-content">
-            <label class="checkbox_label" for="gm_setting_enabled" title="Master switch for every Game Manager feature">
-                <input id="gm_setting_enabled" type="checkbox" />
-                <span>Enabled</span>
-            </label>
-
             <div class="gm_settings_warning">
                 <i class="fa-solid fa-triangle-exclamation"></i>
                 <span>Do not forget to put the macros <code>{{gamemaster-low-priority}}</code> and <code>{{gamemaster-high-priority}}</code> in your prompt in order for them to work.</span>
             </div>
+            <div class="gm_settings_warning gm_settings_warning_danger" id="gm_no_profile_warning" style="display:none;">
+                <i class="fa-solid fa-plug-circle-exclamation"></i>
+                <span>No agentic profile set up — go down to <b>Advanced</b> and set one. <i>(same as current is being used)</i></span>
+            </div>
+
+            <hr class="sysHR" />
+
+            <label class="checkbox_label" for="gm_setting_enabled" title="Master switch for every Game Manager feature">
+                <input id="gm_setting_enabled" type="checkbox" />
+                <span>Enabled</span>
+            </label>
 
             <div class="gm_settings_sep">LLM</div>
             <div class="gm_settings_grid">
@@ -109,7 +115,7 @@
                     <input id="gm_setting_feat_progression" type="checkbox" />
                     <span>Progression</span>
                 </label>
-                <label class="checkbox_label" for="gm_setting_feat_skill_tree" title="Per-character skill trees: LLM-generated 3-tier segments unlocked with skill points. Requires Progression.">
+                <label class="checkbox_label" for="gm_setting_feat_skill_tree" title="Per-character skill trees: LLM-generated 6-tier segments unlocked with skill points. Requires Progression.">
                     <input id="gm_setting_feat_skill_tree" type="checkbox" />
                     <span>Skill Trees</span>
                 </label>
@@ -215,6 +221,7 @@
             </div>
             <div class="gm_preset_row">
                 <div id="gm_open_panel" class="menu_button"><i class="fa-solid fa-window-restore"></i>&nbsp;Open Panel</div>
+                <div id="gm_custom_instructions" class="menu_button" title="Standing instructions injected into the pre-pass and post-pass LLM contexts"><i class="fa-solid fa-scroll"></i>&nbsp;Custom instructions</div>
             </div>
 
             <div class="inline-drawer">
@@ -223,22 +230,8 @@
                     <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
                 </div>
                 <div class="inline-drawer-content">
-                    <div class="gm_settings_sep">Agentic profile</div>
-                    <div class="gm_preset_row">
-                        <select id="gm_profile_select"></select>
-                        <div id="gm_profile_swap" class="menu_button menu_button_icon" title="Swap active connection now (legacy mode only)"><i class="fa-solid fa-right-left"></i></div>
-                    </div>
-                    <div class="gm_settings_sep">Pre-master profile</div>
-                    <div class="gm_preset_row">
-                        <select id="gm_premaster_profile_select"></select>
-                    </div>
-                    <div class="gm_settings_sep">Scenario Build Wizard profile</div>
-                    <div class="gm_preset_row">
-                        <select id="gm_wizard_profile_select"></select>
-                    </div>
-                    <div class="gm_preset_row">
-                        <div id="gm_custom_instructions" class="menu_button" title="Standing instructions injected into the pre-pass and post-pass LLM contexts"><i class="fa-solid fa-scroll"></i>&nbsp;Custom instructions</div>
-                    </div>
+                    <!-- Profile drawers are generated from the PROFILE_DRAWERS registry in ui/settingsUI.js -->
+                    <div id="gm_profile_drawers"></div>
                     <label class="checkbox_label" for="gm_setting_legacy" title="Swap the active connection profile for extension AI calls instead of per-request profiles">
                         <input id="gm_setting_legacy" type="checkbox" />
                         <span>Legacy profile swapping</span>

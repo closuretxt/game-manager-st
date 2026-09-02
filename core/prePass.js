@@ -23,6 +23,7 @@
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { substituteParams } from "../../../../../script.js";
 import { extensionName } from "./constants.js";
+import { storeActionData } from "../util/chatStore.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel } from "./stateManager.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
@@ -391,10 +392,13 @@ export async function runPrePass(playerAction) {
         ];
         const reply = await sendRequestViaProfile(profileId, messages);
         console.info(`[GM DIAG] runPrePass raw reply (${String(reply || "").length} chars):`, String(reply || "").slice(0, 400));
-        // Track raw outputs: the PREVIOUS turn's full reply feeds the dice GM
-        // as its "previous GM notes" context.
+        // Persist the router's full output on the triggering user message so
+        // the dice GM (and anything else) can read it — survives reloads,
+        // chat switches and swipes.
+        const raw = String(reply || "").slice(0, 4000);
         _prevRaw = _lastRaw;
-        _lastRaw = String(reply || "").slice(0, 4000);
+        _lastRaw = raw;
+        storePrePassRaw(playerAction, raw);
         const plan = sanitizePlan(parseReply(reply || ""));
         if (!plan) {
             console.info("[GM DIAG] runPrePass: malformed reply — caller will fall back to keyword triggers");
@@ -409,11 +413,29 @@ export async function runPrePass(playerAction) {
     }
 }
 
-// Raw pre-pass router outputs. The PREVIOUS turn's full reply is exposed to
-// the dice GM so it judges the action knowing what the pre GM last said.
+// Raw pre-pass router outputs (in-memory fallback). The durable copy lives on
+// the triggering user message (gm_prepass), written by storePrePassRaw.
 let _lastRaw = "";
 let _prevRaw = "";
 
+// Persists the router's raw output on the triggering user message (see
+// util/chatStore.js — the message scan and guards live there).
+function storePrePassRaw(playerAction, raw) {
+    storeActionData(playerAction, "gm_prepass", raw);
+}
+
+// The pre-pass router's full raw output for the CURRENT action, read back
+// from the persisted copy on the user's message; falls back to the previous
+// in-memory run when no message carries one.
 export function getPreviousPrePassRaw() {
+    try {
+        const chat = getContext()?.chat;
+        if (Array.isArray(chat)) {
+            for (let i = chat.length - 1; i >= 0; i--) {
+                const m = chat[i];
+                if (m?.is_user && m.gm_prepass) return String(m.gm_prepass);
+            }
+        }
+    } catch (e) { /* fall through to memory */ }
     return _prevRaw;
 }

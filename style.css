@@ -666,6 +666,17 @@
     font-size: 11px;
 }
 
+/* Red (danger) variant for setup warnings */
+.gm_settings_warning_danger {
+    border-color: rgba(244, 67, 54, 0.45);
+    background: rgba(244, 67, 54, 0.08);
+    color: #ef9a9a;
+}
+
+.gm_settings_warning_danger i {
+    color: #f44336;
+}
+
 /* ---------- Inline editor ---------- */
 .gm_entry_editor {
     display: grid;
@@ -753,6 +764,83 @@ textarea.gm_input {
     opacity: var(--gm-muted);
     font-size: 11px;
     margin-top: 6px;
+}
+
+/* ---------- Minimalistic profile drawer ---------- */
+.gm_drawer {
+    margin-top: 4px;
+    border: 1px solid var(--gm-line);
+    border-radius: var(--gm-radius);
+    background: rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+}
+
+.gm_drawer_header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    user-select: none;
+    transition: background 0.15s;
+}
+
+.gm_drawer_header:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.gm_drawer_header > i:first-child {
+    font-size: 11px;
+    opacity: var(--gm-muted);
+}
+
+.gm_drawer_title {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.gm_drawer_value {
+    margin-left: auto;
+    font-size: 11px;
+    opacity: 0.55;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 50%;
+}
+
+.gm_drawer_chevron {
+    flex: 0 0 auto;
+    font-size: 10px;
+    opacity: var(--gm-muted);
+    transition: transform 0.2s ease;
+}
+
+.gm_drawer.open .gm_drawer_chevron {
+    transform: rotate(180deg);
+}
+
+.gm_drawer_content {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.2s ease;
+}
+
+.gm_drawer.open .gm_drawer_content {
+    grid-template-rows: 1fr;
+}
+
+.gm_drawer_inner {
+    min-height: 0;
+    overflow: hidden;
+    padding: 0 10px;
+    transition: padding 0.2s ease;
+}
+
+.gm_drawer.open .gm_drawer_inner {
+    padding: 2px 10px 8px;
 }
 
 /* ---------- warnings strip ---------- */

@@ -14,8 +14,9 @@ import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel } from "./stateManager.js";
 import { captureSnapshot } from "./snapshots.js";
-import { queueHigh, getPreviousInjections } from "./injection.js";
+import { queueHigh } from "./injection.js";
 import { getPreviousPrePassRaw } from "./prePass.js";
+import { storeActionData } from "../util/chatStore.js";
 import { parseAttrs, escAttr } from "./toolParser.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
@@ -37,9 +38,10 @@ const SYSTEM_PROMPT = [
     "</roll>",
     "Always provide exactly 4 tiers in that order. Chances are percentages of a 100% total. Outcome lines are short, vivid, and ALWAYS third person, referring to the actor by name (from the party list or the scene) — never \"you\"/\"your\"/\"I\", even though the player's action is written in first person (\"The mage's Fireball explodes in her face\").",
     "If no roll is needed respond with ONLY: <roll needs=\"false\"/>",
+    "When a roll is needed you MUST always produce the full <roll> block with all four <tier> children — never a bare <roll .../> without tiers, never an empty reply.",
 ].join("\n");
 
-function collectContext(playerAction, notes = null) {
+function collectContext(playerAction, notes = null, title = null, rewrite = null) {
     const st = getContext();
     const chat = Array.isArray(st?.chat) ? st.chat : [];
     const history = chat.slice(-MAX_CONTEXT_MESSAGES, -1)
@@ -55,16 +57,10 @@ function collectContext(playerAction, notes = null) {
             const statuses = (c.statuses || []).map(x => `${escAttr(x.name)}${x.modifiers ? ` (${escAttr(x.modifiers)})` : ""}`).join(", ");
             return `  <char name="${escAttr(c.name)}"${skills ? ` skills="${skills}"` : ""}${statuses ? ` statuses="${statuses}"` : ""}/>`;
         });
-    // Previous GM notes: the pre-pass router's full LAST output plus whatever
-    // the game system actually injected last turn (high: roll/transaction
-    // results; low: one-shot notes/resources) — near the bottom so it reads
-    // as fresh context, not buried mid-prompt.
-    const prevRaw = getPreviousPrePassRaw();
-    const prevInj = getPreviousInjections();
-    const prevNotes = [
-        ...(prevRaw ? ["PRE-PASS GM (last turn):", prevRaw] : []),
-        ...(prevInj ? ["INJECTED RESULTS (last turn):", prevInj] : []),
-    ];
+    // GM notes: the pre-pass router's FULL output for this action, persisted
+    // on the user's message (roll call, title, notes, rewrite, transactions...)
+    // — near the bottom so it reads as fresh context, not buried mid-prompt.
+    const gmRaw = getPreviousPrePassRaw();
     return [
         "PARTY (tracked characters):",
         "<party>",
@@ -73,10 +69,7 @@ function collectContext(playerAction, notes = null) {
         "",
         "RECENT SCENE:",
         ...history,
-        ...(prevNotes.length ? ["", "PREVIOUS GM NOTES:", "<gm_notes>", ...prevNotes, "</gm_notes>"] : []),
-        // The pre-pass router's remarks about THIS action — the context that
-        // made it call for the roll, weighed when building the tiers.
-        ...(notes?.length ? ["", "GM NOTES FOR THIS ACTION (from the pre-pass router):", "<gm_notes>", ...notes.map(n => `  <note>${escAttr(n)}</note>`), "</gm_notes>"] : []),
+        ...(gmRaw ? ["", "GM NOTES (the pre-pass router's full output for this action):", "<gm_notes>", gmRaw, "</gm_notes>"] : []),
         "",
         `PLAYER ACTION TO JUDGE: ${playerAction}`,
     ].join("\n");
@@ -141,12 +134,17 @@ function queueRollResult(title, tier) {
     queueHigh(`  <roll title="${title}" tier="${tier.name}">${tier.outcome}</roll>`);
 }
 
+// Re-queues an ALREADY RESOLVED roll result (swipe recovery) — the outcome
+// was decided once for this action and is replayed verbatim, never re-rolled.
+export function requeueRollResult(title, tier) {
+    queueRollResult(title, tier);
+}
+
 // Full dice flow for a player action on message `mesId`. `opts.title` comes
 // from the pre-pass plan: when set, the router already decided a roll IS
 // needed, so a needsRoll=false reply from the dice LLM is overridden (the
-// dice LLM still provides the tiers). `opts.notes` carries the router's
-// contextual remarks about the action. Returns true if a roll was made.
-export async function rollDice(playerAction, mesId, { title = null, notes = null } = {}) {
+// dice LLM still provides the tiers). Returns true if a roll was made.
+export async function rollDice(playerAction, mesId, { title = null } = {}) {
     const s = extension_settings[extensionName];
     if (!s.enabled || !s.feature_dice) return false;
 
@@ -177,12 +175,16 @@ export async function rollDice(playerAction, mesId, { title = null, notes = null
             systemContent += `\n\n<custom>\n${rendered}\n</custom>`;
         }
 
+        // Output contract — the LAST thing in the system message (recency):
+        // models that self-close <roll/> with no tiers silently drop the roll.
+        systemContent += "\n\nOUTPUT REMINDER: reply with exactly ONE <roll> element and NOTHING else. If a roll is needed, it contains four <tier> children (Critical Failure, Failure, Success, Critical Success) and is NOT self-closing — a reply without all four tiers is a failure. If no roll is needed: <roll needs=\"false\"/>.";
+
         const forced = !!title; // pre-pass already decided a roll is needed
         const seenTiers = new Set();
         let streamed = "";
         const messages = [
             { role: "system", content: systemContent },
-            { role: "user", content: collectContext(playerAction, notes) },
+            { role: "user", content: collectContext(playerAction) },
         ];
 
         // Stream the pre-master reply; surface tiers one by one as they arrive.
@@ -199,8 +201,12 @@ export async function rollDice(playerAction, mesId, { title = null, notes = null
             },
         });
 
-        const parsed = parseReply(reply || streamed);
+        const raw = String(reply || streamed || "");
+        console.info(`[GM DIAG] rollDice raw reply (${raw.length} chars):`, raw.slice(0, 600));
+        const parsed = parseReply(raw);
+        console.info(`[GM DIAG] rollDice parsed: needsRoll=${parsed?.needsRoll}, tierCount=${parsed?.tiers?.length ?? 0}, title=${parsed?.title ?? "-"}`);
         if (!parsed || !Array.isArray(parsed.tiers) || (parsed.needsRoll !== true && !forced)) {
+            console.info(`[GM DIAG] rollDice SKIP: parsed=${!!parsed}, needsRoll=${parsed?.needsRoll}, tierCount=${parsed?.tiers?.length ?? 0}, forced=${forced}`);
             bubble.resolveNoRoll();
             logDebug("diceRoller: no roll needed or malformed reply");
             return false;
@@ -211,6 +217,7 @@ export async function rollDice(playerAction, mesId, { title = null, notes = null
             .filter(t => t && t.name && t.outcome)
             .map(t => ({ name: String(t.name), chance: Number(t.chance) || 0, outcome: String(t.outcome) }));
         if (tiers.length < 2) {
+            console.info(`[GM DIAG] rollDice SKIP: usable tiers=${tiers.length} (from ${parsed.tiers.length} raw)`);
             bubble.resolveNoRoll();
             return false;
         }
@@ -233,6 +240,10 @@ export async function rollDice(playerAction, mesId, { title = null, notes = null
         captureSnapshot(mesId);
         attachRollToMessage(mesId, rollTitle, winner);
         queueRollResult(rollTitle, winner);
+        // Persist the resolved roll on the triggering user message: a swipe
+        // of the reply re-attaches THIS result instead of re-rolling (same
+        // action, same state — the odds were already decided once).
+        storeActionData(playerAction, "gm_roll", { title: rollTitle, tier: winner });
         logDebug(`diceRoller: rolled "${rollTitle}" -> ${winner.name}`);
         return true;
     } catch (e) {

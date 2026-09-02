@@ -1,12 +1,41 @@
-import { extension_settings, getContext } from "../../../../extensions.js";
+import { extension_settings } from "../../../../extensions.js";
 import { saveSettingsDebounced } from "../../../../../script.js";
 import { extensionName } from "../core/constants.js";
 import { gmNotify, logDebug } from "../core/debug.js";
 import { CONTAINER_TYPES, GM_SCHEMA, defaultEntry } from "../core/schemas.js";
 import { stateManager } from "../core/stateManager.js";
-import { swapProfile } from "../util/profileSwapper.js";
 import { fadeOutRemove } from "../util/fx.js";
-import { getConnectionProfiles, getProfileNameById, resolveConnectionProfile } from "../util/connectionService.js";
+import { getConnectionProfiles } from "../util/connectionService.js";
+
+// ---------- connection profile drawers ----------
+// Declarative registry: adding a new profile dropdown to the Advanced panel is
+// one entry here — the drawer DOM, change handler and summary label are all
+// generated from it (see buildProfileDrawer / populateProfiles).
+//   select:    DOM id of the generated <select>
+//   setting:   extension_settings key persisted on change
+//   key:       short slug used for the summary label element id
+//   emptyText: label of the "" option (the "Same as ..." fallback)
+//   warning:   when true, an empty selection triggers the red setup warning
+const PROFILE_DRAWERS = [
+    {
+        select: "gm_profile_select", setting: "connection_profile", key: "agentic",
+        label: "Agentic profile", icon: "fa-robot",
+        tooltip: "Connection profile used by the agentic pass (post-pass tracker / state updates)",
+        emptyText: "Same as Current", warning: true,
+    },
+    {
+        select: "gm_premaster_profile_select", setting: "premaster_profile", key: "premaster",
+        label: "Pre-master profile", icon: "fa-dice",
+        tooltip: "Connection profile used by the pre-master engines (dice rolls, transactions)",
+        emptyText: "Same as Agentic",
+    },
+    {
+        select: "gm_wizard_profile_select", setting: "wizard_profile", key: "wizard",
+        label: "Scenario Build Wizard profile", icon: "fa-wand-magic-sparkles",
+        tooltip: "Connection profile used by the Scenario Build Wizard",
+        emptyText: "Same as Pre-master",
+    },
+];
 
 export const settingsUI = {
     init() {
@@ -29,37 +58,18 @@ export const settingsUI = {
         this.populateProfiles();
         setTimeout(() => this.populateProfiles(), 1000);
         setTimeout(() => this.populateProfiles(), 3000);
-        $("#gm_profile_select").on("change", () => {
-            extension_settings[extensionName].connection_profile = $("#gm_profile_select").val();
-            saveSettingsDebounced();
-        });
-        $("#gm_premaster_profile_select").on("change", () => {
-            extension_settings[extensionName].premaster_profile = $("#gm_premaster_profile_select").val();
-            saveSettingsDebounced();
-        });
-        $("#gm_wizard_profile_select").on("change", () => {
-            extension_settings[extensionName].wizard_profile = $("#gm_wizard_profile_select").val();
-            saveSettingsDebounced();
-        });
-        $("#gm_profile_swap").on("click", async () => {
-            const targetId = $("#gm_profile_select").val();
-            const targetName = targetId ? getProfileNameById(getContext(), targetId) : null;
-            if (!targetName) {
-                gmNotify("No connection profile selected.", "warning");
-                return;
-            }
-            // Resolve the currently active profile name so swapProfile() can
-            // skip the swap when the target is already active (same pattern
-            // as core/agentRunner.js and the Recast reference).
-            const st = getContext();
-            const currentName = st.extensionSettings?.connectionManager?.selectedProfileName
-                || getProfileNameById(st, resolveConnectionProfile(st, ""));
-            gmNotify(`Swapping to connection profile "${targetName}"...`, "info");
-            const ok = await swapProfile(targetName, currentName);
-            gmNotify(
-                ok ? `Swapped to connection profile "${targetName}".` : "Profile swap failed — check the console for details.",
-                ok ? "success" : "error"
-            );
+        // Profile drawers — generated from the registry so new profiles are a
+        // one-entry addition. Header click expands/collapses (delegated).
+        for (const def of PROFILE_DRAWERS) {
+            $("#gm_profile_drawers").append(this.buildProfileDrawer(def));
+            $(`#${def.select}`).on("change", () => {
+                extension_settings[extensionName][def.setting] = $(`#${def.select}`).val();
+                saveSettingsDebounced();
+                this.updateProfileSummaries();
+            });
+        }
+        $("#gm_profile_drawers").on("click", ".gm_drawer_header", function () {
+            $(this).closest(".gm_drawer").toggleClass("open");
         });
 
         // Custom instructions popup (pre-pass / post-pass standing notes).
@@ -113,29 +123,48 @@ export const settingsUI = {
     // startup / delayed startup refreshes — NEVER during user interaction,
     // because touching the options while the native dropdown picker is open
     // glitches the selection out.
+    // Builds one minimalistic drawer (tooltip header + select) for a registry entry.
+    buildProfileDrawer(def) {
+        const sel = $("<select>").attr("id", def.select);
+        return $("<div>").addClass("gm_drawer").append(
+            $("<div>").addClass("gm_drawer_header").attr("title", def.tooltip).append(
+                $("<i>").addClass(`fa-solid ${def.icon}`),
+                $("<span>").addClass("gm_drawer_title").text(def.label),
+                $("<span>").addClass("gm_drawer_value").attr("id", `gm_profile_value_${def.key}`),
+                $("<i>").addClass("fa-solid fa-chevron-down gm_drawer_chevron"),
+            ),
+            $("<div>").addClass("gm_drawer_content").append(
+                $("<div>").addClass("gm_drawer_inner").append(
+                    $("<div>").addClass("gm_preset_row").append(sel),
+                ),
+            ),
+        );
+    },
+
     populateProfiles() {
         const s = this._settings();
         const profiles = getConnectionProfiles();
-        const agenticSel = $("#gm_profile_select").empty();
-        const premasterSel = $("#gm_premaster_profile_select").empty();
-        const wizardSel = $("#gm_wizard_profile_select").empty();
-        agenticSel.append($("<option>").val("").text("Same as Current"));
-        premasterSel.append($("<option>").val("").text("Same as Agentic"));
-        wizardSel.append($("<option>").val("").text("Same as Pre-master"));
-        for (const p of profiles) {
-            agenticSel.append($("<option>").val(p.id).text(p.name));
-            premasterSel.append($("<option>").val(p.id).text(p.name));
-            wizardSel.append($("<option>").val(p.id).text(p.name));
+        for (const def of PROFILE_DRAWERS) {
+            const sel = $(`#${def.select}`).empty();
+            sel.append($("<option>").val("").text(def.emptyText));
+            for (const p of profiles) sel.append($("<option>").val(p.id).text(p.name));
+            if (!profiles.length) {
+                sel.append($("<option>").val("").text("— connection manager not active —").prop("disabled", true));
+            }
+            sel.val(profiles.some(p => p.id === s[def.setting]) ? s[def.setting] : "");
         }
-        if (!profiles.length) {
-            agenticSel.append($("<option>").val("").text("— connection manager not active —").prop("disabled", true));
-            premasterSel.append($("<option>").val("").text("— connection manager not active —").prop("disabled", true));
-            wizardSel.append($("<option>").val("").text("— connection manager not active —").prop("disabled", true));
-        }
-        agenticSel.val(profiles.some(p => p.id === s.connection_profile) ? s.connection_profile : "");
-        premasterSel.val(profiles.some(p => p.id === s.premaster_profile) ? s.premaster_profile : "");
-        wizardSel.val(profiles.some(p => p.id === s.wizard_profile) ? s.wizard_profile : "");
+        this.updateProfileSummaries();
         logDebug("connection profiles populated:", profiles.map(p => p.name));
+    },
+
+    // Drawer summary labels + the setup warning (no profiles at all, or any
+    // warning-marked drawer left on its "Same as ..." fallback).
+    updateProfileSummaries() {
+        for (const def of PROFILE_DRAWERS) {
+            $(`#gm_profile_value_${def.key}`).text($(`#${def.select}`).find("option:selected").text());
+        }
+        const anyFallback = PROFILE_DRAWERS.some(d => d.warning && !$(`#${d.select}`).val());
+        $("#gm_no_profile_warning").toggle(!getConnectionProfiles().length || anyFallback);
     },
 
     _settings() {
