@@ -15,6 +15,7 @@ import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { progression } from "./progression.js";
 import { genId } from "./schemas.js";
+import { skillGuidelines } from "./skillGuidelines.js";
 import { sendRequestViaProfile, resolveWizardProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 
@@ -71,7 +72,7 @@ export const skillTree = {
     // Generates the NEXT 3-tier segment via the wizard-profile LLM. Returns
     // the new nodes or null on failure. `userWish` is the player's optional
     // "want anything in specific?" input (also used as refine feedback).
-    async generateSegment(charId, userWish = "") {
+    async generateSegment(charId, userWish = "", previousSegment = null) {
         if (!this.isEnabled()) return null;
         const char = stateManager.getCharacter(charId);
         const tree = this.ensureTree(charId);
@@ -79,9 +80,21 @@ export const skillTree = {
 
         const cfg = progression.getConfig();
         const frontier = tree.nodes.filter(n => Math.trunc(Number(n.tier) || 0) === tree.generated_tiers);
+        // Refine pass: the segment being replaced is fed back so the LLM
+        // improves it instead of inventing a fresh one.
+        const refining = Array.isArray(previousSegment) && previousSegment.length > 0;
         const systemPrompt = [
-            "You are the skill-tree architect for a tabletop-style roleplay manager. Design the NEXT segment of a character's skill tree.",
+            refining
+                ? "You are the skill-tree architect for a tabletop-style roleplay manager. REFINE the existing segment of a character's skill tree listed in CURRENT SEGMENT below."
+                : "You are the skill-tree architect for a tabletop-style roleplay manager. Design the NEXT segment of a character's skill tree.",
             "",
+            ...(refining ? [
+                "REFINEMENT PASS — the current segment is listed below. Improve it, don't mindlessly rebuild it:",
+                "- Keep surviving nodes' ids, tiers and tree position stable so the structure stays anchored.",
+                "- Follow the player's feedback — and when it asks for a better design, you may rebalance, reword, repurpose, drop or add nodes freely; ids and tiers may shift only for nodes you actually change.",
+                "- Emphasis on DETAIL: sharper branch identities, real trade-offs and signature moments over generic bonuses.",
+                "",
+            ] : []),
             "Output ONLY a <skilltree> block, one <node/> per skill tree node:",
             '  <skilltree><node id="n1" tier="4" cost="1" requires="n0" type="upgrade" target="Fireball" name="Greater Fireball" description="+1 target, halved cost"/></skilltree>',
             "",
@@ -97,7 +110,9 @@ export const skillTree = {
             "- ACTIVE SKILL USAGE: an active node's description must read like a usable skill — what the character does, the concrete effect, and any resource cost — and MUST end with \"Cooldown: N turns\" (1 turn = 1 player message). N is never below 2 and scales with strength: minor or utility effects 2, solid combat effects 3, powerful effects 4, transformative capstones 5 or more. Never omit the cooldown and never phrase it differently.",
             "- Descriptions have no length limit, but state exact numbers (damage, targets, duration, bonuses) — never vague quantifiers like \"some\", \"a bit\" or \"chance to\".",
             "- Respect the character's sheet, world and the user's wish. Keep names short.",
-            "- Never repeat nodes that already exist in the tree.",
+            "- Never repeat nodes that already exist in the tree, be creative and unique.",
+            "",
+            skillGuidelines(),
         ].join("\n");
 
         const userParts = [];
@@ -111,8 +126,17 @@ export const skillTree = {
         userParts.push(tree.generated_tiers > 0
             ? `FRONTIER (last generated tier ${tree.generated_tiers}); new tiers are ${tree.generated_tiers + 1}-${tree.generated_tiers + SEGMENT_TIERS}:\n${frontier.map(n => `  <node id="${escAttr(n.id)}" tier="${n.tier}" type="${escAttr(n.type)}" name="${escAttr(n.name)}" unlocked="${!!n.unlocked}">${escAttr(n.description)}</node>`).join("\n")}`
             : `This is the FIRST segment: tiers 1-${SEGMENT_TIERS}. Tier 1 nodes have no requirements.`);
-        if (String(userWish || "").trim()) {
-            userParts.push(`PLAYER WISH:\n${String(userWish).trim()}`);
+
+        // Refine pass: show the segment being replaced so the LLM edits it.
+        if (refining) {
+            userParts.push(`CURRENT SEGMENT (tiers ${tree.generated_tiers + 1}-${tree.generated_tiers + SEGMENT_TIERS}) — improve these nodes, don't replace them:\n${previousSegment.map(n => `  <node id="${escAttr(n.id)}" tier="${n.tier}" cost="${n.cost}" type="${escAttr(n.type)}"${n.target ? ` target="${escAttr(n.target)}"` : ""} name="${escAttr(n.name)}"${(n.requires || []).length ? ` requires="${escAttr(n.requires.join(" "))}"` : ""}>${escAttr(n.description)}</node>`).join("\n")}`);
+        }
+        const wish = String(userWish || "").trim();
+        if (wish) {
+            userParts.push(`${refining ? "REFINEMENT FEEDBACK" : "PLAYER WISH"}:\n${wish}`);
+        } else if (refining) {
+            // Empty refine box: general creative pass instead of a bare prompt.
+            userParts.push("REFINEMENT FEEDBACK:\n(none — general improvement pass: make the segment more creative and detailed. Sharpen each branch's identity, add trade-offs and signature moments, and make every description concrete and numeric. Keep the overall shape — rebuild only what genuinely gets better.)");
         }
 
         try {

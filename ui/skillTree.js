@@ -640,7 +640,7 @@ export const skillTreeView = {
         $("body").append(overlay);
     },
 
-    // Edit mode: regenerate the LAST segment with player feedback. Blocked
+    // Edit mode: refine the LAST segment with player feedback. Blocked
     // while any of its nodes is unlocked (refund those first).
     async _refine(char, tree, btn) {
         const lastSegment = tree.nodes.filter(n => Math.trunc(Number(n.tier) || 0) > tree.generated_tiers - skillTree.SEGMENT_TIERS);
@@ -661,13 +661,16 @@ export const skillTreeView = {
         cancel.on("click", close);
         go.on("click", async () => {
             go.addClass("disabled gm_busy").find("span").text(" Refining...");
-            // Strip the last segment, then regenerate it with the feedback.
-            // On failure the stripped segment is restored untouched.
+            // Snapshot the segment, strip it, then regenerate it with the
+            // feedback — the snapshot is fed back so the LLM refines the
+            // existing nodes instead of inventing a fresh segment. On
+            // failure the stripped segment is restored untouched.
+            const previousSegment = lastSegment.map(n => ({ id: n.id, tier: n.tier, cost: n.cost, requires: (n.requires || []).slice(), type: n.type, target: n.target, name: n.name, description: n.description }));
             const keptNodes = tree.nodes.filter(n => !lastSegment.includes(n));
             const previousTiers = tree.generated_tiers;
             tree.nodes = keptNodes;
             tree.generated_tiers -= skillTree.SEGMENT_TIERS;
-            const nodes = await skillTree.generateSegment(char.id, String(textarea.val() || ""));
+            const nodes = await skillTree.generateSegment(char.id, String(textarea.val() || ""), previousSegment);
             if (!nodes) {
                 tree.nodes = tree.nodes.concat(lastSegment);
                 tree.generated_tiers = previousTiers;
@@ -682,7 +685,7 @@ export const skillTreeView = {
 
         dialog.append(
             $("<b>").text("Refine skill tree"),
-            $("<div>").addClass("gm_modal_hint").text("The latest 6 tiers are regenerated with your feedback. Earlier tiers stay untouched."),
+            $("<div>").addClass("gm_modal_hint").text("The latest 6 tiers are refined with your feedback: existing nodes are kept and adjusted, not rebuilt. Earlier tiers stay untouched."),
             textarea,
             $("<div>").addClass("gm_modal_actions").append(cancel, go),
         );

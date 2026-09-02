@@ -11,6 +11,7 @@ import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { progression } from "./progression.js";
 import { CHARACTER_CONTAINERS } from "./schemas.js";
+import { skillGuidelines } from "./skillGuidelines.js";
 import { escAttr } from "./toolParser.js";
 import { parseSetupXml, sanitizeProposal, characterToXml, fieldKeysFor, recentChatLines } from "./setupWizard.js";
 import { sendRequestViaProfile, resolveWizardProfile } from "../util/connectionService.js";
@@ -48,6 +49,8 @@ const CHAR_PROMPT_HEADER = [
     "- CALIBRATE NUMBERS to the world: starting quantities and ranges must imply real scale. Anchor non-obvious scales in the description (e.g. 'a meal costs about 15').",
     "- LEVEL: when the prompt states a level, use it; when progression is active WITHOUT a stated level, INFER it from the context (recent chat, details, reference levels) and report it in level (whole number, at least 1). Without progression, omit the attribute.",
     "- Omit tags that do not apply. Never invent entries outside the given shapes.",
+    "",
+    skillGuidelines(),
 ].join("\n");
 
 const CHAR_REFINE_PROMPT_HEADER = [
@@ -64,6 +67,8 @@ const CHAR_REFINE_PROMPT_HEADER = [
     "- NO PURPLE PROSE: rewrite any flowery or literary description as a plain, factual one-liner — concrete words only, no stacked adjectives, no metaphors or atmosphere.",
     "- LEVEL: keep the character's level from the current proposal unless the feedback asks to change it.",
     "- Omit tags that do not apply. Never invent entries outside the given shapes.",
+    "",
+    skillGuidelines(),
 ].join("\n");
 
 //
