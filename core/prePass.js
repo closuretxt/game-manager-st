@@ -24,7 +24,7 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { substituteParams } from "../../../../../script.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
-import { stateManager } from "./stateManager.js";
+import { stateManager, playerLabel } from "./stateManager.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 import { parseAttrs, escAttr } from "./toolParser.js";
@@ -94,7 +94,7 @@ async function collectContext(playerAction) {
     const st = getContext();
     const chat = Array.isArray(st?.chat) ? st.chat : [];
     const history = chat.slice(-MAX_CONTEXT_MESSAGES, -1)
-        .map(m => `${m.is_user ? "Player" : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 1500)}`);
+        .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 1500)}`);
 
     // Compact XML snapshot: only what the router needs to judge intent — one
     // line per actor, tracked names as attribute keys, same dialect as the
@@ -391,6 +391,10 @@ export async function runPrePass(playerAction) {
         ];
         const reply = await sendRequestViaProfile(profileId, messages);
         console.info(`[GM DIAG] runPrePass raw reply (${String(reply || "").length} chars):`, String(reply || "").slice(0, 400));
+        // Track raw outputs: the PREVIOUS turn's full reply feeds the dice GM
+        // as its "previous GM notes" context.
+        _prevRaw = _lastRaw;
+        _lastRaw = String(reply || "").slice(0, 4000);
         const plan = sanitizePlan(parseReply(reply || ""));
         if (!plan) {
             console.info("[GM DIAG] runPrePass: malformed reply — caller will fall back to keyword triggers");
@@ -403,4 +407,13 @@ export async function runPrePass(playerAction) {
         console.error("[GM DIAG] pre-pass failed (exception):", e);
         return null;
     }
+}
+
+// Raw pre-pass router outputs. The PREVIOUS turn's full reply is exposed to
+// the dice GM so it judges the action knowing what the pre GM last said.
+let _lastRaw = "";
+let _prevRaw = "";
+
+export function getPreviousPrePassRaw() {
+    return _prevRaw;
 }

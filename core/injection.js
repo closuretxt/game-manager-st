@@ -32,6 +32,12 @@ let _pendingLow = [];
 let _lastHigh = "";
 let _lastLow = "";
 
+// Previous generation's record, preserved when resetInjectionRecord clears
+// the current one. Exposed to the pre-master engines (dice roller) so they
+// judge the action knowing what the game system injected LAST turn.
+let _prevHigh = "";
+let _prevLow = "";
+
 function enabled() {
     const s = extension_settings[extensionName];
     return !!(s.enabled && s.feature_injection);
@@ -211,8 +217,22 @@ export function buildLowPriority() {
 // describes exactly what THIS generation's macros injected, even when the
 // macro is missing from the prompt or nothing was queued.
 export function resetInjectionRecord() {
+    // What was injected last generation becomes the "previous GM notes"
+    // before the per-turn record is cleared.
+    _prevHigh = _lastHigh;
+    _prevLow = _lastLow;
     _lastHigh = "";
     _lastLow = "";
+}
+
+// What the macros injected into the PREVIOUS turn's story prompt (one-shot
+// notes, roll results, transactions). Empty when nothing was injected.
+export function getPreviousInjections() {
+    if (!_prevHigh && !_prevLow) return "";
+    const parts = [];
+    if (_prevHigh) parts.push(_prevHigh);
+    if (_prevLow) parts.push(_prevLow);
+    return parts.join("\n");
 }
 
 // What the macros injected into this turn's story prompt, as one XML block.

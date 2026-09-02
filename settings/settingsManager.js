@@ -59,6 +59,10 @@ export const defaultSettings = {
     // contexts (summaries, clock times, chronograms, house rules...).
     custom_instructions: { pre: "", post: "" },
 
+    // Speaker label for the player's lines in the engines' prompt contexts.
+    // Empty = the current persona name.
+    player_label: "",
+
     presets: structuredClone(defaultPresets),
     active_preset: "Default Preset",
 
@@ -127,6 +131,7 @@ export async function loadSettings() {
     $("#gm_setting_roll_attachment").prop("checked", !!s.roll_attachment);
     $("#gm_setting_roll_duration").val(Number.isFinite(+s.roll_duration) ? +s.roll_duration : 1600);
     $("#gm_roll_duration_value").text(`${((Number(s.roll_duration) || 1600) / 1000).toFixed(1)}s`);
+    $("#gm_setting_player_label").val(String(s.player_label || ""));
     $("#gm_setting_feat_death").prop("checked", !!s.feature_death);
     $("#gm_setting_bg_opacity").val(Number.isFinite(+s.window_opacity) ? +s.window_opacity : 95);
     $("#gm_bg_opacity_value").text(`${s.window_opacity}%`);
@@ -172,6 +177,7 @@ export function saveSettings() {
     s.combat_rich_clash_ui = $("#gm_setting_rich_clash").prop("checked");
     s.roll_attachment = $("#gm_setting_roll_attachment").prop("checked");
     s.roll_duration = Number($("#gm_setting_roll_duration").val()) || 1600;
+    s.player_label = String($("#gm_setting_player_label").val() || "").trim();
     s.feature_death = $("#gm_setting_feat_death").prop("checked");
     s.notify_enabled = $("#gm_setting_notify").prop("checked");
     s.notify_stats = $("#gm_setting_notify_stats").prop("checked");
@@ -205,6 +211,11 @@ export function initSettingsListeners() {
         const val = Number($("#gm_setting_roll_duration").val()) || 1600;
         extension_settings[extensionName].roll_duration = val;
         $("#gm_roll_duration_value").text(`${(val / 1000).toFixed(1)}s`);
+        saveSettingsDebounced();
+    });
+    // Player label: persist on input (used by every engine's prompt context).
+    $("#gm_setting_player_label").off("input.gm").on("input.gm", () => {
+        extension_settings[extensionName].player_label = String($("#gm_setting_player_label").val() || "");
         saveSettingsDebounced();
     });
 }

@@ -13,7 +13,7 @@
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
-import { stateManager } from "./stateManager.js";
+import { stateManager, playerLabel } from "./stateManager.js";
 import { GM_SCHEMA, CHARACTER_CONTAINERS, defaultEntry } from "./schemas.js";
 import { parseAttrs } from "./toolParser.js";
 import { sendRequestViaProfile, resolveWizardProfile } from "../util/connectionService.js";
@@ -96,7 +96,7 @@ export function recentChatLines(count) {
     if (!n) return [];
     const chat = Array.isArray(getContext()?.chat) ? getContext().chat : [];
     return chat.slice(-n)
-        .map(m => `${m.is_user ? "Player" : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 800)}`);
+        .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 800)}`);
 }
 
 async function collectContext(scenarioText) {
@@ -104,11 +104,12 @@ async function collectContext(scenarioText) {
     const partyCap = Math.max(1, Math.trunc(Number(s.max_party_size) || 6));
     const d = stateManager.getData();
 
-    const existing = {
-        party: (d.characters || []).map(c => c.name),
-        roster: (d.roster || []).map(r => r.name),
-        sharedResources: (d.sharedResources || []).map(r => r.name),
-    };
+    // Existing names as compact XML — the LLM reads it far better than JSON.
+    const existingParts = [
+        `  <party>${(d.characters || []).map(c => escAttr(c.name)).join(", ")}</party>`,
+        `  <roster>${(d.roster || []).map(r => escAttr(r.name)).join(", ")}</roster>`,
+        `  <shared>${(d.sharedResources || []).map(r => escAttr(r.name)).join(", ")}</shared>`,
+    ];
 
     const recent = recentChatLines(s.wizard_chat_messages);
 
@@ -116,7 +117,10 @@ async function collectContext(scenarioText) {
         `PARTY CAP: ${partyCap} full character sheets maximum.`,
         `ENTRY FIELD SHAPES: resource {${fieldKeysFor("resource")}}, attribute {${fieldKeysFor("attribute")}}, item {${fieldKeysFor("item")}}, skill {${fieldKeysFor("skill")}}, passive {${fieldKeysFor("passive")}} (ptype: special|stat), status {${fieldKeysFor("status")}}.`,
         "",
-        `EXISTING SETUP (names only — avoid duplicates unless asked): ${JSON.stringify(existing)}`,
+        "EXISTING SETUP (names only — avoid duplicates unless asked):",
+        "<existing>",
+        ...existingParts,
+        "</existing>",
         "",
         "RECENT CHAT (context):",
         ...recent,

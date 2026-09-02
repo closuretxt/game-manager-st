@@ -302,7 +302,9 @@ export async function handlePreTurn(type = "normal") {
                 // Dice — the pre-pass decided IF, the roller decides HOW.
                 logDebug(`pre-turn: roll planned "${plan.roll.title}"`);
                 statusBubble.close(true); // the dice bubble takes over visually
-                await rollDice(action, targetMsgId, { title: plan.roll.title });
+                // The router's contextual remarks travel with the roll call so
+                // the dice GM weighs the same context that triggered it.
+                await rollDice(action, targetMsgId, { title: plan.roll.title, notes: plan.notes });
             }
 
             // Transactions — plan entries carry a pre-judged delta when the

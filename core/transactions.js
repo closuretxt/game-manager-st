@@ -12,9 +12,10 @@
 import { extension_settings } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
-import { stateManager } from "./stateManager.js";
+import { stateManager, playerLabel } from "./stateManager.js";
 import { captureSnapshot } from "./snapshots.js";
 import { queueHigh } from "./injection.js";
+import { parseAttrs } from "./toolParser.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 import { statusBubble } from "../ui/statusBubble.js";
@@ -22,15 +23,16 @@ import { statusBubble } from "../ui/statusBubble.js";
 const SYSTEM_PROMPT = [
     "You are the game master's accountant for a tabletop-style roleplay session.",
     "You receive a party-wide resource (name, current amount) and the player's action that mentions it.",
-    "Decide the concrete transaction that follows from the action and respond with ONLY a JSON object (no fences, no prose):",
-    '{"applies": true, "transaction": <number spent or gained, negative for spending>, "comparison": "<short plain-language note, e.g. Could buy a week\'s worth of food>"}',
-    "Rules: keep amounts plausible for the setting; if the action implies spending more than owned, cap the transaction at the full amount; if the action does not imply any transaction, respond with {\"applies\": false}. Comparison must be under 12 words.",
+    "Decide the concrete transaction that follows from the action and respond with ONLY XML (no markdown fences, no prose):",
+    '<transaction applies="true" amount="<number spent or gained, negative for spending>" comparison="<short plain-language note, e.g. Could buy a week\'s worth of food>"/>',
+    'If the action does not imply any transaction, respond with ONLY: <transaction applies="false"/>',
+    "Rules: keep amounts plausible for the setting; if the action implies spending more than owned, cap the transaction at the full amount. Comparison must be under 12 words.",
 ].join("\n");
 
 function collectContext(resource, playerAction) {
     const chat = getContext()?.chat || [];
     const history = chat.slice(-5, -1)
-        .map(m => `${m.is_user ? "Player" : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 800)}`);
+        .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 800)}`);
     return [
         "RECENT SCENE:",
         ...history,
@@ -41,15 +43,14 @@ function collectContext(resource, playerAction) {
 }
 
 function parseReply(text) {
-    const start = text.indexOf("{");
-    const end = text.lastIndexOf("}");
-    if (start === -1 || end <= start) return null;
-    try {
-        return JSON.parse(text.slice(start, end + 1));
-    } catch (e) {
-        logDebug("transactions: JSON parse failed:", e);
-        return null;
-    }
+    const m = String(text || "").match(/<transaction\b([^>]*?)(?:\/>|>)/i);
+    if (!m) return null;
+    const a = parseAttrs(m[1]);
+    return {
+        applies: String(a.applies ?? "").toLowerCase() === "true",
+        transaction: Math.trunc(Number(a.amount) || 0),
+        comparison: String(a.comparison || ""),
+    };
 }
 
 // Transaction flow for a player action mentioning `resource` on message

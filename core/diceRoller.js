@@ -9,12 +9,14 @@
 // Uses the pre-master connection profile (util/connectionService.js).
 
 import { extension_settings, getContext } from "../../../../extensions.js";
+import { substituteParams } from "../../../../../script.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
-import { stateManager } from "./stateManager.js";
+import { stateManager, playerLabel } from "./stateManager.js";
 import { captureSnapshot } from "./snapshots.js";
-import { queueHigh } from "./injection.js";
-import { parseAttrs } from "./toolParser.js";
+import { queueHigh, getPreviousInjections } from "./injection.js";
+import { getPreviousPrePassRaw } from "./prePass.js";
+import { parseAttrs, escAttr } from "./toolParser.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 import { diceBubble, attachRollToMessage } from "../ui/diceBubble.js";
@@ -37,22 +39,44 @@ const SYSTEM_PROMPT = [
     "If no roll is needed respond with ONLY: <roll needs=\"false\"/>",
 ].join("\n");
 
-function collectContext(playerAction) {
+function collectContext(playerAction, notes = null) {
     const st = getContext();
     const chat = Array.isArray(st?.chat) ? st.chat : [];
     const history = chat.slice(-MAX_CONTEXT_MESSAGES, -1)
-        .map(m => `${m.is_user ? "Player" : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 1500)}`);
+        .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 1500)}`);
     const d = stateManager.getData();
-    const party = d.characters.map(c => ({
-        name: c.name,
-        skills: c.skills.map(s => s.name),
-    }));
+
+    // Compact XML party snapshot — same dialect as the pre-pass router state
+    // (* = skill on cooldown; statuses as Name (modifiers)).
+    const party = (d.characters || [])
+        .filter(c => c.state?.mode !== "dead")
+        .map(c => {
+            const skills = (c.skills || []).map(sk => `${escAttr(sk.name)}${(Number(sk.cooldown_left) || 0) > 0 ? "*" : ""}`).join(", ");
+            const statuses = (c.statuses || []).map(x => `${escAttr(x.name)}${x.modifiers ? ` (${escAttr(x.modifiers)})` : ""}`).join(", ");
+            return `  <char name="${escAttr(c.name)}"${skills ? ` skills="${skills}"` : ""}${statuses ? ` statuses="${statuses}"` : ""}/>`;
+        });
+    // Previous GM notes: the pre-pass router's full LAST output plus whatever
+    // the game system actually injected last turn (high: roll/transaction
+    // results; low: one-shot notes/resources) — near the bottom so it reads
+    // as fresh context, not buried mid-prompt.
+    const prevRaw = getPreviousPrePassRaw();
+    const prevInj = getPreviousInjections();
+    const prevNotes = [
+        ...(prevRaw ? ["PRE-PASS GM (last turn):", prevRaw] : []),
+        ...(prevInj ? ["INJECTED RESULTS (last turn):", prevInj] : []),
+    ];
     return [
-        "PARTY (tracked characters and their skills):",
-        JSON.stringify(party),
+        "PARTY (tracked characters):",
+        "<party>",
+        ...party,
+        "</party>",
         "",
         "RECENT SCENE:",
         ...history,
+        ...(prevNotes.length ? ["", "PREVIOUS GM NOTES:", "<gm_notes>", ...prevNotes, "</gm_notes>"] : []),
+        // The pre-pass router's remarks about THIS action — the context that
+        // made it call for the roll, weighed when building the tiers.
+        ...(notes?.length ? ["", "GM NOTES FOR THIS ACTION (from the pre-pass router):", "<gm_notes>", ...notes.map(n => `  <note>${escAttr(n)}</note>`), "</gm_notes>"] : []),
         "",
         `PLAYER ACTION TO JUDGE: ${playerAction}`,
     ].join("\n");
@@ -120,8 +144,9 @@ function queueRollResult(title, tier) {
 // Full dice flow for a player action on message `mesId`. `opts.title` comes
 // from the pre-pass plan: when set, the router already decided a roll IS
 // needed, so a needsRoll=false reply from the dice LLM is overridden (the
-// dice LLM still provides the tiers). Returns true if a roll was made.
-export async function rollDice(playerAction, mesId, { title = null } = {}) {
+// dice LLM still provides the tiers). `opts.notes` carries the router's
+// contextual remarks about the action. Returns true if a roll was made.
+export async function rollDice(playerAction, mesId, { title = null, notes = null } = {}) {
     const s = extension_settings[extensionName];
     if (!s.enabled || !s.feature_dice) return false;
 
@@ -137,14 +162,30 @@ export async function rollDice(playerAction, mesId, { title = null } = {}) {
             const deep = await buildDeepContext(String(playerAction || ""));
             if (deep) systemContent += `\n\n<deep_context>\n${deep}\n</deep_context>`;
         }
+        // User's standing instructions for the pre-master engines — at the END
+        // of the system message, after the deep context (same layout as the
+        // pre-pass/post-pass). Full ST macro parsing via substituteParams.
+        const custom = String(s.custom_instructions?.pre || "").trim();
+        if (custom) {
+            let rendered = custom;
+            try {
+                const charName = st.characters?.[st.characterId]?.name;
+                rendered = substituteParams(rendered, { name2Override: charName });
+            } catch (e) {
+                console.warn("[Game Manager] custom instruction macro substitution failed:", e);
+            }
+            systemContent += `\n\n<custom>\n${rendered}\n</custom>`;
+        }
+
+        const forced = !!title; // pre-pass already decided a roll is needed
+        const seenTiers = new Set();
+        let streamed = "";
         const messages = [
             { role: "system", content: systemContent },
-            { role: "user", content: collectContext(playerAction) },
+            { role: "user", content: collectContext(playerAction, notes) },
         ];
 
         // Stream the pre-master reply; surface tiers one by one as they arrive.
-        const seenTiers = new Set();
-        let streamed = "";
         const reply = await sendRequestViaProfile(profileId, messages, {
             stream: true,
             onChunk: (partial) => {
@@ -159,7 +200,6 @@ export async function rollDice(playerAction, mesId, { title = null } = {}) {
         });
 
         const parsed = parseReply(reply || streamed);
-        const forced = !!title; // pre-pass already decided a roll is needed
         if (!parsed || !Array.isArray(parsed.tiers) || (parsed.needsRoll !== true && !forced)) {
             bubble.resolveNoRoll();
             logDebug("diceRoller: no roll needed or malformed reply");
@@ -175,6 +215,8 @@ export async function rollDice(playerAction, mesId, { title = null } = {}) {
             return false;
         }
 
+        const rollTitle = title || parsed.title || "Roll";
+
         const winner = weightedRoll(tiers);
         // Rolling time setting with a ±200ms random variation so repeated
         // rolls don't feel mechanical.
@@ -188,7 +230,6 @@ export async function rollDice(playerAction, mesId, { title = null } = {}) {
         // State baseline for swipe/delete rollback. The player's message text
         // is NEVER edited — the result is DOM-rendered on the message and
         // injected to the LLM via the high-priority macro.
-        const rollTitle = title || parsed.title || "Roll";
         captureSnapshot(mesId);
         attachRollToMessage(mesId, rollTitle, winner);
         queueRollResult(rollTitle, winner);

@@ -11,6 +11,7 @@ import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { progression } from "./progression.js";
 import { CHARACTER_CONTAINERS } from "./schemas.js";
+import { escAttr } from "./toolParser.js";
 import { parseSetupXml, sanitizeProposal, characterToXml, fieldKeysFor, recentChatLines } from "./setupWizard.js";
 import { sendRequestViaProfile, resolveWizardProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
@@ -130,17 +131,21 @@ function enemyBlocks() {
 // scene the character appears in is the LAST thing the LLM reads.
 function briefBlocks({ name, details, references, level = null, kind = "party" }) {
     const d = stateManager.getData();
-    const existing = {
-        party: (d.characters || []).map(c => c.name),
-        roster: (d.roster || []).map(r => r.name),
-        ...(kind === "enemy" ? { enemies: (d.enemies || []).map(e => e.name) } : {}),
-    };
+    // Existing names as compact XML — the LLM reads it far better than JSON.
+    const existingParts = [
+        `  <party>${(d.characters || []).map(c => escAttr(c.name)).join(", ")}</party>`,
+        `  <roster>${(d.roster || []).map(r => escAttr(r.name)).join(", ")}</roster>`,
+        ...(kind === "enemy" ? [`  <enemies>${(d.enemies || []).map(e => escAttr(e.name)).join(", ")}</enemies>`] : []),
+    ];
     const blocks = [
         `ENTRY FIELD SHAPES: resource {${fieldKeysFor("resource")}}, attribute {${fieldKeysFor("attribute")}}, item {${fieldKeysFor("item")}}, skill {${fieldKeysFor("skill")}}, passive {${fieldKeysFor("passive")}} (ptype: special|stat), status {${fieldKeysFor("status")}}.`,
         ...progressionBlocks(level, kind === "enemy"),
         ...(kind === "enemy" ? enemyBlocks() : []),
         "",
-        `EXISTING SETUP (names only — the new character must not duplicate them): ${JSON.stringify(existing)}`,
+        "EXISTING SETUP (names only — the new character must not duplicate them):",
+        "<existing>",
+        ...existingParts,
+        "</existing>",
         "",
         "NEW CHARACTER BRIEF:",
         `name: ${name}`,

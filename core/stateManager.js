@@ -16,6 +16,14 @@ function settings() {
     return extension_settings[extensionName];
 }
 
+// Speaker label for the player's lines in the engines' prompt contexts —
+// the user's custom label when set, otherwise the current persona name.
+export function playerLabel() {
+    const custom = String(settings()?.player_label || "").trim();
+    if (custom) return custom;
+    return String(getContext()?.name1 || "Player");
+}
+
 // Normalizes a character's progression track (level/exp/skill points). Present
 // on every sheet; only meaningful when the progression feature is on.
 function _normalizeProgression(c) {

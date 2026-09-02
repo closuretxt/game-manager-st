@@ -1589,6 +1589,16 @@ textarea.gm_input {
     flex: 1;
 }
 
+/* Text input (player label): themed by .gm_input, sized to the row. */
+.gm_field_inline input[type="text"] {
+    flex: 1;
+    min-width: 0;
+}
+
+.gm_field_inline input[type="text"]::placeholder {
+    opacity: 0.45;
+}
+
 /* ---------- Progression (EXP / levels / skill points) ---------- */
 /* EXP bar reuses the resource-row track; the fill gets a golden tint. */
 .gm_prog_fill {
