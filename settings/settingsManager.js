@@ -69,7 +69,10 @@ export const defaultSettings = {
     connection_profile: "", // Connection profile id for the extension's own AI calls ("" = same as current connection).
     premaster_profile: "",  // Connection profile id for pre-master calls (dice rolls / transactions). "" = same as connection_profile.
     wizard_profile: "",     // Connection profile id for the scenario build wizard (less agentic). "" = same as premaster chain.
-    combat_profile: "",     // Connection profile id for the combat passes (ally/enemy/clash). "" = same as premaster chain.
+    combat_profile: "",    // Connection profile id for the combat passes (ally/enemy/clash). "" = same as premaster chain.
+    dice_profile: "",      // Connection profile id for chance calculations (dice rolls). "" = same as premaster chain.
+    enemy_creation_profile: "", // Connection profile id for automatic enemy generation (spawn-review popup flow). "" = same as wizard chain.
+    dynamic_enemy_creation: false, // When on, tracker-detected enemies are auto-generated and injected — no review popup (requires Spawn review).
     legacy_api: false, // LEGACY: swap the active connection profile for extension AI calls instead of per-request profiles.
     edit_mode: false, // When off, all resource/entry mutation controls are hidden (view-only, hardcore feel).
     window_opacity: 50, // Floating window background opacity in percent.
@@ -114,6 +117,7 @@ export async function loadSettings() {
     $("#gm_setting_feat_wizard").prop("checked", !!s.feature_setup_wizard);
     $("#gm_setting_feat_char_creator").prop("checked", !!s.feature_character_creator);
     $("#gm_setting_spawn_review").prop("checked", !!s.feature_spawn_review);
+    $("#gm_setting_dyn_enemies").prop("checked", !!s.dynamic_enemy_creation);
     $("#gm_setting_deep_context").prop("checked", !!s.deep_context);
     $("#gm_setting_deep_context_engines").prop("checked", !!s.deep_context_engines);
     $("#gm_setting_feat_warnings").prop("checked", !!s.feature_warnings);
@@ -161,6 +165,7 @@ export function saveSettings() {
     s.feature_setup_wizard = $("#gm_setting_feat_wizard").prop("checked");
     s.feature_character_creator = $("#gm_setting_feat_char_creator").prop("checked");
     s.feature_spawn_review = $("#gm_setting_spawn_review").prop("checked");
+    s.dynamic_enemy_creation = $("#gm_setting_dyn_enemies").prop("checked");
     s.deep_context = $("#gm_setting_deep_context").prop("checked");
     s.deep_context_engines = $("#gm_setting_deep_context_engines").prop("checked");
     s.feature_warnings = $("#gm_setting_feat_warnings").prop("checked");
@@ -193,7 +198,7 @@ export function saveSettings() {
 
 export function initSettingsListeners() {
     $("#gm_setting_enabled, #gm_setting_auto_update, #gm_setting_debug_mode, #gm_setting_open_panel, #gm_setting_legacy, #gm_setting_pre_pass, " +
-      "#gm_setting_feat_wizard, #gm_setting_feat_char_creator, #gm_setting_spawn_review, #gm_setting_deep_context, #gm_setting_deep_context_engines, " +
+      "#gm_setting_feat_wizard, #gm_setting_feat_char_creator, #gm_setting_spawn_review, #gm_setting_dyn_enemies, #gm_setting_deep_context, #gm_setting_deep_context_engines, " +
       "#gm_setting_feat_warnings, #gm_setting_feat_dice, #gm_setting_feat_transactions, #gm_setting_feat_injection, " +
       "#gm_setting_feat_enemies, #gm_setting_feat_rewrite, #gm_setting_feat_skill_suggest, #gm_setting_feat_progression, #gm_setting_feat_skill_tree, " +
       "#gm_setting_feat_combat, #gm_setting_feat_ally_ai, #gm_setting_rich_clash, #gm_setting_roll_attachment, #gm_setting_feat_death, " +

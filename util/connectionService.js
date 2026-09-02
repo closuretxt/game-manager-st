@@ -70,6 +70,24 @@ export function resolveWizardProfile(st, wizardProfileId = "", premasterProfileI
     return resolvePremasterProfile(st, premasterProfileId, agenticProfileId);
 }
 
+// Resolves which profile id to use for DICE/CHANCE calls: its own setting,
+// falling back to the pre-master chain.
+export function resolveDiceProfile(st, diceProfileId = "", premasterProfileId = "", agenticProfileId = "") {
+    if (diceProfileId && hasConnectionProfile(st, diceProfileId)) {
+        return diceProfileId;
+    }
+    return resolvePremasterProfile(st, premasterProfileId, agenticProfileId);
+}
+
+// Resolves which profile id to use for AUTOMATIC ENEMY GENERATION (the
+// spawn-review popup flow): its own setting, falling back to the wizard chain.
+export function resolveEnemyCreationProfile(st, enemyProfileId = "", wizardProfileId = "", premasterProfileId = "", agenticProfileId = "") {
+    if (enemyProfileId && hasConnectionProfile(st, enemyProfileId)) {
+        return enemyProfileId;
+    }
+    return resolveWizardProfile(st, wizardProfileId, premasterProfileId, agenticProfileId);
+}
+
 // Sends a chat-completion style request through a specific connection profile
 // via ConnectionManagerRequestService. Returns the full text response.
 // With { stream: true } and an onChunk callback, partial text is reported as

@@ -18,7 +18,7 @@ import { queueHigh } from "./injection.js";
 import { getPreviousPrePassRaw } from "./prePass.js";
 import { storeActionData } from "../util/chatStore.js";
 import { parseAttrs, escAttr } from "./toolParser.js";
-import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
+import { sendRequestViaProfile, resolveDiceProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 import { diceBubble, attachRollToMessage } from "../ui/diceBubble.js";
 import { playRoll, playTierResult } from "./soundFx.js";
@@ -155,7 +155,7 @@ export async function rollDice(playerAction, mesId, { title = null } = {}) {
     const bubble = diceBubble.show(title ? `${title}` : "Judging action...");
     try {
         const st = getContext();
-        const profileId = resolvePremasterProfile(st, s.premaster_profile, s.connection_profile);
+        const profileId = resolveDiceProfile(st, s.dice_profile, s.premaster_profile, s.connection_profile);
         // Deep context (own "Deep Context for Engines" setting) goes into the
         // system message, after the dice engine instructions — the roller must
         // know who and where the scene is to build fitting outcome tiers.

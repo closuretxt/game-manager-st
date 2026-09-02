@@ -14,7 +14,7 @@ import { CHARACTER_CONTAINERS } from "./schemas.js";
 import { skillGuidelines } from "./skillGuidelines.js";
 import { escAttr } from "./toolParser.js";
 import { parseSetupXml, sanitizeProposal, characterToXml, fieldKeysFor, recentChatLines } from "./setupWizard.js";
-import { sendRequestViaProfile, resolveWizardProfile } from "../util/connectionService.js";
+import { sendRequestViaProfile, resolveWizardProfile, hasConnectionProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 
 const CHAR_RESPONSE_SHAPE = [
@@ -75,10 +75,14 @@ const CHAR_REFINE_PROMPT_HEADER = [
 
 // Shared tail of both calls: system prompt + user content -> sanitized char.
 // The user's requested name always wins over whatever the LLM replied.
-async function runCharLLM(systemPrompt, userContent, name) {
+async function runCharLLM(systemPrompt, userContent, name, profileOverride = "") {
     const s = extension_settings[extensionName];
     const st = getContext();
-    const profileId = resolveWizardProfile(st, s.wizard_profile, s.premaster_profile, s.connection_profile);
+    // Optional override (automatic enemy creation uses the Enemy Creation
+    // profile); empty or invalid ids fall back to the wizard chain.
+    const profileId = (profileOverride && hasConnectionProfile(st, profileOverride))
+        ? profileOverride
+        : resolveWizardProfile(st, s.wizard_profile, s.premaster_profile, s.connection_profile);
     const reply = await sendRequestViaProfile(profileId, [
         { role: "system", content: systemPrompt },
         { role: "user", content: userContent },
@@ -191,7 +195,7 @@ function chatBlocks(count = null) {
 
 // Runs the generation call. Returns a sanitized character (wizard party-entry
 // shape) or null on failure.
-export async function generateCharacterProposal({ name, details, references = [], level = null, kind = "party", chatMessages = null } = {}) {
+export async function generateCharacterProposal({ name, details, references = [], level = null, kind = "party", chatMessages = null, profileId = "" } = {}) {
     const s = extension_settings[extensionName];
     if (!s.enabled) return null;
     try {
@@ -200,7 +204,7 @@ export async function generateCharacterProposal({ name, details, references = []
             ...(await deepContextBlocks(details)),
             ...chatBlocks(chatMessages),
         ];
-        const char = await runCharLLM(CHAR_PROMPT_HEADER, blocks.join("\n"), name);
+        const char = await runCharLLM(CHAR_PROMPT_HEADER, blocks.join("\n"), name, profileId);
         if (char) {
             logDebug(`characterGenerator: proposal for "${name}" — ` +
                 CHARACTER_CONTAINERS.map(k => `${k}=${(char[k] || []).length}`).join(" "));
@@ -217,7 +221,7 @@ export async function generateCharacterProposal({ name, details, references = []
 // Recursive refinement: feeds the (possibly user-edited) character back
 // through the LLM. Returns a NEW sanitized character or null (the caller
 // keeps the current one).
-export async function refineCharacterProposal(char, feedback, { name, details, references = [], level = null, kind = "party" } = {}) {
+export async function refineCharacterProposal(char, feedback, { name, details, references = [], level = null, kind = "party", profileId = "" } = {}) {
     const s = extension_settings[extensionName];
     if (!s.enabled || !char) return null;
     try {
@@ -232,7 +236,7 @@ export async function refineCharacterProposal(char, feedback, { name, details, r
             "REFINEMENT FEEDBACK:",
             String(feedback || "(none — deepen the sheet on your own judgment: richer entries, deliberate values, no filler)"),
         ];
-        const refined = await runCharLLM(CHAR_REFINE_PROMPT_HEADER, blocks.join("\n"), name);
+        const refined = await runCharLLM(CHAR_REFINE_PROMPT_HEADER, blocks.join("\n"), name, profileId);
         if (refined) logDebug(`characterGenerator: refined proposal for "${name}"`);
         return refined;
     } catch (e) {

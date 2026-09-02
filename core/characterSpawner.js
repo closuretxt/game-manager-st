@@ -13,12 +13,13 @@
 // feature_enemies. The creator modal is loaded via dynamic import — a
 // static one would create a core -> ui import cycle.
 
-import { extension_settings } from "../../../../extensions.js";
+import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
 import { logDebug, gmNotify } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { progression } from "./progression.js";
 import { generateCharacterProposal } from "./characterGenerator.js";
+import { resolveEnemyCreationProfile } from "../util/connectionService.js";
 
 const MAX_QUEUE = 8; // sanity cap — oldest briefs are dropped first
 
@@ -58,6 +59,12 @@ export const characterSpawner = {
         if (pool.some(c => String(c.name).toLowerCase() === needle)) return false;
         // Already queued for review?
         if (this._queue.some(b => b.name.toLowerCase() === needle)) return false;
+        // Dynamic enemy creation: skip the review flow entirely — the sheet is
+        // generated in the background and injected straight into the state.
+        if (kind === "enemy" && settings().dynamic_enemy_creation) {
+            this._autoCreateEnemy({ name, details: String(details || "").trim(), level: Number(level) || null });
+            return true;
+        }
         if (this._queue.length >= MAX_QUEUE) this._queue.shift();
         this._queue.push({ name, kind, details: String(details || "").trim(), level: Number(level) || null });
         logDebug(`characterSpawner: queued "${name}" (${kind}) — ${this._queue.length} pending`);
@@ -67,6 +74,37 @@ export const characterSpawner = {
 
     pendingCount() {
         return this._queue.length;
+    },
+
+    // Dynamic enemy creation: LLM-generate the sheet (Enemy Creation profile,
+    // falling back to the wizard chain) and apply it directly — the review
+    // popup is skipped. Fire-and-forget: nothing blocks the tracker pass.
+    _autoCreateEnemy({ name, details, level }) {
+        const s = settings();
+        const st = getContext();
+        const profileId = resolveEnemyCreationProfile(st, s.enemy_creation_profile, s.wizard_profile, s.premaster_profile, s.connection_profile);
+        (async () => {
+            try {
+                const char = await generateCharacterProposal({ name, details, references: [], level, kind: "enemy", chatMessages: 10, profileId });
+                if (!char) {
+                    gmNotify(`Could not generate a sheet for ${name} — check the Enemy Creation profile.`, "error");
+                    return;
+                }
+                const created = stateManager.addEnemy(name, char);
+                // Same progression stamping as the creator's Apply: the
+                // (new or restored) enemy spawns as a real party peer.
+                // Stamped AFTER addEnemy — it clones only the containers.
+                if (progression.isEnabled()) {
+                    created.progression = { ...progression.trackOf(created), level: level ?? char.level ?? progression.partyLevel() };
+                    // Stamp happens after addEnemy's emitChange — persist it.
+                    stateManager.emitChange("spawn_enemy_dynamic");
+                }
+                gmNotify(`Enemy ${created.name} generated and injected.`, "success");
+                logDebug(`characterSpawner: dynamically created "${created.name}"`);
+            } catch (e) {
+                console.error("[Game Manager] dynamic enemy creation failed:", e);
+            }
+        })();
     },
 
     // Chip click: generate the next brief's sheet and open the review page.
@@ -93,12 +131,19 @@ export const characterSpawner = {
         if (!brief) return;
         this._busy = true;
         try {
+            // Enemy briefs go through the dedicated Enemy Creation profile
+            // (falls back to the wizard chain); party briefs keep the chain.
+            const s = settings();
+            const st = getContext();
             const char = await generateCharacterProposal({
                 name: brief.name,
                 details: brief.details,
                 references: [],
                 level: brief.level,
                 kind: brief.kind,
+                profileId: brief.kind === "enemy"
+                    ? resolveEnemyCreationProfile(st, s.enemy_creation_profile, s.wizard_profile, s.premaster_profile, s.connection_profile)
+                    : "",
                 // The tracker brief carries no scene context of its own —
                 // give the generator a wider recent-chat window than the
                 // wizard default so it knows WHERE the character appeared.
