@@ -1,6 +1,6 @@
 // Skill tree popup — fullscreen modal with a real top-down node graph.
 // Visible to the user regardless of edit mode (unlocking is gameplay, not
-// editing); edit mode adds Refine / Reset / Regenerate. Nodes inherit from
+// editing); edit mode adds Refine / Revert / Reset / Regenerate. Nodes inherit from
 // their `requires` parents: connector curves flow downward from roots to
 // capstones and are colored by the child's state, so the build path reads at
 // a glance. The tab itself shows a compact launcher; the tree lives in the
@@ -41,6 +41,11 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 // Characters already prompted about the frontier this session (the popup
 // would otherwise re-open on every re-render until the segment is generated).
 const _frontierPrompted = new Set();
+
+// Refinement history per character id: snapshots of the last segment before
+// each successful refine (setup-wizard style rollback). Newest last, capped.
+const _refineHistory = new Map();
+const REFINE_HISTORY_MAX = 5;
 
 export const skillTreeView = {
     // Live popup state (one at a time): element refs + { charId, edit, selectedId }.
@@ -173,6 +178,13 @@ export const skillTreeView = {
             refine.on("click", () => this._refine(char, tree, refine));
             p.tools.append(refine);
 
+            const revert = $("<div>").addClass("menu_button gm_small_btn")
+                .toggleClass("disabled", !(_refineHistory.get(char.id) || []).length)
+                .attr("title", "Restore the segment as it was before the last refine")
+                .append($("<i>").addClass("fa-solid fa-clock-rotate-left"), $("<span>").text(" Revert"));
+            revert.on("click", () => this._revert(char, tree));
+            p.tools.append(revert);
+
             const reset = $("<div>").addClass("menu_button gm_small_btn")
                 .append($("<i>").addClass("fa-solid fa-rotate-left"), $("<span>").text(" Reset Tree"));
             reset.on("click", () => {
@@ -192,6 +204,7 @@ export const skillTreeView = {
                 tree.nodes = [];
                 tree.generated_tiers = 0;
                 p.selectedId = null;
+                _refineHistory.delete(char.id);
                 _frontierPrompted.delete(char.id);
                 stateManager.emitChange("skill_tree_regenerate");
                 this._openWishPopup(char, "first");
@@ -679,6 +692,11 @@ export const skillTreeView = {
                 close();
                 return;
             }
+            // Success: remember the pre-refine segment for Revert.
+            const history = _refineHistory.get(char.id) || [];
+            history.push({ segment: previousSegment, generated_tiers: previousTiers });
+            if (history.length > REFINE_HISTORY_MAX) history.shift();
+            _refineHistory.set(char.id, history);
             gmNotify(`Refined: ${nodes.length} node(s) regenerated.`, "success");
             close();
         });
@@ -691,5 +709,28 @@ export const skillTreeView = {
         );
         overlay.append(dialog);
         $("body").append(overlay);
+    },
+
+    // Edit mode: revert the last refinement, restoring the previous segment
+    // (setup-wizard style rollback). Blocked while any node of the CURRENT
+    // last segment is unlocked (refund those first).
+    _revert(char, tree) {
+        const history = _refineHistory.get(char.id) || [];
+        if (!history.length) {
+            gmNotify("Nothing to revert — no refinement in history.", "info");
+            return;
+        }
+        const lastSegment = tree.nodes.filter(n => Math.trunc(Number(n.tier) || 0) > tree.generated_tiers - skillTree.SEGMENT_TIERS);
+        if (lastSegment.some(n => n.unlocked)) {
+            gmNotify("Refund the unlocked nodes of the latest tiers before reverting.", "warning");
+            return;
+        }
+        const snapshot = history.pop();
+        tree.nodes = tree.nodes.filter(n => !lastSegment.includes(n))
+            .concat(snapshot.segment.map(n => structuredClone(n)));
+        tree.generated_tiers = snapshot.generated_tiers;
+        if (this._popup && this._popup.charId === char.id) this._popup.selectedId = null;
+        stateManager.emitChange("skill_tree_revert");
+        gmNotify("Reverted the last refinement — the previous segment is restored.", "success");
     },
 };
