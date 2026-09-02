@@ -38,7 +38,7 @@ const PROFILE_DRAWERS = [
     {
         select: "gm_dice_profile_select", setting: "dice_profile", key: "dice",
         label: "Dice Rolls profile", icon: "fa-dice-d20",
-        tooltip: "Connection profile used by the dice engine (chance calculations)",
+        tooltip: "Connection profile used for chance calculations (dice engine + clash resolver)",
         emptyText: "Same as Pre-master",
     },
     {

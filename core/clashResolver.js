@@ -16,7 +16,7 @@ import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel } from "./stateManager.js";
 import { parseAttrs, escAttr } from "./toolParser.js";
-import { hasConnectionProfile, resolvePremasterProfile, sendRequestViaProfile } from "../util/connectionService.js";
+import { resolveDiceProfile, sendRequestViaProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 
 const MAX_CONTEXT_MESSAGES = 8;
@@ -180,9 +180,9 @@ export async function resolveClashes({ playerAction = "", partyActions = [], ene
 
     try {
         const st = getContext();
-        const profileId = (s.combat_profile && hasConnectionProfile(st, s.combat_profile))
-            ? s.combat_profile
-            : resolvePremasterProfile(st, s.premaster_profile, s.connection_profile);
+        // Chance engine: same routing as the dice roller (Dice Rolls profile,
+        // falling back to the pre-master chain) — NOT the combat passes.
+        const profileId = resolveDiceProfile(st, s.dice_profile, s.premaster_profile, s.connection_profile);
         let systemContent = SYSTEM_PROMPT;
         if (s.deep_context_engines) {
             const deep = await buildDeepContext(String(playerAction || ""));
