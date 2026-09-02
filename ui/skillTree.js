@@ -692,11 +692,14 @@ export const skillTreeView = {
                 close();
                 return;
             }
-            // Success: remember the pre-refine segment for Revert.
+            // Success: remember the pre-refine segment for Revert. The emit
+            // must come AFTER the push — generateSegment already emitted
+            // skill_tree_generated while the history was still empty.
             const history = _refineHistory.get(char.id) || [];
             history.push({ segment: previousSegment, generated_tiers: previousTiers });
             if (history.length > REFINE_HISTORY_MAX) history.shift();
             _refineHistory.set(char.id, history);
+            stateManager.emitChange("skill_tree_refined");
             gmNotify(`Refined: ${nodes.length} node(s) regenerated.`, "success");
             close();
         });
