@@ -152,7 +152,7 @@ export async function rollDice(playerAction, mesId, { title = null } = {}) {
     // while the dice LLM computes the tiers — the player sees what is being
     // judged instead of a generic "Judging action...".
     const forced = !!title;
-    const bubble = diceBubble.show(title ? `Rolling: ${title}` : "Judging action...");
+    const bubble = diceBubble.show(title ? `${title}` : "Judging action...");
     try {
         const st = getContext();
         const profileId = resolvePremasterProfile(st, s.premaster_profile, s.connection_profile);

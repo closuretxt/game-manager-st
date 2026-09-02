@@ -20,6 +20,18 @@ const MAX_WI_CHARS = 40000;
 // implementation (setup/AnotherExtensionIndex.js runPass): chat strings
 // newest-first + max context + dry run. Dynamic import + guards so a changed
 // world-info.js API never breaks the extension.
+// Reads the user persona description via power-user.js — dynamic import +
+// guard so a changed API just degrades to an empty string.
+async function getPersonaDescription() {
+    try {
+        const pu = await import("../../../../power-user.js");
+        return String(pu?.power_user?.persona_description || "").trim();
+    } catch (e) {
+        logDebug("loreContext: persona description unavailable:", e?.message || e);
+        return "";
+    }
+}
+
 async function activateWorldInfo(chatStrings) {
     try {
         const wi = await import("../../../../world-info.js");
@@ -56,8 +68,13 @@ export async function buildDeepContext(extraText = "") {
         if (cardLines.length) parts.push(`CHARACTER CARD:\n${cardLines.join("\n")}`);
     }
 
-    // User persona.
-    if (st?.name1) parts.push(`USER PERSONA: ${st.name1}`);
+    // User persona — name plus description (when set).
+    if (st?.name1) {
+        const personaLines = [`USER PERSONA: ${st.name1}`];
+        const personaDesc = await getPersonaDescription();
+        if (personaDesc) personaLines.push(personaDesc.slice(0, MAX_NOTE));
+        parts.push(personaLines.join("\n"));
+    }
 
     // Author's note.
     const note = st?.chatMetadata?.note_prompt;
