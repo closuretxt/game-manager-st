@@ -12,9 +12,8 @@
 //   skill        — a SUGGESTION that a tracked skill fits the action (the
 //                  story engine is told to narrate its use)
 //   notes        — free-form contextual remarks worth injecting this turn
-//   rewrite      — clarified version of a vague/contradictory action, or one
-//                  that narrates its own outcome as fact (actions only,
-//                  dialogue cropped out)
+//   rewrite      — clarified version of a vague or self-deciding action
+//                  (actions only, dialogue cropped out)
 //   nothing      — fast path: skip every specialist
 //
 // The pre-pass decides IF; the specialists (diceRoller, transactions) decide
@@ -71,7 +70,7 @@ const SYSTEM_PROMPT = [
     "- <skill>: a light SUGGESTION, not a command — when the action clearly matches the purpose of one of the character's tracked skills that the action does not already name, propose it (\"I charge the ogre with everything I have\" -> Power Attack). At most one per turn; never suggest a skill marked on_cooldown; omit freely when no skill fits — most turns need none.",
     "- <note>: brief free-form information the story engine would otherwise miss and that affects how the scene should unfold right now (local prices, an NPC's hidden intent, a rule of the location). At most two per turn, under 25 words each. This is NOT for tracked values — those go in <relevant> — and NOT for anything the scene text already establishes.",
     "- Knocked-out characters (state=\"ko\") cannot act. When someone is knocked out and the scene allows, a <note> nudging the story toward rest or a timeskip so they can recover is welcome — only where it fits naturally.",
-    "- <rewrite>: ONLY when the action is vague, ambiguous, or self-contradictory AND clarifying it changes what should happen next (\"I grab the coins in my pocket and I hand it to the seller\" -> the amount and target become explicit), OR when the action narrates its own outcome as if it were already decided — META DECISIVE narration. The player only controls the ATTEMPT, never the result: \"I do a backflip and I kill the wolf\" -> \"I try to do a backflip and I strike at the wolf\"; \"I convince the guard to let us in\" -> \"I try to convince the guard to let us in\"; \"I pick the lock and it opens\" -> \"I work on picking the lock\". Keep every action the player wrote, but soften decisive verbs (kill, hit, convince, break, grab... that presuppose success) into attempts (strike at, try to, work on); the outcome belongs to the roll and the story engine. Rules: rewrite ONLY what the player DOES — CROP OUT all dialogue (quoted speech stays the player's own; the story engine already sees the original message); NEVER invent actions the player did not imply; NEVER answer or extend dialogue; NEVER decide what the attempt's result is; keep it under 40 words, plain declarative description of the action. If the action is already clear and humble about its outcome, omit the tag entirely.",
+    "- <rewrite>: when the action is vague or self-contradictory (\"I grab the coins in my pocket and I hand it to the seller\" -> the amount and target become explicit), OR narrates its outcome as already decided: the player controls the ATTEMPT, never the result — \"I do a backflip and I kill the wolf\" -> \"I try to do a backflip and I strike at the wolf\". Rules: actions only (CROP OUT all dialogue — the story engine already sees the original message); NEVER invent actions or decide the attempt's result; under 40 words, plain declarative. If the action is already clear and humble, omit.",
     "- <nothing/>: when NONE of the above applies (pure casual chat, simple dialogue, movement with no stakes). Respond with ONLY <nothing/> and nothing else.",
     "- COOLDOWNS are tracked by the system, not by you: a skill marked on_cooldown in the snapshot is UNAVAILABLE this turn. If the player's action tries to use one, emit a <note> saying that skill is still on cooldown so the story engine can narrate the failed/refused attempt — never decide yourself when a cooldown ends.",
     "",
@@ -88,8 +87,7 @@ const SYSTEM_PROMPT = [
     "- \"I glance at my Mana to see if I can still cast\" -> <relevant character=\"Kira\" names=\"Mana\"/>",
     "- \"I charge the ogre with everything I have\" (Kira has Power Attack) -> <skill char=\"Kira\" name=\"Power Attack\"/>",
     "- \"I grab the coins in my pocket and I hand it to the seller. Here you go, friend.\" -> <transaction resource=\"Dinheiro\" delta=\"0\" comparison=\"\"/> <rewrite text=\"I count out a handful of coins from my pocket and hand them to the seller as payment\"/>",
-    "- \"I do a backflip over the fence and I kill the wolf\" -> <roll needed=\"true\" title=\"Backflip and Strike at the Wolf\"/> <rewrite text=\"I attempt a backflip over the fence and strike at the wolf\"/>",
-    "- \"I charm the merchant and he gives me the sword for half price\" -> <roll needed=\"true\" title=\"Charm the Merchant\"/> <rewrite text=\"I try to charm the merchant into giving me the sword for half price\"/>",
+    "- \"I do a backflip and I kill the wolf\" -> <roll needed=\"true\" title=\"Backflip Strike at the Wolf\"/> <rewrite text=\"I try to do a backflip and strike at the wolf\"/>",
 ].join("\n");
 
 //
