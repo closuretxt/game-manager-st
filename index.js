@@ -30,6 +30,7 @@ function getST() {
 
 // Startup
 jQuery(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 2000)); // So Recast loads first.
     try {
         const settingsHtml = await $.get(`${extensionFolderPath}/index.html`);
         const tempDiv = $("<div>").html(settingsHtml);
