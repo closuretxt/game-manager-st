@@ -15,7 +15,6 @@
         </div>
         <div id="gm_window_actions">
             <div id="gm_btn_edit" class="gm_window_btn"><i class="fa-solid fa-lock"></i></div>
-            <div id="gm_btn_minimize" class="gm_window_btn"><i class="fa-solid fa-minus"></i></div>
             <div id="gm_btn_close" class="gm_window_btn"><i class="fa-solid fa-xmark"></i></div>
         </div>
     </div>
@@ -48,6 +47,10 @@
             <label class="checkbox_label" for="gm_setting_enabled" title="Master switch for every Game Manager feature">
                 <input id="gm_setting_enabled" type="checkbox" />
                 <span>Enabled</span>
+            </label>
+            <label class="checkbox_label" for="gm_setting_bubble_btn" title="Mobile-friendly floating bubble that opens/closes the panel. Tapping elsewhere fades it into a ghost.">
+                <input id="gm_setting_bubble_btn" type="checkbox" />
+                <span>Bubble button (Mobile)</span>
             </label>
 
             <div class="gm_settings_sep">LLM</div>
@@ -225,6 +228,7 @@
             </div>
             <div class="gm_preset_row">
                 <div id="gm_open_panel" class="menu_button"><i class="fa-solid fa-window-restore"></i>&nbsp;Open Panel</div>
+                <div id="gm_reset_panel" class="menu_button" title="Reset the panel to its default size and position"><i class="fa-solid fa-arrows-rotate"></i>&nbsp;Reset Panel</div>
                 <div id="gm_custom_instructions" class="menu_button" title="Standing instructions injected into the pre-pass and post-pass LLM contexts"><i class="fa-solid fa-scroll"></i>&nbsp;Custom instructions</div>
             </div>
 

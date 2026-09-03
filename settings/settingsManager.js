@@ -9,6 +9,8 @@ export const defaultSettings = {
     auto_update: true, // Parse AI tool-tags (change_values etc.) on received messages. Off while the system is a placeholder.
     debug_mode: false,
     open_panel_on_start: true,
+    feature_bubble_button: false, // Mobile-friendly floating bubble that toggles the panel (fades into a ghost when unused).
+    bubble_pos: { x: null, y: null }, // Saved bubble position (null = default bottom-right corner).
 
     // Pre-pass router — LLM judges every fresh action instead of keyword triggers.
     pre_pass: true,
@@ -112,6 +114,7 @@ export async function loadSettings() {
     $("#gm_setting_auto_update").prop("checked", !!s.auto_update);
     $("#gm_setting_debug_mode").prop("checked", !!s.debug_mode);
     $("#gm_setting_open_panel").prop("checked", !!s.open_panel_on_start);
+    $("#gm_setting_bubble_btn").prop("checked", !!s.feature_bubble_button);
     $("#gm_setting_legacy").prop("checked", !!s.legacy_api);
     $("#gm_setting_pre_pass").prop("checked", !!s.pre_pass);
     $("#gm_setting_feat_wizard").prop("checked", !!s.feature_setup_wizard);
@@ -160,6 +163,7 @@ export function saveSettings() {
     s.auto_update = $("#gm_setting_auto_update").prop("checked");
     s.debug_mode = $("#gm_setting_debug_mode").prop("checked");
     s.open_panel_on_start = $("#gm_setting_open_panel").prop("checked");
+    s.feature_bubble_button = $("#gm_setting_bubble_btn").prop("checked");
     s.legacy_api = $("#gm_setting_legacy").prop("checked");
     s.pre_pass = $("#gm_setting_pre_pass").prop("checked");
     s.feature_setup_wizard = $("#gm_setting_feat_wizard").prop("checked");
@@ -197,7 +201,7 @@ export function saveSettings() {
 }
 
 export function initSettingsListeners() {
-    $("#gm_setting_enabled, #gm_setting_auto_update, #gm_setting_debug_mode, #gm_setting_open_panel, #gm_setting_legacy, #gm_setting_pre_pass, " +
+    $("#gm_setting_enabled, #gm_setting_auto_update, #gm_setting_debug_mode, #gm_setting_open_panel, #gm_setting_bubble_btn, #gm_setting_legacy, #gm_setting_pre_pass, " +
       "#gm_setting_feat_wizard, #gm_setting_feat_char_creator, #gm_setting_spawn_review, #gm_setting_dyn_enemies, #gm_setting_deep_context, #gm_setting_deep_context_engines, " +
       "#gm_setting_feat_warnings, #gm_setting_feat_dice, #gm_setting_feat_transactions, #gm_setting_feat_injection, " +
       "#gm_setting_feat_enemies, #gm_setting_feat_rewrite, #gm_setting_feat_skill_suggest, #gm_setting_feat_progression, #gm_setting_feat_skill_tree, " +

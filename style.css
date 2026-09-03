@@ -36,13 +36,6 @@
     font-size: 13px;
 }
 
-#gm_floating_window.gm_minimized {
-    height: 37px !important;
-    min-height: 37px;
-    overflow: hidden;
-    resize: none;
-}
-
 #gm_window_header {
     display: flex;
     align-items: center;
@@ -55,10 +48,6 @@
     background: rgba(0, 0, 0, 0.4);
     border-bottom: 1px solid var(--gm-line);
     border-radius: 10px 10px 0 0;
-}
-
-#gm_floating_window.gm_minimized #gm_window_header {
-    border-radius: 10px;
 }
 
 /* Post-pass busy state: rotating conic sweep clipped to the window's border
@@ -2788,4 +2777,219 @@ body > #gm_spawn_chip {
 
 .gm_build_chip {
     color: #e0a94a;
+}
+
+/* ============================================
+   Mobile / portrait compatibility
+   Full-bleed top-anchored popups, 16px inputs,
+   big touch targets, viewport-safe bubbles
+   ============================================ */
+@media (max-width: 768px), (orientation: portrait) {
+
+    /* Top-anchor all popup overlays (no transform centering) */
+    .gm_modal_overlay,
+    #gm_wizard_overlay,
+    #gm_creator_overlay,
+    .gm_stree_overlay {
+        align-items: flex-start;
+        padding-top: 2.5vh;
+    }
+
+    /* Full-bleed popups: 95vw x 95dvh (vh fallback first) */
+    .gm_modal,
+    .gm_wizard_modal,
+    .gm_stree {
+        width: 95vw;
+        max-width: 95vw;
+        max-height: 95vh;
+        max-height: 95dvh;
+        margin: 0;
+    }
+
+    /* Floating window: 90% of the screen at the sides, sitting below ST's
+       top bar so the grab area (header) stays reachable. --gm-top-inset is
+       measured in JS. !important beats the inline geometry saved from desktop. */
+    #gm_floating_window {
+        left: 5vw !important;
+        top: var(--gm-top-inset, 0px) !important;
+        right: auto !important;
+        bottom: auto !important;
+        width: 90vw !important;
+        max-width: 90vw !important;
+        height: calc(100vh - var(--gm-top-inset, 0px)) !important;
+        height: calc(100dvh - var(--gm-top-inset, 0px)) !important;
+        max-height: calc(100vh - var(--gm-top-inset, 0px)) !important;
+        max-height: calc(100dvh - var(--gm-top-inset, 0px)) !important;
+        margin: 0 !important;
+        border-radius: 10px;
+        resize: none;
+    }
+
+    /* Opacity-only animation: no transform fights top-anchoring */
+    .gm_modal,
+    .gm_wizard_modal,
+    .gm_stree {
+        animation: gm_overlay_in 0.18s ease-out;
+    }
+
+    /* Header drag: keep touch presses from scrolling the page instead. */
+    #gm_window_header {
+        touch-action: none;
+    }
+
+    /* 16px inputs: prevents iOS Safari auto-zoom on focus */
+    .gm_input,
+    textarea.gm_input,
+    select.gm_input,
+    .gm_modal_textarea,
+    .gm_wizard_scenario {
+        font-size: 16px;
+    }
+
+    /* Larger touch targets on small buttons */
+    .gm_icon_btn,
+    .gm_window_btn,
+    .gm_small_btn,
+    .gm_stree_close {
+        min-height: 32px;
+        min-width: 32px;
+        padding: 6px 10px;
+        box-sizing: border-box;
+    }
+
+    .gm_avatar_btn {
+        min-width: 28px;
+        min-height: 28px;
+    }
+
+    /* Comfortable checkboxes/radio rows in wizard modes + options */
+    .gm_wizard_mode label,
+    .gm_wizard_opts label {
+        min-height: 36px;
+        display: flex;
+        align-items: center;
+    }
+
+    .gm_wizard_mode input,
+    .gm_wizard_opts input {
+        width: 18px;
+        height: 18px;
+        flex: 0 0 auto;
+    }
+
+    /* Bubbles never exceed the viewport */
+    #gm_status_bubble,
+    #gm_dice_bubble,
+    #gm_combat_bubble {
+        min-width: 0;
+        max-width: calc(100vw - 16px);
+    }
+
+    #gm_combat_bubble {
+        max-height: 80vh;
+        max-height: 80dvh;
+    }
+
+    /* Spawn chip: shrink + ellipsis instead of overflowing chat bar */
+    #gm_spawn_chip {
+        max-width: calc(100vw - 24px);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* Skill tree popup: full-bleed with internal scroll */
+    .gm_stree {
+        padding: 10px;
+    }
+
+    .gm_stree_node {
+        min-height: 44px;
+    }
+
+    /* Detail panel wraps vertically when narrow */
+    .gm_stree_detail {
+        flex-direction: column;
+        max-height: 60vh;
+        max-height: 60dvh;
+        overflow-y: auto;
+    }
+}
+
+/* Floating bubble button — mobile launcher for the panel. Tapping it
+   toggles the panel; tapping elsewhere fades it into a ghost. */
+#gm_bubble_btn {
+    position: fixed;
+    right: 14px;
+    bottom: 14px;
+    z-index: 3997; /* below wizard/creator overlays (4000) */
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    cursor: pointer;
+    touch-action: none;
+    user-select: none;
+    color: var(--SmartThemeBodyColor, #ccc);
+    background: var(--SmartThemeBlurTintColor, rgba(23, 23, 28, 0.97));
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    animation: gm_overlay_in 0.2s ease-out;
+}
+
+#gm_bubble_btn i {
+    font-size: 20px;
+    pointer-events: none;
+}
+
+/* Ghost state after clicking off it (still visible); hover/press restores it. */
+#gm_bubble_btn.gm_bubble_ghost {
+    opacity: 0.4;
+    transform: scale(0.9);
+}
+
+#gm_bubble_btn.gm_bubble_ghost:hover,
+#gm_bubble_btn.gm_bubble_ghost:active {
+    opacity: 1;
+    transform: scale(1);
+}
+
+/* Fully hidden when the feature or the extension is disabled. */
+#gm_bubble_btn.gm_bubble_hidden {
+    display: none;
+}
+
+/* Panel open/close animations (bubble tap, outside-tap dismissal). */
+#gm_floating_window.gm_panel_in {
+    animation: gm_panel_in 0.3s ease-out;
+}
+
+#gm_floating_window.gm_panel_out {
+    animation: gm_panel_out 0.25s ease-in forwards;
+}
+
+@keyframes gm_panel_in {
+    from {
+        opacity: 0;
+        transform: translateY(14px) scale(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes gm_panel_out {
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0;
+        transform: translateY(10px);
+    }
 }

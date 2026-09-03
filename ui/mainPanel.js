@@ -82,7 +82,6 @@ class MainPanel {
         this.applyBackgroundOpacity();
 
         $("#gm_btn_close").on("click", () => this.close());
-        $("#gm_btn_minimize").on("click", () => this.toggleMinimize());
         $("#gm_btn_edit").on("click", () => this.toggleEditMode());
         $("#gm_btn_rerun").on("click", async () => {
             gmNotify("Running agent pass...", "info");
@@ -90,6 +89,14 @@ class MainPanel {
             gmNotify(applied ? `Agent pass applied ${applied} change(s).` : "Agent pass: no changes.", "success");
         });
         $("#gm_open_panel").on("click", () => this.open());
+        $("#gm_reset_panel").on("click", () => this.resetGeometry());
+
+        // Keep the window below the top bar and in view on changes (mobile).
+        this._updateTopInset();
+        $(window).off("resize.gmclamp").on("resize.gmclamp", () => {
+            this._updateTopInset();
+            if (this.root.is(":visible")) this._clampIntoViewport();
+        });
 
         const shouldOpen = win.open ?? extension_settings[extensionName].open_panel_on_start;
         if (shouldOpen) this.open(false);
@@ -154,24 +161,43 @@ class MainPanel {
         const h = this.root.outerHeight() || 300;
         let x = parseFloat(this.root.css("left")) || 0;
         let y = parseFloat(this.root.css("top")) || 0;
-        x = Math.min(Math.max(x, -(w - 90)), window.innerWidth - 90);
-        y = Math.min(Math.max(y, 0), window.innerHeight - 60);
+        // Near full-bleed viewports (mobile): keep the window fully inside;
+        // wide viewports allow partial offscreen docking on the left edge.
+        const fullBleed = w >= window.innerWidth * 0.85;
+        const minX = fullBleed ? 0 : -(w - 90);
+        const maxX = fullBleed ? Math.max(0, window.innerWidth - w) : window.innerWidth - 90;
+        x = Math.min(Math.max(x, minX), Math.max(minX, maxX));
+        // Keep the grab area (header) below ST's fixed top bar.
+        const inset = this._topInset();
+        y = Math.min(Math.max(y, inset), Math.max(inset, window.innerHeight - 60));
         this.root.css({ left: x + "px", top: y + "px" });
     }
 
     open(persist = true) {
-        this.root.removeClass("gm_minimized").show();
+        // Replay the open animation (opacity + slight rise) on every open.
+        this.root.removeClass("gm_panel_out").removeClass("gm_panel_in");
+        void this.root[0].offsetWidth; // force reflow so the animation restarts
+        this.root.addClass("gm_panel_in").show();
+        this._clampIntoViewport();
         if (persist !== false) {
             const win = this._window;
             win.open = true;
-            win.minimized = false;
             saveSettingsDebounced();
         }
         this.render();
     }
 
     close() {
-        this.root.hide();
+        // Play the close animation, then hide and clean up.
+        this.root.removeClass("gm_panel_in").addClass("gm_panel_out");
+        let done = false;
+        const finish = () => {
+            if (done) return;
+            done = true;
+            this.root.removeClass("gm_panel_out").hide();
+        };
+        this.root.off("animationend.gmpanel").one("animationend.gmpanel", finish);
+        setTimeout(finish, 350); // fallback if the animation event is missed
         const win = this._window;
         win.open = false;
         saveSettingsDebounced();
@@ -180,13 +206,6 @@ class MainPanel {
     toggle() {
         if (this.root.is(":visible")) this.close();
         else this.open();
-    }
-
-    toggleMinimize() {
-        this.root.toggleClass("gm_minimized");
-        const win = this._window;
-        win.minimized = this.root.hasClass("gm_minimized");
-        saveSettingsDebounced();
     }
 
     toggleEditMode() {
@@ -206,23 +225,52 @@ class MainPanel {
         saveSettingsDebounced();
     }
 
+    // Settings button: restore the default window size and position.
+    resetGeometry() {
+        this.root.css({ width: "", height: "" });
+        this.root.css({ left: this._defaultX() + "px", top: "70px" });
+        const win = this._window;
+        win.w = null;
+        win.h = null;
+        win.x = null;
+        win.y = null;
+        saveSettingsDebounced();
+        this._clampIntoViewport();
+        gmNotify("Panel position reset.", "success");
+    }
+
+    // Height of ST's fixed top bar — the grab area must stay below it.
+    _topInset() {
+        return $("#top-bar").outerHeight() || 0;
+    }
+
+    // Expose the top bar height as a CSS var for the mobile full-screen layout.
+    _updateTopInset() {
+        document.documentElement.style.setProperty("--gm-top-inset", this._topInset() + "px");
+    }
+
     _initDrag() {
         let dragging = null;
-        $("#gm_window_header").off("mousedown.gmdrag").on("mousedown.gmdrag", (e) => {
+        // Pointer events cover mouse AND touch; touch-action: none on the
+        // header (mobile media query) stops the page scrolling instead.
+        $("#gm_window_header").off("pointerdown.gmdrag").on("pointerdown.gmdrag", (e) => {
             if ($(e.target).closest(".gm_window_btn").length) return;
+            // Near-full-size mobile layout: the window is viewport-pinned, no drag.
+            if (this.root.outerWidth() >= window.innerWidth * 0.85) return;
             const rect = this.root[0].getBoundingClientRect();
-            dragging = { dx: e.clientX - rect.left, dy: e.clientY - rect.top };
+            dragging = { dx: e.clientX - rect.left, dy: e.clientY - rect.top, id: e.pointerId };
             e.preventDefault();
         });
-        $(document).off("mousemove.gmdrag").on("mousemove.gmdrag", (e) => {
-            if (!dragging) return;
+        $(document).off("pointermove.gmdrag").on("pointermove.gmdrag", (e) => {
+            if (!dragging || e.pointerId !== dragging.id) return;
             const w = this.root.outerWidth() || 400;
             const x = Math.min(Math.max(e.clientX - dragging.dx, -(w - 90)), window.innerWidth - 90);
             const y = Math.min(Math.max(e.clientY - dragging.dy, 0), window.innerHeight - 60);
             this.root.css({ left: x + "px", top: y + "px" });
+            this._clampIntoViewport();
         });
-        $(document).off("mouseup.gmdrag").on("mouseup.gmdrag", () => {
-            if (!dragging) return;
+        $(document).off("pointerup.gmdrag pointercancel.gmdrag").on("pointerup.gmdrag pointercancel.gmdrag", (e) => {
+            if (!dragging || e.pointerId !== dragging.id) return;
             dragging = null;
             this._saveGeometry();
         });
@@ -237,6 +285,7 @@ class MainPanel {
         });
         this._resizeObserver.observe(this.root[0]);
     }
+
 
     // ---------- rendering ----------
     render() {
@@ -258,7 +307,7 @@ class MainPanel {
     _renderWarnings() {
         const strip = $("#gm_warning_strip").empty();
         const warnings = stateManager.getData().warnings || [];
-        if (!warnings.length || this.root.hasClass("gm_minimized")) return;
+        if (!warnings.length) return;
         for (const w of warnings) {
             const row = $("<div>").addClass("gm_warning_row");
             row.append($("<i>").addClass("fa-solid fa-triangle-exclamation"));
