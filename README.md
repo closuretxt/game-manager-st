@@ -22,6 +22,22 @@ This extension DOES NOT inject content by itself. It just exposes macros and exp
 
 Place them anywhere in your preset; Whatever you feel the best.
 
+## HOW TO USE IT
+1 - Check the ST extension page for the extension, enable the bubble if you are mobile or open the panel if you don't see it.
+2 - In that same page scroll to advanced, there you can setup the connection profiles, choose at least the first "Agentic" one.
+*(Choose a cheap, low thinking model, then change as you go.)*
+*(For the Scenario Wizard, choose a strong model with lots of thinking. That's the one that will craft everything you will need.)*
+
+The UI by default is on the standard mode, if you want to setup the scenario or modify something **click the LOCK icon** on the panel, you will enter the creative mode. Once there you can setup the scenario, add characters etc. As you learn at first just setup a scenario and see how it works.
+
+## HOW TO BEGIN
+> Use Wizard to create every stat and progression you will need and framework from your scenario/persona/character/lorebooks.
+*Use "Improved Grounds" if your scenario is inherently not interesting or slice-of-life.*
+*"Skip Characters" to let the LLM focus on scenario only.*
+> Now you add or refine each character manually. (Leave roster characters for later)
+> Start playing, the pre-gamemaster will decide which information is relevant or when to roll something.
+> Check abilities and your skill tree at the Skills Tab. Use skills by mentioning them or their effects.
+
 ## What it does.
 It does exactly what any other tracker would but provides one-click setups, progression system with skill trees and a pre-LLM gamemaster for skill and dice rolling. It can even keep track of large rosters of characters by moving them across Party and Roster states.
 
