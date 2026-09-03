@@ -445,6 +445,16 @@ function storePrePassRaw(playerAction, raw) {
     return storeActionData(playerAction, "gm_prepass", raw);
 }
 
+// Rebuilds a sanitized plan from a stored raw output (swipe recovery) — no
+// LLM call. Returns null when the raw is empty or holds no recognizable tags.
+// The plan is validated against the LIVE state (entries resolved, cooldowns
+// checked), so a swipe whose state was rolled back re-executes exactly what
+// the original turn's router decided.
+export function planFromRaw(raw) {
+    if (!raw) return null;
+    return sanitizePlan(parseReply(String(raw)));
+}
+
 // The pre-pass router's full raw output for the CURRENT action. Priority:
 // 1. the in-memory copy of the run that just happened (same pre-turn pass —
 //    always correct for the dice GM call that follows runPrePass);

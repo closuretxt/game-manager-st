@@ -36,7 +36,7 @@ import { stateManager } from "./stateManager.js";
 import { rollDice, requeueRollResult } from "./diceRoller.js";
 import { runCombatTurn } from "./combatEngine.js";
 import { runTransaction } from "./transactions.js";
-import { runPrePass } from "./prePass.js";
+import { runPrePass, planFromRaw } from "./prePass.js";
 import { restoreSnapshot } from "./snapshots.js";
 import { attachRollToMessage } from "../ui/diceBubble.js";
 import { queueLowOnce, queueLowNote, queueRewrite, queueSkillUse, replayHigh, stashHigh, resetInjectionRecord } from "./injection.js";
@@ -131,18 +131,19 @@ function planFromTriggers(hits) {
 // Swipe/regenerate recovery for a missing stash (page reload, chat switch,
 // or the original turn never stashed). The roll result stored on the action
 // message (gm_roll) is REPLAYED verbatim — swiping never re-rolls: the odds
-// were decided once for this action against this exact state. Everything else
-// is re-judged from the ORIGINAL player action (the user message right before
-// the swiped reply) and handed back to handlePreTurn, which executes the plan
-// like a fresh send. Returns { plan, action } or null.
+// were decided once for this action against this exact state. The plan is
+// rebuilt from the persisted pre-pass output (gm_prepass on the user message)
+// WITHOUT a new router call — the action was already judged once, and a swipe
+// must not throw a redundant API call at it (including a <nothing/> judgment:
+// reused as-is, no specialists run). Only when nothing was persisted (turn
+// predates the persistence or the store failed) does the router re-judge the
+// ORIGINAL player action. Returns { plan, action, reused } or null.
 async function recoverSwipePlan(targetMsgId) {
     const s = extension_settings[extensionName];
     const st = getContext();
     const prev = st.chat?.[targetMsgId - 1];
     const action = prev?.is_user ? String(prev.mes ?? "").trim() : "";
     if (!action) return null;
-
-    console.info(`[GM DIAG] recoverSwipePlan: stash missed — re-judging original action for message ${targetMsgId}`);
 
     // Same roll as the first generation — re-attach the chip and re-queue the
     // result for the prompt; the plan's roll demand is stripped downstream.
@@ -155,11 +156,23 @@ async function recoverSwipePlan(targetMsgId) {
         rollReplayed = true;
     }
 
+    // Fast path: reuse the persisted pre-pass judgment — zero API calls.
+    const storedRaw = prev.gm_prepass ? String(prev.gm_prepass) : "";
+    if (storedRaw) {
+        console.info(`[GM DIAG] recoverSwipePlan: stash missed — reusing persisted pre-pass (${storedRaw.length} chars) for message ${targetMsgId} — no router call`);
+        const plan = planFromRaw(storedRaw);
+        if (!plan || plan.nothing) return { plan: null, action, reused: true };
+        if (rollReplayed) plan.roll = null; // the outcome already exists — never re-roll
+        return { plan, action, reused: true };
+    }
+
+    // Nothing persisted for this action — the only case that pays for a call.
+    console.info(`[GM DIAG] recoverSwipePlan: no persisted pre-pass for message ${targetMsgId} — re-judging original action`);
     statusBubble.show(s.pre_pass ? "Judging action..." : "Checking action...");
     const plan = await runPrePass(action);
-    if (!plan || plan.nothing) return { plan: null, action };
+    if (!plan || plan.nothing) return { plan: null, action, reused: false };
     if (rollReplayed) plan.roll = null; // the outcome already exists — never re-roll
-    return { plan, action };
+    return { plan, action, reused: false };
 }
 
 // Called from the awaited GENERATION_AFTER_COMMANDS handler before prompt
@@ -249,25 +262,28 @@ export async function handlePreTurn(type = "normal") {
     // original turn's results (the previous generation's macro already
     // consumed the live buffers — replayHigh re-queues the stashed payload).
     // When the stash is gone (page reload, chat switch, or the original turn
-    // never stashed), re-judge the ORIGINAL player action so the swipe still
-    // receives the pre-pass context instead of an empty prompt.
+    // never stashed), rebuild the plan from the persisted pre-pass output on
+    // the user message — zero API calls. Only when nothing was persisted does
+    // the router re-judge the ORIGINAL player action.
+    let reusedSwipe = false;
     if (!isPlayerAction) {
         if (!replayHigh(targetMsgId)) {
             const recovered = await recoverSwipePlan(targetMsgId);
             if (recovered) {
                 plan = recovered.plan;
+                reusedSwipe = !!recovered.reused;
                 // Execute the recovered plan like a fresh action — the
                 // specialist block below is gated on `action`, which is
                 // empty on swipes without this.
                 action = recovered.action;
-                console.info(`[GM DIAG] handlePreTurn: swipe recovered action (${action.length} chars) — specialists will run`);
+                console.info(`[GM DIAG] handlePreTurn: swipe recovered action (${action.length} chars) reused=${reusedSwipe} — specialists will run`);
             }
         }
     }
 
     if (!plan || plan.nothing) {
         console.info("[GM DIAG] plan empty/nothing — no specialists will run");
-        statusBubble.done("Nothing to track this turn.");
+        statusBubble.done(reusedSwipe ? "Reused previous results." : "Nothing to track this turn.");
         return;
     }
 
@@ -386,6 +402,6 @@ export async function handlePreTurn(type = "normal") {
         // Keep this turn's queued results for swipes/regenerates of the
         // upcoming AI message (keyed by its id) — replayHigh re-queues them.
         stashHigh(snapshotId);
-        statusBubble.done("All set.");
+        statusBubble.done(reusedSwipe ? "Reused previous results." : "All set.");
     }
 }
