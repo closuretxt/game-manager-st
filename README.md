@@ -1,5 +1,7 @@
 # Game Manager | SillyTavern Extension
 
+⚠️ UNDER TESTING ⚠️
+
 A customizable manager for scenarios for SillyTavern focused in minimal injection and auto-setup. Setup a scenario and characters by giving brief information and the Wizard will use all your world books and cards to make it happen, deciding if the scenario has progression and how it works. Fully compatible with other macro-exposed extensions with custom fields.
 This extension has a focus and limits, it doesn't try to go overboard with features. Aiming to ground the story logic like a game, using factual examples.
 
@@ -34,7 +36,7 @@ The UI by default is on the standard mode, if you want to setup the scenario or 
 > Use Wizard to create every stat and progression you will need and framework from your scenario/persona/character/lorebooks.
 *Use "Improved Grounds" if your scenario is inherently not interesting or slice-of-life.*
 *"Skip Characters" to let the LLM focus on scenario only.*
-> Now you add or refine each character manually. (Leave roster characters for later)
+> Now you add;refine each character manually or proceed if you made them with the scenario. (Leave roster characters for later)
 > Start playing, the pre-gamemaster will decide which information is relevant or when to roll something.
 > Check abilities and your skill tree at the Skills Tab. Use skills by mentioning them or their effects.
 
