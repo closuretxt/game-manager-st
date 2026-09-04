@@ -4,6 +4,7 @@
 
 A customizable manager for scenarios for SillyTavern focused in minimal injection and auto-setup. Setup a scenario and characters by giving brief information and the Wizard will use all your world books and cards to make it happen, deciding if the scenario has progression and how it works. Fully compatible with other macro-exposed extensions with custom fields.
 This extension has a focus and limits, it doesn't try to go overboard with features. Aiming to ground the story logic like a game, using factual examples.
+- It's crafted to be mobile friendly as well.
 
 ## 🚀 Installation
 
@@ -14,15 +15,16 @@ This extension has a focus and limits, it doesn't try to go overboard with featu
 https://github.com/closuretxt/game-manager-st
 ```
 
-⚠️ *This system makes use of extra API calls and context injection, proceed at your own responsability and beware of usage costs.* ⚠️
+⚠️ *This system makes use of extra API calls and context injection, proceed at your own responsability and beware of usage costs* ⚠️
 
 ## IMPORTANT:
 This extension DOES NOT inject content by itself. It just exposes macros and expects you to do it, if there's no values they will be empty.
 **Context injection** - two macros, minimal XML:
 - `{{gamemaster-low-priority}}` - persistent context: active warnings + shared resources flagged "Always inject" (the star feature, e.g.money that is always relevant). Place in the middle as possible or before summary/chat history. Makes cache miss if changed.
-- `{{gamemaster-high-priority}}` - one-shot immediate reports: pending roll results and transaction checks. Place together with your top chat instructions. If you have writing guidances or other injections put them there.
-
-Place them anywhere in your preset; Whatever you feel the best.
+- `{{gamemaster-high-priority}}` - one-shot immediate reports: roll results and transaction checks. Place together with your top chat instructions. If you have writing guidances or other injections put them there.
+- Place them anywhere in your preset; Whatever you feel the best.
+- It's highly recommended to use a quick agentic model like GLM FLASH 5.3 or Gemini Flash Lite. Tweak thinking effort for faster results or more creative results.
+- The lock icon on the panel switch across the standard and edit mode. You can only make changes/setup in the edit mode.
 
 ## HOW TO USE IT
 1 - Check the ST extension page for the extension, enable the bubble if you are mobile or open the panel if you don't see it.
@@ -36,7 +38,7 @@ The UI by default is on the standard mode, if you want to setup the scenario or 
 > Use Wizard to create every stat and progression you will need and framework from your scenario/persona/character/lorebooks.
 *Use "Improved Grounds" if your scenario is inherently not interesting or slice-of-life.*
 *"Skip Characters" to let the LLM focus on scenario only.*
-> Now you add;refine each character manually or proceed if you made them with the scenario. (Leave roster characters for later)
+> Now you add/refine each character manually or proceed if you made them with the scenario. (Leave roster characters for later)
 > Start playing, the pre-gamemaster will decide which information is relevant or when to roll something.
 > Check abilities and your skill tree at the Skills Tab. Use skills by mentioning them or their effects.
 
