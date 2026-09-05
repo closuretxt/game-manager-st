@@ -1,4 +1,4 @@
-# Game Manager | SillyTavern Extension
+# 🐴 ST Gamemaster | SillyTavern Extension
 
 ⚠️ UNDER TESTING ⚠️
 
