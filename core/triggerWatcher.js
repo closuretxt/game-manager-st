@@ -308,6 +308,13 @@ export async function handlePreTurn(type = "normal") {
         // Specialist flows — only on a fresh player action, only for what the
         // plan contains.
         if (action && plan && !plan.nothing) {
+            // The message the action's records (roll/combat chips, rewrite
+            // tag) belong on: the user message itself on fresh actions; on a
+            // swipe/regenerate targetMsgId is the AI reply — the records
+            // belong on the action it answers (targetMsgId - 1). Never the
+            // assistant message: a re-judged swipe roll must look identical
+            // to the original turn's roll placement.
+            const actionMsgId = isPlayerAction ? targetMsgId : Math.max(0, targetMsgId - 1);
             // Combat Mode — the pre-pass judged the action ENGAGES tracked
             // enemies: the opposed resolution (ally AI + enemy AI + clash +
             // dice) replaces the plain dice path entirely. Requires the
@@ -315,14 +322,14 @@ export async function handlePreTurn(type = "normal") {
             if (s.feature_combat && plan.combat?.engaged && (stateManager.getData().enemies || []).length) {
                 logDebug("pre-turn: combat planned — running opposed resolution");
                 statusBubble.close(true); // the combat bubble takes over visually
-                await runCombatTurn(action, plan, targetMsgId);
+                await runCombatTurn(action, plan, actionMsgId);
             } else if (s.feature_dice && plan.roll?.needed) {
                 // Dice — the pre-pass decided IF, the roller decides HOW.
                 logDebug(`pre-turn: roll planned "${plan.roll.title}"`);
                 statusBubble.close(true); // the dice bubble takes over visually
                 // The dice GM reads the router's full persisted output from
                 // the user's message (gm_prepass) — no payload passing needed.
-                await rollDice(action, targetMsgId, { title: plan.roll.title });
+                await rollDice(action, actionMsgId, { title: plan.roll.title });
             }
 
             // Transactions — plan entries carry a pre-judged delta when the
@@ -390,10 +397,9 @@ export async function handlePreTurn(type = "normal") {
             if (s.feature_rewrite && plan.rewrite) {
                 logDebug(`pre-turn: rewrite planned "${plan.rewrite}"`);
                 statusBubble.update("Clarifying action...");
-                // Fresh actions target the user message directly; on a
-                // swipe/regenerate targetMsgId is the AI reply — the tag
-                // belongs on the action it clarifies (targetMsgId - 1).
-                attachRewriteToMessage(isPlayerAction ? targetMsgId : targetMsgId - 1, plan.rewrite);
+                // Same placement contract as the roll/combat chips above:
+                // the tag belongs on the user message the action came from.
+                attachRewriteToMessage(actionMsgId, plan.rewrite);
                 queueRewrite(plan.rewrite);
             }
 

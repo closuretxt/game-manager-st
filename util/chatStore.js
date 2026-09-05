@@ -18,15 +18,19 @@ const RETRY_INTERVAL_MS = 250;
 const RETRY_TIMEOUT_MS = 20000;
 
 // The most recent user message. When `action` is given, only a message whose
-// text matches it exactly qualifies — guards against parked/stale actions
-// from send flows that fire before the message lands.
+// text matches it qualifies — guards against parked/stale actions from send
+// flows that fire before the message lands. Both sides are TRIMMED before
+// comparing: the pipeline normalizes actions with .trim() (handlePreTurn,
+// recoverSwipePlan) while m.mes keeps the raw sent text, so an exact compare
+// silently dropped the store whenever the message carried leading/trailing
+// whitespace — gm_prepass/gm_roll never persisted and swipes re-judged.
 export function findActionMessage(action = null) {
     const chat = getContext()?.chat;
     if (!Array.isArray(chat)) return null;
     for (let i = chat.length - 1; i >= 0; i--) {
         const m = chat[i];
         if (!m?.is_user) continue;
-        if (action == null || String(m.mes ?? "") === String(action)) return m;
+        if (action == null || String(m.mes ?? "").trim() === String(action).trim()) return m;
         break;
     }
     return null;
@@ -65,12 +69,16 @@ function retryUntil(tryWrite, label) {
 
 // Writes `value` under `key` on the message matching `action`. Returns true
 // when written immediately; on a miss it schedules a non-blocking retry and
-// returns false (failures are logged and swallowed).
+// returns false (failures are logged and swallowed). A successful write saves
+// the chat: the pre-turn runs BEFORE ST's end-of-generation save, and an
+// interrupted generation would otherwise leave the record memory-only — gone
+// on reload, so swipes re-judge instead of reusing.
 export function storeActionData(action, key, value) {
     try {
         const m = findActionMessage(action);
         if (m) {
             m[key] = value;
+            saveChatBestEffort();
             return true;
         }
     } catch (e) {
@@ -99,7 +107,10 @@ export function storeMessageData(mesId, key, value) {
         return true;
     };
     try {
-        if (write()) return true;
+        if (write()) {
+            saveChatBestEffort();
+            return true;
+        }
     } catch (e) {
         logDebug(`chatStore: failed to store ${key}:`, e?.message || e);
     }
