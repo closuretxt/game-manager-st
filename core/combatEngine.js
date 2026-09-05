@@ -128,19 +128,39 @@ function buildEnemyActions(enemyActions) {
     }));
 }
 
-// Queues the resolved round for the story LLM (high-priority, one-shot).
-// Deliberately minimal: the story engine only needs WHO did WHAT and HOW IT
-// ENDED — engine internals (speeds, chances) are noise it would trip over.
-function queueCombatRound(groups, winners) {
-    const lines = groups.map((g, i) => {
+// One <clash> line per group. The story engine only needs WHO did WHAT and
+// HOW IT ENDED — engine internals (speeds, chances) are noise it would trip
+// over. Groups persisted by older builds (or a resolver reply without usable
+// sides) can lack actor/action: degrade to the group title instead of
+// emitting empty actor="" attributes the story LLM trips over.
+function buildClashLines(groups, winners) {
+    return groups.map((g, i) => {
         const w = winners[i];
-        const a = g.sides[0] || { actor: "", action: "" };
-        const b = g.sides[1] || null;
-        const vs = b ? ` versus="${esc(b.actor)}"` : "";
-        
-        return `<clash actor="${esc(a.actor)}" action="${esc(a.action)}"${vs} result="${esc(w.name)}">${esc(w.outcome)}</clash>`;
-    });
+        if (!w?.name) return null;
+        const a = g?.sides?.[0] || null;
+        const b = g?.sides?.[1] || null;
+        let actor = String(a?.actor || "").trim();
+        let action = String(a?.action || "").trim();
+        const vs = b?.actor ? ` versus="${esc(b.actor)}"` : "";
+        if (!actor) {
+            const title = String(g?.title || "").trim();
+            const parts = title.split(/\s+vs\.?\s+/i);
+            actor = (parts[0] || title).trim() || "Unknown";
+            if (!action) action = title || "Attack";
+        }
+        return `<clash actor="${esc(actor)}" action="${esc(action)}"${vs} result="${esc(w.name)}">${esc(w.outcome)}</clash>`;
+    }).filter(Boolean);
+}
+
+function queueCombatRoundLines(lines) {
     queueHigh(`<combat_round note="This turn's actions were already resolved by dice; narrate these outcomes as ground truth, never re-roll or re-resolve them.">\n${lines.join("\n")}\n</combat_round>`);
+}
+
+// Queues the resolved round for the story LLM (high-priority, one-shot).
+function queueCombatRound(groups, winners) {
+    const lines = buildClashLines(groups, winners);
+    if (!lines.length) return;
+    queueCombatRoundLines(lines);
 }
 
 // Rebuilds the <combat_round> high-priority injection from a persisted
@@ -148,16 +168,9 @@ function queueCombatRound(groups, winners) {
 export function requeueCombatRound(stored) {
     const groups = Array.isArray(stored?.groups) ? stored.groups : [];
     const winners = Array.isArray(stored?.winners) ? stored.winners : [];
-    const lines = groups.map((g, i) => {
-        const w = winners[i];
-        if (!w?.name) return null;
-        const a = g.sides?.[0] || { actor: "", action: "" };
-        const b = g.sides?.[1] || null;
-        const vs = b ? ` versus="${esc(b.actor)}"` : "";
-        return `<clash actor="${esc(a.actor)}" action="${esc(a.action)}"${vs} result="${esc(w.name)}">${esc(w.outcome)}</clash>`;
-    }).filter(Boolean);
+    const lines = buildClashLines(groups, winners);
     if (!lines.length) return false;
-    queueHigh(`<combat_round note="This turn's actions were already resolved by dice; narrate these outcomes as ground truth, never re-roll or re-resolve them.">\n${lines.join("\n")}\n</combat_round>`);
+    queueCombatRoundLines(lines);
     return true;
 }
 
