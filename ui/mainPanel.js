@@ -18,7 +18,7 @@ import { manualRun } from "../inject/postTurn.js";
 import { getCharacterAvatar, clearAvatarCache, uploadCharacterAvatar, deleteCharacterAvatar, resolveAvatar, extractDominantColor } from "../util/avatars.js";
 import { fadeOutRemove } from "../util/fx.js";
 import { settingsUI } from "./settingsUI.js";
-import { characterView } from "./characterView.js";
+import { characterView, clearEditorState } from "./characterView.js";
 import { customTab } from "./customTab.js";
 import { resourceManager } from "./resourceManager.js";
 import { setupWizard } from "./setupWizard.js";
@@ -212,6 +212,7 @@ class MainPanel {
     toggleEditMode() {
         const s = extension_settings[extensionName];
         s.edit_mode = !s.edit_mode;
+        clearEditorState(); // leaving edit mode discards any unresolved inline editors + drafts
         saveSettingsDebounced();
         this.render();
     }

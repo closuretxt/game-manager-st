@@ -8,7 +8,7 @@
 // see them, the story prompt does not.
 
 import { stateManager } from "../core/stateManager.js";
-import { buildEntryRow, buildEditor } from "./characterView.js";
+import { buildEntryRow, openInlineEditor, openEditors } from "./characterView.js";
 
 export const customTab = {
     render(container, edit = false) {
@@ -28,17 +28,22 @@ export const customTab = {
         const list = $("<div>").addClass("gm_entry_list");
         const custom = stateManager.getData().custom;
         for (const entry of custom) {
-            list.append(buildEntryRow("custom", entry, {
+            const row = buildEntryRow("custom", entry, {
                 metaText: e => e.value ?? "",
                 showActions: edit,
-                onEdit: (e, row) => {
-                    const editor = buildEditor("custom", e,
-                        patch => stateManager.updateCustomEntry(e.id, patch),
-                        () => stateManager.emitChange("cancel_edit"));
-                    row.replaceWith(editor);
-                },
+                onEdit: (e, row) => openInlineEditor("custom", e, row,
+                    patch => stateManager.updateCustomEntry(e.id, patch),
+                    () => stateManager.emitChange("cancel_edit")),
                 onDelete: e => stateManager.removeCustomEntry(e.id),
-            }));
+            });
+            // Re-open an editor that was still unresolved before this render.
+            let el = row;
+            if (edit && openEditors.has(entry.id)) {
+                el = openInlineEditor("custom", entry, row,
+                    patch => stateManager.updateCustomEntry(entry.id, patch),
+                    () => stateManager.emitChange("cancel_edit"));
+            }
+            list.append(el);
         }
         if (!custom.length) {
             list.append($("<div>").addClass("gm_empty").text("No custom features yet."));

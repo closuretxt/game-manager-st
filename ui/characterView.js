@@ -3,6 +3,7 @@
 // shared row/editor builders reused by the Custom and Resource Manager tabs.
 
 import { GM_SCHEMA } from "../core/schemas.js";
+import { logDebug } from "../core/debug.js";
 import { stateManager } from "../core/stateManager.js";
 import { progression } from "../core/progression.js";
 
@@ -101,11 +102,56 @@ function metaFor(type, entry) {
     }
 }
 
+// Entry ids with an open inline editor. Saving/cancelling one entry emits a
+// change that re-renders the whole sheet — the registry lets every render
+// re-open the still-unresolved editors instead of dismissing them.
+export const openEditors = new Set();
+
+// Unsaved values keyed by entry id, so a re-render (e.g. caused by saving a
+// sibling editor) can rebuild the still-open editors with the user's typing.
+const editorDrafts = new Map();
+
+export function clearEditorState() {
+    openEditors.clear();
+    editorDrafts.clear();
+}
+
+// Returns the editor element. If `row` is attached, the editor replaces it in
+// place (click-open path); if detached (render-restore path), the caller must
+// append the returned editor instead of the row.
+export function openInlineEditor(type, entry, row, onSave, onCancel) {
+    openEditors.add(entry.id);
+    const draft = editorDrafts.get(entry.id);
+    const source = draft ? { ...entry, ...draft } : entry;
+    logDebug("editor open:", entry.id, "| open editors:", [...openEditors], draft ? "(with draft)" : "");
+    const editor = buildEditor(type, source,
+        patch => {
+            openEditors.delete(entry.id);
+            editorDrafts.delete(entry.id);
+            logDebug("editor saved:", entry.id, "| remaining:", [...openEditors]);
+            onSave(patch);
+        },
+        () => {
+            openEditors.delete(entry.id);
+            editorDrafts.delete(entry.id);
+            logDebug("editor cancelled:", entry.id, "| remaining:", [...openEditors]);
+            onCancel?.();
+        });
+    // Live-track edits so rebuilds keep the user's unsaved values.
+    editor.on("input change", "[data-field]", function () {
+        const el = $(this);
+        const d = editorDrafts.get(entry.id) || {};
+        d[el.attr("data-field")] = el.is(":checkbox") ? el.prop("checked") : el.val();
+        editorDrafts.set(entry.id, d);
+    });
+    if (row && row.parent().length) row.replaceWith(editor);
+    return editor;
+}
+
 function startInlineEdit(charId, type, entry, row) {
-    const editor = buildEditor(type, entry,
+    return openInlineEditor(type, entry, row,
         patch => stateManager.updateEntry(charId, type, entry.id, patch),
         () => stateManager.emitChange("cancel_edit"));
-    row.replaceWith(editor);
 }
 
 export const characterView = {
@@ -236,7 +282,10 @@ export const characterView = {
             row.append(actions);
         }
         rowWrap.append(row);
-        return rowWrap;
+        // Re-open an editor that was still unresolved before this render.
+        let el = rowWrap;
+        if (edit && openEditors.has(r.id)) el = startInlineEdit(char.id, "resource", r, rowWrap);
+        return el;
     },
 
     _attributeChip(char, a, edit = false) {
@@ -284,7 +333,10 @@ export const characterView = {
             chip.append(actions);
         }
         wrap.append(chip);
-        return wrap;
+        // Re-open an editor that was still unresolved before this render.
+        let el = wrap;
+        if (edit && openEditors.has(a.id)) el = startInlineEdit(char.id, "attribute", a, wrap);
+        return el;
     },
 
     // ---------- generic schema-driven list (Inventory / Skills / Passives) ----------
@@ -306,7 +358,7 @@ export const characterView = {
 
         const list = $("<div>").addClass("gm_entry_list");
         for (const entry of char[def.container]) {
-            list.append(buildEntryRow(type, entry, {
+            const row = buildEntryRow(type, entry, {
                 metaText: e => metaFor(type, e),
                 // Skill cooldown badge: clock + number after the name. Red
                 // while under cooldown (number = messages left), neutral when
@@ -327,7 +379,14 @@ export const characterView = {
                 showActions: edit,
                 onEdit: (e, row) => startInlineEdit(char.id, type, e, row),
                 onDelete: e => stateManager.removeEntry(char.id, type, e.id),
-            }));
+            });
+            let el = row;
+            // Re-open an editor that was still unresolved before this render.
+            if (edit && openEditors.has(entry.id)) {
+                logDebug("restoring open editor:", entry.id);
+                el = startInlineEdit(char.id, type, entry, row);
+            }
+            list.append(el);
         }
         if (!char[def.container].length) {
             list.append($("<div>").addClass("gm_empty").text(`No ${def.plural.toLowerCase()} yet.`));

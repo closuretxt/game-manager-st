@@ -2,7 +2,7 @@
 // Managed ONLY by the user — the AI never touches these.
 
 import { stateManager } from "../core/stateManager.js";
-import { buildEntryRow, buildEditor, iconBtn } from "./characterView.js";
+import { buildEntryRow, openInlineEditor, openEditors, iconBtn } from "./characterView.js";
 
 export const resourceManager = {
     render(container, edit = false) {
@@ -22,7 +22,7 @@ export const resourceManager = {
         const list = $("<div>").addClass("gm_entry_list");
         const shared = stateManager.getData().sharedResources;
         for (const entry of shared) {
-            list.append(buildEntryRow("shared", entry, {
+            const row = buildEntryRow("shared", entry, {
                 metaText: e => `×${e.qty ?? 0}`,
                 showActions: edit,
                 extraActions: edit ? (e, actions) => {
@@ -32,14 +32,19 @@ export const resourceManager = {
                     plus.on("click", () => stateManager.updateSharedEntry(e.id, { qty: (Number(e.qty) || 0) + 1 }));
                     actions.append(minus, plus);
                 } : undefined,
-                onEdit: (e, row) => {
-                    const editor = buildEditor("shared", e,
-                        patch => stateManager.updateSharedEntry(e.id, patch),
-                        () => stateManager.emitChange("cancel_edit"));
-                    row.replaceWith(editor);
-                },
+                onEdit: (e, row) => openInlineEditor("shared", e, row,
+                    patch => stateManager.updateSharedEntry(e.id, patch),
+                    () => stateManager.emitChange("cancel_edit")),
                 onDelete: e => stateManager.removeSharedEntry(e.id),
-            }));
+            });
+            // Re-open an editor that was still unresolved before this render.
+            let el = row;
+            if (edit && openEditors.has(entry.id)) {
+                el = openInlineEditor("shared", entry, row,
+                    patch => stateManager.updateSharedEntry(entry.id, patch),
+                    () => stateManager.emitChange("cancel_edit"));
+            }
+            list.append(el);
         }
         if (!shared.length) {
             list.append($("<div>").addClass("gm_empty").text("No shared resources yet."));
