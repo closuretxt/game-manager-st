@@ -104,7 +104,6 @@ export async function runTransaction(resource, playerAction, mesId = null, plan 
         resource.qty = remaining;
         stateManager.emitChange("transaction");
 
-        // No indentation: LLMs read tags sequentially, alignment just wastes tokens
         queueHigh(`<transaction resource="${resource.name}" current="${current}" transaction="${net}" remaining="${remaining}">${comparison}</transaction>`);
         statusBubble.result(`${resource.name}: ${net >= 0 ? "-" : "+"}${Math.abs(net)} → ${remaining}${comparison ? ` · ${comparison}` : ""}`);
         logDebug(`transactions: ${resource.name} ${current} -> ${remaining} (${comparison})`);

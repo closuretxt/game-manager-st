@@ -23,7 +23,6 @@ const MAX_ROSTER = 24;
 const MAX_LIST = 20;
 
 const RESPONSE_SHAPE = [
-    // No indentation in examples: LLMs read tags sequentially, alignment just wastes tokens
     '<setup name="<short scenario title>">',
     "<party> <!-- FULLY tracked characters, at most the given party cap -->",
     '<char name="..."> <!-- give a char ONLY the containers that matter for them; omit the rest -->',

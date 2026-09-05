@@ -107,8 +107,8 @@ export function replayHigh(mesId) {
 export function queueRewrite(text) {
     const t = esc(String(text ?? "").trim());
     if (!t) return;
-    // No indentation: LLMs read tags sequentially, alignment just wastes tokens
-    queueHigh(`<action_rewrite note="The player's clarified intent for this turn; the original message may be vague or contradictory. Dialogue in the original message still stands.">${t}</action_rewrite>`);
+    
+    queueHigh(`<action_rewrite note="The original message may be vague, contain meta, deterministic narration or contradictory. Dialogue in the original message still stands.">${t}</action_rewrite>`);
 }
 
 // Queues a ONE-SHOT high-priority skill suggestion produced by the pre-pass:

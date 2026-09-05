@@ -51,7 +51,7 @@ const SYSTEM_PROMPT = [
     "",
     "OUTPUT FORMAT:",
     "Respond with ONLY XML tags — no markdown fences, no prose, no explanations. Every tag is OPTIONAL; emit only what applies:",
-    // No indentation in examples: LLMs read tags sequentially, alignment just wastes tokens
+    
     '<roll needed="true" title="<short action title, e.g. Use Fireball on Goblin>"/>',
     '<combat engaged="true" speed="<initiative value, 0 if unknown>"/>',
     '<transaction resource="<shared resource name>" delta="<signed number, negative = spending>" comparison="<plain-language note, under 12 words>"/>',
@@ -109,7 +109,7 @@ async function collectContext(playerAction) {
     for (const c of d.characters || []) {
         // The dead have nothing left to judge — collapse their entry.
         if (c.state?.mode === "dead") {
-            // No indentation: LLMs read tags sequentially, alignment just wastes tokens
+            
             parts.push(`<char name="${escAttr(c.name)}" state="dead"${c.state.reason ? ` reason="${escAttr(c.state.reason)}"` : ""}/>`);
             continue;
         }

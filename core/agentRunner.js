@@ -57,7 +57,6 @@ function buildStateSummaryXml() {
         // the entry entirely; recoverable ones keep the sheet (they can come
         // back) flagged with state="<mode>".
         if (c.state && !CHARACTER_STATES[c.state.mode]?.llm_clearable) {
-            // No indentation: LLMs read tags sequentially, alignment just wastes tokens
             return `<${tag} name="${escAttr(c.name)}" state="${c.state.mode}"${c.state.reason ? ` reason="${escAttr(c.state.reason)}"` : ""}/>`;
         }
         const attrs = [`name="${escAttr(c.name)}"`];

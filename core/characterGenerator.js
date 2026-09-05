@@ -18,7 +18,6 @@ import { sendRequestViaProfile, resolveWizardProfile, hasConnectionProfile } fro
 import { buildDeepContext } from "../util/loreContext.js";
 
 const CHAR_RESPONSE_SHAPE = [
-    // No indentation in examples: LLMs read tags sequentially, alignment just wastes tokens
     '<setup name="<short source/title>">',
     "<party>",
     '<char name="..." level="N"> <!-- exactly ONE char; level = progression level (see rules); give only the containers that matter for them -->',

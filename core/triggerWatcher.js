@@ -355,7 +355,6 @@ export async function handlePreTurn(type = "normal") {
                 for (const rel of plan.relevant) {
                     if (rel.entry) {
                         if (rel.entry.always_inject || transacted.has(rel.entry.id)) continue;
-                        // No indentation: LLMs read tags sequentially, alignment just wastes tokens
                         queueLowOnce(`<resource name="${rel.entry.name}" value="${rel.entry.qty}"/>`);
                     } else if (rel.skill) {
                         // Skill cooldown state (turns 0 = ready) — relevance-gated

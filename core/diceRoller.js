@@ -130,8 +130,6 @@ export function weightedRoll(tiers) {
 }
 
 function queueRollResult(title, tier) {
-    // Minimal injection: the story engine needs the outcome, not the odds.
-    // No indentation: LLMs read tags sequentially, alignment just wastes tokens
     queueHigh(`<roll title="${title}" tier="${tier.name}">${tier.outcome}</roll>`);
 }
 

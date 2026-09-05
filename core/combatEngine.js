@@ -137,7 +137,7 @@ function queueCombatRound(groups, winners) {
         const a = g.sides[0] || { actor: "", action: "" };
         const b = g.sides[1] || null;
         const vs = b ? ` versus="${esc(b.actor)}"` : "";
-        // No indentation: LLMs read tags sequentially, alignment just wastes tokens
+        
         return `<clash actor="${esc(a.actor)}" action="${esc(a.action)}"${vs} result="${esc(w.name)}">${esc(w.outcome)}</clash>`;
     });
     queueHigh(`<combat_round note="This turn's actions were already resolved by dice; narrate these outcomes as ground truth, never re-roll or re-resolve them.">\n${lines.join("\n")}\n</combat_round>`);

@@ -41,8 +41,8 @@ const SYSTEM_PROMPT = [
     "Pair the actions into clash groups and, for each group, provide exactly 4 ordered chance tiers (Critical Failure / Failure / Success / Critical Success) with short outcome lines. Chances are percentages of a 100% total.",
     "",
     "OUTPUT FORMAT:",
-    "Respond with ONLY XML — no markdown fences, no prose:",
-    // No indentation in examples: LLMs read tags sequentially, alignment just wastes tokens
+    "Responwith ONLY XML — no markdown fences, no prose:", 
+    
     '<clashes>',
     '<clash title="Knight\'s Slash vs Goblin A\'s Swing">',
     '<side who="party" actor="Knight" speed="3" action="Slash at Goblin A"/>',
