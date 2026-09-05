@@ -57,7 +57,8 @@ function buildStateSummaryXml() {
         // the entry entirely; recoverable ones keep the sheet (they can come
         // back) flagged with state="<mode>".
         if (c.state && !CHARACTER_STATES[c.state.mode]?.llm_clearable) {
-            return `  <${tag} name="${escAttr(c.name)}" state="${c.state.mode}"${c.state.reason ? ` reason="${escAttr(c.state.reason)}"` : ""}/>`;
+            // No indentation: LLMs read tags sequentially, alignment just wastes tokens
+            return `<${tag} name="${escAttr(c.name)}" state="${c.state.mode}"${c.state.reason ? ` reason="${escAttr(c.state.reason)}"` : ""}/>`;
         }
         const attrs = [`name="${escAttr(c.name)}"`];
         if (c.state) attrs.push(`state="${c.state.mode}"`);
@@ -82,7 +83,7 @@ function buildStateSummaryXml() {
         if (skills) attrs.push(`skills="${skills}"`);
         const statuses = (c.statuses || []).map(st => `${escAttr(st.name)}${st.modifiers ? ` (${escAttr(st.modifiers)})` : ""}`).join(", ");
         if (statuses) attrs.push(`statuses="${statuses}"`);
-        return `  <${tag} ${attrs.join(" ")}/>`;
+        return `<${tag} ${attrs.join(" ")}/>`;
     };
 
     const parts = ['<state note="values are value/max; skills as Name (cost); * = skill on cooldown; statuses as Name (modifiers)">'];
@@ -95,15 +96,15 @@ function buildStateSummaryXml() {
     // Shared party resources: visible to the tracker so it can account
     // consumption the pre-pass transaction engine did not already handle.
     if ((d.sharedResources || []).length) {
-        parts.push(`  <shared>${d.sharedResources.map(r => `${escAttr(r.name)}=${escAttr(r.qty)}`).join("; ")}</shared>`);
+        parts.push(`<shared>${d.sharedResources.map(r => `${escAttr(r.name)}=${escAttr(r.qty)}`).join("; ")}</shared>`);
     }
     if ((d.custom || []).length) {
-        parts.push(`  <custom>${d.custom.map(c => `${escAttr(c.name)}=${escAttr(c.value)}`).join("; ")}</custom>`);
+        parts.push(`<custom>${d.custom.map(c => `${escAttr(c.name)}=${escAttr(c.value)}`).join("; ")}</custom>`);
     }
     // Open threads: untracked/unfinished things + secrets the agent left
     // for itself (also visible to the pre-pass, never to the story prompt).
     for (const t of d.threads || []) {
-        parts.push(`  <thread name="${escAttr(t.name)}"${t.ref ? ` ref="${escAttr(t.ref)}"` : ""}>${escAttr(t.text)}</thread>`);
+        parts.push(`<thread name="${escAttr(t.name)}"${t.ref ? ` ref="${escAttr(t.ref)}"` : ""}>${escAttr(t.text)}</thread>`);
     }
     parts.push("</state>");
     return parts.join("\n");
@@ -159,22 +160,22 @@ async function buildSystemPrompt(exchange = []) {
         "- For consumption or gains the exchange shows that the game system did NOT process (the story engine narrated a purchase, a toll, a meal from party supplies, loot split into the party purse), report it with <change_values><shared name=\"...\" delta=\"...\"/></change_values>. Estimate the amount from the setting's scale; spending is capped at the current value automatically.",
         "",
         "Available blocks:",
-        '  <change_values><char>Name</char><resource name="HP" delta="-12"|value="45"/><attribute name="STR" delta="1"/></change_values>',
-        '  <change_values><shared name="Dinheiro" delta="-6"/></change_values>',
-        '  <set_attributes><char>Name</char><attribute name="STR" value="14"/></set_attributes>',
-        '  <add_items><char>Name</char><item name="Rope" qty="1" description="..."/></add_items>',
-        '  <remove_items><char>Name</char><item name="Ammo" qty="3"/></remove_items>',
-        '  <update_custom><entry name="Seeds" value="Sprouting" description="..."/></update_custom>',
-        '  <set_statuses><char>Name</char><status name="Dazed" modifiers="Aim -2" effect="..."/></set_statuses>',
-        '  <clear_statuses><char>Name</char><status name="Dazed"/></clear_statuses>',
-        '  <use_skills><char>Name</char><skill name="Fireball"/><skill name="Dash"/></use_skills>',
-        '  <warnings><warning name="Food" text="You have about two days of food left."/><warning_clear name="Food"/></warnings>',
-        '  <threads><thread name="Fuel trip" text="Left town with 40L fuel; ~120 km driven so far" ref="started when leaving town"/><thread_clear name="Fuel trip"/></threads>',
-        '  <enemies><enemy action="add" name="Goblin"><resource name="HP" value="30" max="30"/><passive name="Brutal" description="+2 damage below half HP"/></enemy><enemy action="update" name="Goblin"><resource name="HP" delta="-7"/><status name="Wounded" modifiers="Aim -2"/></enemy><enemy action="remove" name="Goblin" reason="defeated"/></enemies>',
-        ...(spawnReview ? ['  <new_characters><char name="Kael" kind="party" details="wounded knight the party rescued, stoic and dry-humored" level="3"/><char name="Goblin Chief" kind="enemy" details="scarred veteran leading the warband, brutal close-quarters fighter"/></new_characters>'] : []),
-        ...(s.feature_death !== false ? ['  <deaths><death char="Name" reason="short cause of death"/></deaths>'] : []),
-        '  <knockouts><ko char="Name" reason="short cause"/><ko_clear char="Name"/></knockouts>',
-        ...(prog ? ['  <grant_exp><char>Name</char><exp amount="25"/></grant_exp>'] : []),
+        '<change_values><char>Name</char><resource name="HP" delta="-12"|value="45"/><attribute name="STR" delta="1"/></change_values>',
+        '<change_values><shared name="Dinheiro" delta="-6"/></change_values>',
+        '<set_attributes><char>Name</char><attribute name="STR" value="14"/></set_attributes>',
+        '<add_items><char>Name</char><item name="Rope" qty="1" description="..."/></add_items>',
+        '<remove_items><char>Name</char><item name="Ammo" qty="3"/></remove_items>',
+        '<update_custom><entry name="Seeds" value="Sprouting" description="..."/></update_custom>',
+        '<set_statuses><char>Name</char><status name="Dazed" modifiers="Aim -2" effect="..."/></set_statuses>',
+        '<clear_statuses><char>Name</char><status name="Dazed"/></clear_statuses>',
+        '<use_skills><char>Name</char><skill name="Fireball"/><skill name="Dash"/></use_skills>',
+        '<warnings><warning name="Food" text="You have about two days of food left."/><warning_clear name="Food"/></warnings>',
+        '<threads><thread name="Fuel trip" text="Left town with 40L fuel; ~120 km driven so far" ref="started when leaving town"/><thread_clear name="Fuel trip"/></threads>',
+        '<enemies><enemy action="add" name="Goblin"><resource name="HP" value="30" max="30"/><passive name="Brutal" description="+2 damage below half HP"/></enemy><enemy action="update" name="Goblin"><resource name="HP" delta="-7"/><status name="Wounded" modifiers="Aim -2"/></enemy><enemy action="remove" name="Goblin" reason="defeated"/></enemies>',
+        ...(spawnReview ? ['<new_characters><char name="Kael" kind="party" details="wounded knight the party rescued, stoic and dry-humored" level="3"/><char name="Goblin Chief" kind="enemy" details="scarred veteran leading the warband, brutal close-quarters fighter"/></new_characters>'] : []),
+        ...(s.feature_death !== false ? ['<deaths><death char="Name" reason="short cause of death"/></deaths>'] : []),
+        '<knockouts><ko char="Name" reason="short cause"/><ko_clear char="Name"/></knockouts>',
+        ...(prog ? ['<grant_exp><char>Name</char><exp amount="25"/></grant_exp>'] : []),
         "",
         "Use <warnings> ONLY for imminent, concrete needs the player should prepare for (supplies running out, deadlines, approaching dangers). Keep warning text under 15 words. Clear a warning when its cause is resolved. Do not re-emit unchanged warnings every turn.",
         "Use <threads> to leave notes to yourself about UNTRACKED or UNFINISHED things the formal containers cannot hold: ongoing trips (fuel/money spent so far), half-done actions, unresolved behavior, or secrets that must stay hidden from the player. ALWAYS record where/when it started (ref) so you can compare progress later (\"started when leaving town\", \"day 2 of the siege\"). Update the thread as things progress; clear it (thread_clear) as soon as it is finished or irrelevant. Threads are invisible to the player and never injected into the story prompt — the pre-pass decides what the story needs to know.",

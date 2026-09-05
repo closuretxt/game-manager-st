@@ -40,9 +40,9 @@ function charSummary(char) {
     const track = progression.trackOf(char);
     const lines = [
         `<char name="${escAttr(char.name)}" level="${track.level}" skill_points="${track.skill_points}">`,
-        `  <attributes>${(char.attributes || []).map(a => `${a.name} ${a.value}`).join(", ")}</attributes>`,
-        `  <skills>${(char.skills || []).map(s => `${s.name}${s.cost ? ` (cost: ${s.cost})` : ""}${s.cooldown ? ` (cooldown: ${s.cooldown} messages)` : ""}`).join(", ") || "none"}</skills>`,
-        `  <passives>${(char.passives || []).map(p => p.name).join(", ") || "none"}</passives>`,
+        `<attributes>${(char.attributes || []).map(a => `${a.name} ${a.value}`).join(", ")}</attributes>`,
+        `<skills>${(char.skills || []).map(s => `${s.name}${s.cost ? ` (cost: ${s.cost})` : ""}${s.cooldown ? ` (cooldown: ${s.cooldown} messages)` : ""}`).join(", ") || "none"}</skills>`,
+        `<passives>${(char.passives || []).map(p => p.name).join(", ") || "none"}</passives>`,
     ];
     lines.push("</char>");
     return lines.join("\n");
@@ -96,7 +96,7 @@ export const skillTree = {
                 "",
             ] : []),
             "Output ONLY a <skilltree> block, one <node/> per skill tree node:",
-            '  <skilltree><node id="n1" tier="4" cost="1" requires="n0" type="upgrade" target="Fireball" name="Greater Fireball" description="+1 target, halved cost"/></skilltree>',
+            '<skilltree><node id="n1" tier="4" cost="1" requires="n0" type="upgrade" target="Fireball" name="Greater Fireball" description="+1 target, halved cost"/></skilltree>',
             "",
             "Rules:",
             '- type is one of: "upgrade" (improves an EXISTING skill — set target="<exact skill name>"; description states exactly what changes and how the skill reads after the upgrade), "active" (brand-new skill the character deliberately uses in play), "passive" (permanent effect, no activation needed), "stat" (raises an attribute — description MUST read like "Strength +1").',
@@ -124,12 +124,12 @@ export const skillTree = {
         userParts.push(`CHARACTER SHEET:\n${charSummary(char)}`);
         userParts.push(`EXP CURVE: exp_base=${cfg.exp_base}, exp_growth=${cfg.exp_growth}, skill_points_per_level=${cfg.skill_points_per_level}, bonus_every=${cfg.bonus_every}`);
         userParts.push(tree.generated_tiers > 0
-            ? `FRONTIER (last generated tier ${tree.generated_tiers}); new tiers are ${tree.generated_tiers + 1}-${tree.generated_tiers + SEGMENT_TIERS}:\n${frontier.map(n => `  <node id="${escAttr(n.id)}" tier="${n.tier}" type="${escAttr(n.type)}" name="${escAttr(n.name)}" unlocked="${!!n.unlocked}">${escAttr(n.description)}</node>`).join("\n")}`
+            ? `FRONTIER (last generated tier ${tree.generated_tiers}); new tiers are ${tree.generated_tiers + 1}-${tree.generated_tiers + SEGMENT_TIERS}:\n${frontier.map(n => `<node id="${escAttr(n.id)}" tier="${n.tier}" type="${escAttr(n.type)}" name="${escAttr(n.name)}" unlocked="${!!n.unlocked}">${escAttr(n.description)}</node>`).join("\n")}`
             : `This is the FIRST segment: tiers 1-${SEGMENT_TIERS}. Tier 1 nodes have no requirements.`);
 
         // Refine pass: show the segment being replaced so the LLM edits it.
         if (refining) {
-            userParts.push(`CURRENT SEGMENT (tiers ${tree.generated_tiers + 1}-${tree.generated_tiers + SEGMENT_TIERS}) — improve these nodes, don't replace them:\n${previousSegment.map(n => `  <node id="${escAttr(n.id)}" tier="${n.tier}" cost="${n.cost}" type="${escAttr(n.type)}"${n.target ? ` target="${escAttr(n.target)}"` : ""} name="${escAttr(n.name)}"${(n.requires || []).length ? ` requires="${escAttr(n.requires.join(" "))}"` : ""}>${escAttr(n.description)}</node>`).join("\n")}`);
+            userParts.push(`CURRENT SEGMENT (tiers ${tree.generated_tiers + 1}-${tree.generated_tiers + SEGMENT_TIERS}) — improve these nodes, don't replace them:\n${previousSegment.map(n => `<node id="${escAttr(n.id)}" tier="${n.tier}" cost="${n.cost}" type="${escAttr(n.type)}"${n.target ? ` target="${escAttr(n.target)}"` : ""} name="${escAttr(n.name)}"${(n.requires || []).length ? ` requires="${escAttr(n.requires.join(" "))}"` : ""}>${escAttr(n.description)}</node>`).join("\n")}`);
         }
         const wish = String(userWish || "").trim();
         if (wish) {

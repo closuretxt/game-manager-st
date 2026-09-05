@@ -23,22 +23,23 @@ const MAX_ROSTER = 24;
 const MAX_LIST = 20;
 
 const RESPONSE_SHAPE = [
+    // No indentation in examples: LLMs read tags sequentially, alignment just wastes tokens
     '<setup name="<short scenario title>">',
-    "  <party>  <!-- FULLY tracked characters, at most the given party cap -->",
-    '    <char name="...">  <!-- give a char ONLY the containers that matter for them; omit the rest -->',
-    '      <resource name="Health" value="80" min="0" max="100" description="..."/>',
-    '      <attribute name="Strength" value="5" description="..."/>',
-    '      <item name="Rope" qty="1" description="..."/>',
-    '      <skill name="Fireball" cost="10 Mana" cooldown="2" description="..."/>  <!-- cooldown in messages; 0 or omitted = always ready -->',
-    '      <passive name="Tough" ptype="stat" description="..."/>  <!-- ptype: special|stat -->',
-    '      <status name="Dazed" modifiers="Aim -2" effect="..."/>  <!-- TEMPORARY conditions only, removed when they end -->',
-    "    </char>",
-    "  </party>",
-    '  <ally name="..." note="<one line: who they are, why they matter>"/>',
-    '  <shared name="Dinheiro" qty="150" description="..." always_inject="false"/>',
-    '  <custom name="Seeds" value="Pouch" description="..."/>  <!-- gimmick, objective, clock or note -->',
-    '  <progression enabled="true" exp_base="100" exp_growth="1.25" skill_points="1" bonus_every="5" attr_points="0" attr_cost_every="10" attr_starting_budget="20">EXP guidelines: how much EXP trivial actions, minor victories and major challenges give</progression>',
-    '  <warning name="Food" text="<under 15 words, imminent need>"/>',
+    "<party> <!-- FULLY tracked characters, at most the given party cap -->",
+    '<char name="..."> <!-- give a char ONLY the containers that matter for them; omit the rest -->',
+    '<resource name="Health" value="80" min="0" max="100" description="..."/>',
+    '<attribute name="Strength" value="5" description="..."/>',
+    '<item name="Rope" qty="1" description="..."/>',
+    '<skill name="Fireball" cost="10 Mana" cooldown="2" description="..."/> <!-- cooldown in messages; 0 or omitted = always ready -->',
+    '<passive name="Tough" ptype="stat" description="..."/> <!-- ptype: special|stat -->',
+    '<status name="Dazed" modifiers="Aim -2" effect="..."/> <!-- TEMPORARY conditions only, removed when they end -->',
+    "</char>",
+    "</party>",
+    '<ally name="..." note="<one line: who they are, why they matter>"/>',
+    '<shared name="Dinheiro" qty="150" description="..." always_inject="false"/>',
+    '<custom name="Seeds" value="Pouch" description="..."/> <!-- gimmick, objective, clock or note -->',
+    '<progression enabled="true" exp_base="100" exp_growth="1.25" skill_points="1" bonus_every="5" attr_points="0" attr_cost_every="10" attr_starting_budget="20">EXP guidelines: how much EXP trivial actions, minor victories and major challenges give</progression>',
+    '<warning name="Food" text="<under 15 words, imminent need>"/>',
     "</setup>",
 ].join("\n");
 
@@ -108,9 +109,9 @@ async function collectContext(scenarioText, { skipCharacters = false, improvedGr
 
     // Existing names as compact XML — the LLM reads it far better than JSON.
     const existingParts = [
-        `  <party>${(d.characters || []).map(c => escAttr(c.name)).join(", ")}</party>`,
-        `  <roster>${(d.roster || []).map(r => escAttr(r.name)).join(", ")}</roster>`,
-        `  <shared>${(d.sharedResources || []).map(r => escAttr(r.name)).join(", ")}</shared>`,
+        `<party>${(d.characters || []).map(c => escAttr(c.name)).join(", ")}</party>`,
+        `<roster>${(d.roster || []).map(r => escAttr(r.name)).join(", ")}</roster>`,
+        `<shared>${(d.sharedResources || []).map(r => escAttr(r.name)).join(", ")}</shared>`,
     ];
 
     const recent = recentChatLines(s.wizard_chat_messages);
@@ -403,17 +404,17 @@ export function characterToXml(c) {
     // (party AND enemies) keep it on the progression track; proposals carry
     // it as a plain field.
     const lvl = Math.trunc(Number(c?.level ?? c?.progression?.level));
-    const lines = [`  <char name="${escAttr(c?.name)}"${Number.isFinite(lvl) && lvl >= 1 ? ` level="${lvl}"` : ""}>`];
+    const lines = [`<char name="${escAttr(c?.name)}"${Number.isFinite(lvl) && lvl >= 1 ? ` level="${lvl}"` : ""}>`];
     for (const [container, tag] of Object.entries(PROMPT_CONTAINER_TAGS)) {
         for (const e of c?.[container] || []) {
             const attrs = Object.entries(e)
                 .filter(([k]) => k !== "id")
                 .map(([k, v]) => `${k}="${escAttr(v)}"`)
                 .join(" ");
-            lines.push(`    <${tag} ${attrs}/>`);
+            lines.push(`<${tag} ${attrs}/>`);
         }
     }
-    lines.push("  </char>");
+    lines.push("</char>");
     return lines.join("\n");
 }
 
@@ -421,25 +422,25 @@ export function characterToXml(c) {
 function proposalToPromptXml(p) {
     const lines = [`<setup name="${escAttr(p.scenarioName)}">`];
     for (const c of p.party || []) {
-        lines.push(`  <char name="${escAttr(c.name)}">`);
+        lines.push(`<char name="${escAttr(c.name)}">`);
         for (const [container, tag] of Object.entries(PROMPT_CONTAINER_TAGS)) {
             for (const e of c[container] || []) {
                 const attrs = Object.entries(e)
                     .filter(([k]) => k !== "id")
                     .map(([k, v]) => `${k}="${escAttr(v)}"`)
                     .join(" ");
-                lines.push(`    <${tag} ${attrs}/>`);
+                lines.push(`<${tag} ${attrs}/>`);
             }
         }
-        lines.push("  </char>");
+        lines.push("</char>");
     }
-    for (const a of p.roster || []) lines.push(`  <ally name="${escAttr(a.name)}" note="${escAttr(a.note)}"/>`);
-    for (const r of p.sharedResources || []) lines.push(`  <shared name="${escAttr(r.name)}" qty="${escAttr(r.qty)}" description="${escAttr(r.description)}" always_inject="${r.always_inject ? "true" : "false"}"/>`);
-    for (const c of p.custom || []) lines.push(`  <custom name="${escAttr(c.name)}" value="${escAttr(c.value)}" description="${escAttr(c.description)}"/>`);
-    for (const w of p.warnings || []) lines.push(`  <warning name="${escAttr(w.name)}" text="${escAttr(w.text)}"/>`);
+    for (const a of p.roster || []) lines.push(`<ally name="${escAttr(a.name)}" note="${escAttr(a.note)}"/>`);
+    for (const r of p.sharedResources || []) lines.push(`<shared name="${escAttr(r.name)}" qty="${escAttr(r.qty)}" description="${escAttr(r.description)}" always_inject="${r.always_inject ? "true" : "false"}"/>`);
+    for (const c of p.custom || []) lines.push(`<custom name="${escAttr(c.name)}" value="${escAttr(c.value)}" description="${escAttr(c.description)}"/>`);
+    for (const w of p.warnings || []) lines.push(`<warning name="${escAttr(w.name)}" text="${escAttr(w.text)}"/>`);
     if (p.progression) {
         const g = p.progression;
-        lines.push(`  <progression enabled="${g.enabled !== false ? "true" : "false"}" exp_base="${escAttr(g.exp_base)}" exp_growth="${escAttr(g.exp_growth)}" skill_points="${escAttr(g.skill_points_per_level)}" bonus_every="${escAttr(g.bonus_every)}" attr_points="${escAttr(g.attr_points_per_level)}" attr_cost_every="${escAttr(g.attr_cost_every)}" attr_starting_budget="${escAttr(g.attr_starting_budget)}">${escAttr(g.exp_guidelines || "")}</progression>`);
+        lines.push(`<progression enabled="${g.enabled !== false ? "true" : "false"}" exp_base="${escAttr(g.exp_base)}" exp_growth="${escAttr(g.exp_growth)}" skill_points="${escAttr(g.skill_points_per_level)}" bonus_every="${escAttr(g.bonus_every)}" attr_points="${escAttr(g.attr_points_per_level)}" attr_cost_every="${escAttr(g.attr_cost_every)}" attr_starting_budget="${escAttr(g.attr_starting_budget)}">${escAttr(g.exp_guidelines || "")}</progression>`);
     }
     lines.push("</setup>");
     return lines.join("\n");

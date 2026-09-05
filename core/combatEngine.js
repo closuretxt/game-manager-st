@@ -137,9 +137,10 @@ function queueCombatRound(groups, winners) {
         const a = g.sides[0] || { actor: "", action: "" };
         const b = g.sides[1] || null;
         const vs = b ? ` versus="${esc(b.actor)}"` : "";
-        return `  <clash actor="${esc(a.actor)}" action="${esc(a.action)}"${vs} result="${esc(w.name)}">${esc(w.outcome)}</clash>`;
+        // No indentation: LLMs read tags sequentially, alignment just wastes tokens
+        return `<clash actor="${esc(a.actor)}" action="${esc(a.action)}"${vs} result="${esc(w.name)}">${esc(w.outcome)}</clash>`;
     });
-    queueHigh(`  <combat_round note="This turn's actions were already resolved by dice; narrate these outcomes as ground truth, never re-roll or re-resolve them.">\n${lines.join("\n")}\n  </combat_round>`);
+    queueHigh(`<combat_round note="This turn's actions were already resolved by dice; narrate these outcomes as ground truth, never re-roll or re-resolve them.">\n${lines.join("\n")}\n</combat_round>`);
 }
 
 // Rebuilds the <combat_round> high-priority injection from a persisted
@@ -153,10 +154,10 @@ export function requeueCombatRound(stored) {
         const a = g.sides?.[0] || { actor: "", action: "" };
         const b = g.sides?.[1] || null;
         const vs = b ? ` versus="${esc(b.actor)}"` : "";
-        return `  <clash actor="${esc(a.actor)}" action="${esc(a.action)}"${vs} result="${esc(w.name)}">${esc(w.outcome)}</clash>`;
+        return `<clash actor="${esc(a.actor)}" action="${esc(a.action)}"${vs} result="${esc(w.name)}">${esc(w.outcome)}</clash>`;
     }).filter(Boolean);
     if (!lines.length) return false;
-    queueHigh(`  <combat_round note="This turn's actions were already resolved by dice; narrate these outcomes as ground truth, never re-roll or re-resolve them.">\n${lines.join("\n")}\n  </combat_round>`);
+    queueHigh(`<combat_round note="This turn's actions were already resolved by dice; narrate these outcomes as ground truth, never re-roll or re-resolve them.">\n${lines.join("\n")}\n</combat_round>`);
     return true;
 }
 

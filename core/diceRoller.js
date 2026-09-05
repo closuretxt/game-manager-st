@@ -31,10 +31,10 @@ const SYSTEM_PROMPT = [
     "Routine, guaranteed, or purely narrative actions do NOT need a roll.",
     "If a roll IS needed, respond with ONLY XML (no markdown fences, no prose):",
     '<roll title="<short action title, e.g. Use Fireball on Goblin>">',
-    '  <tier name="Critical Failure" chance="10">The mage\'s Fireball explodes in her face</tier>',
-    '  <tier name="Failure" chance="25">She launches the spell and misses</tier>',
-    '  <tier name="Success" chance="50">The blast engulfs the target</tier>',
-    '  <tier name="Critical Success" chance="15">The goblin is vaporized instantly</tier>',
+    '<tier name="Critical Failure" chance="10">The mage\'s Fireball explodes in her face</tier>',
+    '<tier name="Failure" chance="25">She launches the spell and misses</tier>',
+    '<tier name="Success" chance="50">The blast engulfs the target</tier>',
+    '<tier name="Critical Success" chance="15">The goblin is vaporized instantly</tier>',
     "</roll>",
     "Always provide exactly 4 tiers in that order. Chances are percentages of a 100% total. Outcome lines are short, vivid, and ALWAYS third person, referring to the actor by name (from the party list or the scene) — never \"you\"/\"your\"/\"I\", even though the player's action is written in first person (\"The mage's Fireball explodes in her face\").",
     "If no roll is needed respond with ONLY: <roll needs=\"false\"/>",
@@ -55,7 +55,7 @@ function collectContext(playerAction, notes = null, title = null, rewrite = null
         .map(c => {
             const skills = (c.skills || []).map(sk => `${escAttr(sk.name)}${(Number(sk.cooldown_left) || 0) > 0 ? "*" : ""}`).join(", ");
             const statuses = (c.statuses || []).map(x => `${escAttr(x.name)}${x.modifiers ? ` (${escAttr(x.modifiers)})` : ""}`).join(", ");
-            return `  <char name="${escAttr(c.name)}"${skills ? ` skills="${skills}"` : ""}${statuses ? ` statuses="${statuses}"` : ""}/>`;
+            return `<char name="${escAttr(c.name)}"${skills ? ` skills="${skills}"` : ""}${statuses ? ` statuses="${statuses}"` : ""}/>`;
         });
     // GM notes: the pre-pass router's FULL output for this action, persisted
     // on the user's message (roll call, title, notes, rewrite, transactions...)
@@ -131,7 +131,8 @@ export function weightedRoll(tiers) {
 
 function queueRollResult(title, tier) {
     // Minimal injection: the story engine needs the outcome, not the odds.
-    queueHigh(`  <roll title="${title}" tier="${tier.name}">${tier.outcome}</roll>`);
+    // No indentation: LLMs read tags sequentially, alignment just wastes tokens
+    queueHigh(`<roll title="${title}" tier="${tier.name}">${tier.outcome}</roll>`);
 }
 
 // Re-queues an ALREADY RESOLVED roll result (swipe recovery) — the outcome

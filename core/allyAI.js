@@ -30,9 +30,9 @@ const SYSTEM_PROMPT = [
     "",
     "OUTPUT FORMAT:",
     "Respond with ONLY XML — no markdown fences, no prose:",
-    '  <ally_actions>',
-    '    <action char="<party member name>" speed="<initiative, 0 if unknown>" title="<short action title>"><short intent line, under 20 words></action>',
-    '  </ally_actions>',
+    '<ally_actions>',
+    '<action char="<party member name>" speed="<initiative, 0 if unknown>" title="<short action title>"><short intent line, under 20 words></action>',
+    '</ally_actions>',
     "",
     "RULES:",
     "- speed is initiative judged from that ally's attributes/statuses (Dexterity, Haste...); 0 when unknown.",
@@ -64,7 +64,7 @@ function collectContext(playerAction) {
         if (skills) attrs.push(`skills="${skills}"`);
         const statuses = (c.statuses || []).map(s => `${escAttr(s.name)}${s.modifiers ? ` (${escAttr(s.modifiers)})` : ""}`).join(", ");
         if (statuses) attrs.push(`statuses="${statuses}"`);
-        return `  <char ${attrs.join(" ")}/>`;
+        return `<char ${attrs.join(" ")}/>`;
     };
 
     // Visible state only: the ally AI never sees full enemy sheets.
@@ -73,21 +73,21 @@ function collectContext(playerAction) {
         for (const r of e.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}"`);
         const statuses = (e.statuses || []).map(s => escAttr(s.name)).join(", ");
         if (statuses) attrs.push(`statuses="${statuses}"`);
-        return `  <enemy ${attrs.join(" ")}/>`;
+        return `<enemy ${attrs.join(" ")}/>`;
     };
 
     const blocks = [
         "<ally_ai_context>",
-        "  <scene>",
-        ...history.map(l => `  ${l}`),
-        "  </scene>",
-        "  <party_sheets>",
+        "<scene>",
+        ...history,
+        "</scene>",
+        "<party_sheets>",
         ...(d.characters || []).filter(c => !c.state).map(sheetXml),
-        "  </party_sheets>",
-        "  <enemy_presence>",
+        "</party_sheets>",
+        "<enemy_presence>",
         ...(d.enemies || []).map(enemyXml),
-        "  </enemy_presence>",
-        `  <player_action>${escAttr(playerAction)}</player_action>`,
+        "</enemy_presence>",
+        `<player_action>${escAttr(playerAction)}</player_action>`,
         "</ally_ai_context>",
     ];
     return blocks.join("\n");

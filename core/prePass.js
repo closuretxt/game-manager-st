@@ -51,15 +51,16 @@ const SYSTEM_PROMPT = [
     "",
     "OUTPUT FORMAT:",
     "Respond with ONLY XML tags — no markdown fences, no prose, no explanations. Every tag is OPTIONAL; emit only what applies:",
-    '  <roll needed="true" title="<short action title, e.g. Use Fireball on Goblin>"/>',
-    '  <combat engaged="true" speed="<initiative value, 0 if unknown>"/>',
-    '  <transaction resource="<shared resource name>" delta="<signed number, negative = spending>" comparison="<plain-language note, under 12 words>"/>',
-    '  <warning action="set" name="<short name>" text="<under 15 words>"/>  or  <warning action="clear" name="<short name>"/>',
-    '  <relevant names="<comma-separated shared resource names whose value matters this turn>"/>',
-    '  <skill char="<party member name>" name="<skill name>"/>',
-    '  <note text="<short contextual remark the story engine should know this turn>"/>',
-    '  <rewrite text="<clarified version of the player\'s action, actions only>"/>',
-    "  <nothing/>",
+    // No indentation in examples: LLMs read tags sequentially, alignment just wastes tokens
+    '<roll needed="true" title="<short action title, e.g. Use Fireball on Goblin>"/>',
+    '<combat engaged="true" speed="<initiative value, 0 if unknown>"/>',
+    '<transaction resource="<shared resource name>" delta="<signed number, negative = spending>" comparison="<plain-language note, under 12 words>"/>',
+    '<warning action="set" name="<short name>" text="<under 15 words>"/>  or  <warning action="clear" name="<short name>"/>',
+    '<relevant names="<comma-separated shared resource names whose value matters this turn>"/>',
+    '<skill char="<party member name>" name="<skill name>"/>',
+    '<note text="<short contextual remark the story engine should know this turn>"/>',
+    '<rewrite text="<clarified version of the player\'s action, actions only>"/>',
+    "<nothing/>",
     "",
     "TAG RULES:",
     "- <roll>: when the action's outcome is genuinely uncertain AND consequential — risky stunts, contested attempts, unpredictable reactions — OR when the action is a SOCIAL ATTEMPT whose success or quality can vary: negotiating, haggling, persuading, flirting, seducing, intimidating, deceiving, performing, impressing. Anything the character could FAIL at, or pull off noticeably better or worse than average, is a roll — even when failure carries no physical danger. Routine, guaranteed, or purely narrative actions never roll; and merely ASKING or chatting (\"I ask the innkeeper about rumors\") is not an attempt — trying to CHANGE someone's mind, mood, or behavior is.",
@@ -108,7 +109,8 @@ async function collectContext(playerAction) {
     for (const c of d.characters || []) {
         // The dead have nothing left to judge — collapse their entry.
         if (c.state?.mode === "dead") {
-            parts.push(`  <char name="${escAttr(c.name)}" state="dead"${c.state.reason ? ` reason="${escAttr(c.state.reason)}"` : ""}/>`);
+            // No indentation: LLMs read tags sequentially, alignment just wastes tokens
+            parts.push(`<char name="${escAttr(c.name)}" state="dead"${c.state.reason ? ` reason="${escAttr(c.state.reason)}"` : ""}/>`);
             continue;
         }
         // on_cooldown is a code-computed boolean — the router never sees
@@ -119,17 +121,17 @@ async function collectContext(playerAction) {
         // to see them to judge when their value matters this turn.
         const res = (c.resources || []).map(r => `${escAttr(r.name)} ${r.value}${r.max ? `/${r.max}` : ""}`).join(", ");
         const attrs = (c.attributes || []).map(a => `${escAttr(a.name)} ${a.value}`).join(", ");
-        parts.push(`  <char name="${escAttr(c.name)}"${c.state ? ` state="${c.state.mode}"` : ""}${skills ? ` skills="${skills}"` : ""}${statuses ? ` statuses="${statuses}"` : ""}${res ? ` resources="${res}"` : ""}${attrs ? ` stats="${attrs}"` : ""}/>`);
+        parts.push(`<char name="${escAttr(c.name)}"${c.state ? ` state="${c.state.mode}"` : ""}${skills ? ` skills="${skills}"` : ""}${statuses ? ` statuses="${statuses}"` : ""}${res ? ` resources="${res}"` : ""}${attrs ? ` stats="${attrs}"` : ""}/>`);
     }
 
     const resources = (d.sharedResources || []).map(r => `${escAttr(r.name)}="${escAttr(r.qty)}"`).join(" ");
-    if (resources) parts.push(`  <resources ${resources}/>`);
-    if ((d.warnings || []).length) parts.push(`  <warnings>${d.warnings.map(w => escAttr(w.name)).join(", ")}</warnings>`);
+    if (resources) parts.push(`<resources ${resources}/>`);
+    if ((d.warnings || []).length) parts.push(`<warnings>${d.warnings.map(w => escAttr(w.name)).join(", ")}</warnings>`);
     // Open threads: untracked/unfinished things + secrets left by the
     // post-pass. Never injected into the story prompt directly — the
     // router leaks what the scene demands via <note>.
     for (const t of d.threads || []) {
-        parts.push(`  <thread name="${escAttr(t.name)}"${t.ref ? ` ref="${escAttr(t.ref)}"` : ""}>${escAttr(t.text)}</thread>`);
+        parts.push(`<thread name="${escAttr(t.name)}"${t.ref ? ` ref="${escAttr(t.ref)}"` : ""}>${escAttr(t.text)}</thread>`);
     }
     // Enemies only when the feature is on AND some exist — the router never
     // pays tokens for an enemy-free scene.
@@ -141,7 +143,7 @@ async function collectContext(playerAction) {
             if (skills) attrs.push(`skills="${skills}"`);
             const statuses = (e.statuses || []).map(st => `${escAttr(st.name)}${st.modifiers ? ` (${escAttr(st.modifiers)})` : ""}`).join(", ");
             if (statuses) attrs.push(`statuses="${statuses}"`);
-            parts.push(`  <enemy ${attrs.join(" ")}/>`);
+            parts.push(`<enemy ${attrs.join(" ")}/>`);
         }
     }
 

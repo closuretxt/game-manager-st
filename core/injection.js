@@ -107,7 +107,8 @@ export function replayHigh(mesId) {
 export function queueRewrite(text) {
     const t = esc(String(text ?? "").trim());
     if (!t) return;
-    queueHigh(`  <action_rewrite note="The player's clarified intent for this turn; the original message may be vague or contradictory. Dialogue in the original message still stands.">${t}</action_rewrite>`);
+    // No indentation: LLMs read tags sequentially, alignment just wastes tokens
+    queueHigh(`<action_rewrite note="The player's clarified intent for this turn; the original message may be vague or contradictory. Dialogue in the original message still stands.">${t}</action_rewrite>`);
 }
 
 // Queues a ONE-SHOT high-priority skill suggestion produced by the pre-pass:
@@ -120,7 +121,7 @@ export function queueSkillUse(character, skill, cost = "") {
     const co = esc(String(cost ?? "").trim());
     if (!c || !sk) return;
     const costNote = co ? ` Its cost (${co}) must be narrated as paid — resource, stat or narrative, exactly as the skill describes.` : "";
-    queueHigh(`  <skill_use character="${c}" skill="${sk}" note="The game system judged this tracked skill to fit the player's action; narrate the character using it.${costNote} Its cooldown is applied by the tracker afterwards."/>`);
+    queueHigh(`<skill_use character="${c}" skill="${sk}" note="The game system judged this tracked skill to fit the player's action; narrate the character using it.${costNote} Its cooldown is applied by the tracker afterwards."/>`);
 }
 
 // Queues a ONE-SHOT low-priority line (e.g. a shared resource value the
@@ -137,7 +138,7 @@ export function queueLowOnce(line) {
 export function queueLowNote(text) {
     const t = esc(String(text ?? "").trim());
     if (!t) return;
-    queueLowOnce(`  <note>${t}</note>`);
+    queueLowOnce(`<note>${t}</note>`);
 }
 
 export function clearLow() {
@@ -167,12 +168,12 @@ export function buildLowPriority() {
     const parts = [];
 
     for (const w of d.warnings || []) {
-        parts.push(`  <warning name="${esc(w.name)}">${esc(w.text || "")}</warning>`);
+        parts.push(`<warning name="${esc(w.name)}">${esc(w.text || "")}</warning>`);
     }
 
     for (const r of d.sharedResources || []) {
         if (r.always_inject) {
-            parts.push(`  <resource name="${esc(r.name)}" value="${esc(r.qty)}"/>`);
+            parts.push(`<resource name="${esc(r.name)}" value="${esc(r.qty)}"/>`);
         }
     }
 
@@ -182,7 +183,7 @@ export function buildLowPriority() {
     for (const c of d.characters || []) {
         const mode = c.state ? CHARACTER_STATES[c.state.mode] : null;
         if (!mode) continue;
-        parts.push(`  <character name="${esc(c.name)}" status="${mode.status}"${c.state.reason ? ` reason="${esc(c.state.reason)}"` : ""}/>`);
+        parts.push(`<character name="${esc(c.name)}" status="${mode.status}"${c.state.reason ? ` reason="${esc(c.state.reason)}"` : ""}/>`);
     }
 
     // Context-based enemies: compact state summary, only when the feature is
@@ -194,7 +195,7 @@ export function buildLowPriority() {
             const res = (e.resources || []).map(r => `${r.name} ${r.value}/${r.max}`).join(", ");
             const st = (e.statuses || []).map(x => x.name).join(", ");
             const state = [res, st].filter(Boolean).join("; ");
-            parts.push(`  <enemy name="${esc(e.name)}"${state ? ` state="${esc(state)}"` : ""}/>`);
+            parts.push(`<enemy name="${esc(e.name)}"${state ? ` state="${esc(state)}"` : ""}/>`);
         }
         parts.push(`</enemies>`);
     }

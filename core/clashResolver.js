@@ -42,16 +42,17 @@ const SYSTEM_PROMPT = [
     "",
     "OUTPUT FORMAT:",
     "Respond with ONLY XML — no markdown fences, no prose:",
-    '  <clashes>',
-    '    <clash title="Knight\'s Slash vs Goblin A\'s Swing">',
-    '      <side who="party" actor="Knight" speed="3" action="Slash at Goblin A"/>',
-    '      <side who="enemy" actor="Goblin A" speed="2" action="Swing club"/>',
-    '      <tier name="Critical Failure" chance="10">The knight\'s blade glances off; the club cracks her ribs</tier>',
-    '      <tier name="Failure" chance="25">The knight misses; the goblin\'s swing connects</tier>',
-    '      <tier name="Success" chance="50">The knight\'s slash lands before the goblin\'s club</tier>',
-    '      <tier name="Critical Success" chance="15">The knight cleaves through the goblin\'s guard</tier>',
-    '    </clash>',
-    '  </clashes>',
+    // No indentation in examples: LLMs read tags sequentially, alignment just wastes tokens
+    '<clashes>',
+    '<clash title="Knight\'s Slash vs Goblin A\'s Swing">',
+    '<side who="party" actor="Knight" speed="3" action="Slash at Goblin A"/>',
+    '<side who="enemy" actor="Goblin A" speed="2" action="Swing club"/>',
+    '<tier name="Critical Failure" chance="10">The knight\'s blade glances off; the club cracks her ribs</tier>',
+    '<tier name="Failure" chance="25">The knight misses; the goblin\'s swing connects</tier>',
+    '<tier name="Success" chance="50">The knight\'s slash lands before the goblin\'s club</tier>',
+    '<tier name="Critical Success" chance="15">The knight cleaves through the goblin\'s guard</tier>',
+    '</clash>',
+    '</clashes>',
     "",
     "GROUPING RULES:",
     "- Pair each party-side action with the MOST RELEVANT opposing enemy action (match targets from the action text). One enemy action opposes at most one party-side action per group.",
@@ -83,10 +84,10 @@ function collectContext(playerAction, partyActions, enemyActions) {
         if (passives) attrs.push(`passives="${passives}"`);
         const statuses = (c.statuses || []).map(s => `${escAttr(s.name)}${s.modifiers ? ` (${escAttr(s.modifiers)})` : ""}`).join(", ");
         if (statuses) attrs.push(`statuses="${statuses}"`);
-        return `  <actor ${attrs.join(" ")}/>`;
+        return `<actor ${attrs.join(" ")}/>`;
     };
 
-    const actionXml = a => `  <action actor="${escAttr(a.actor)}" speed="${Math.max(0, Math.trunc(Number(a.speed) || 0))}">${escAttr(a.action)}</action>`;
+    const actionXml = a => `<action actor="${escAttr(a.actor)}" speed="${Math.max(0, Math.trunc(Number(a.speed) || 0))}">${escAttr(a.action)}</action>`;
 
     // Only actors actually in the round pay tokens for a full sheet.
     const partyNames = new Set(partyActions.map(a => a.actor.toLowerCase()));
@@ -98,18 +99,18 @@ function collectContext(playerAction, partyActions, enemyActions) {
 
     const blocks = [
         "<clash_context>",
-        "  <scene>",
-        ...history.map(l => `  ${l}`),
-        "  </scene>",
-        "  <party_actions>",
+        "<scene>",
+        ...history,
+        "</scene>",
+        "<party_actions>",
         ...partyActions.map(actionXml),
-        "  </party_actions>",
-        "  <enemy_actions>",
+        "</party_actions>",
+        "<enemy_actions>",
         ...enemyActions.map(actionXml),
-        "  </enemy_actions>",
-        "  <sheets>",
+        "</enemy_actions>",
+        "<sheets>",
         ...sheets,
-        "  </sheets>",
+        "</sheets>",
         "</clash_context>",
     ];
     return blocks.join("\n");

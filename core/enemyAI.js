@@ -32,9 +32,9 @@ const SYSTEM_PROMPT = [
     "",
     "OUTPUT FORMAT:",
     "Respond with ONLY XML — no markdown fences, no prose:",
-    '  <enemy_actions>',
-    '    <action enemy="<enemy name>" speed="<initiative, 0 if unknown>" title="<short action title>"><short intent line, under 20 words></action>',
-    '  </enemy_actions>',
+    '<enemy_actions>',
+    '<action enemy="<enemy name>" speed="<initiative, 0 if unknown>" title="<short action title>"><short intent line, under 20 words></action>',
+    '</enemy_actions>',
     "",
     "RULES:",
     "- speed is initiative judged from that enemy's attributes/statuses (Dexterity, Haste...); 0 when unknown.",
@@ -63,7 +63,7 @@ function collectContext(maxActions) {
         if (skills) attrs.push(`skills="${skills}"`);
         const statuses = (c.statuses || []).map(s => `${escAttr(s.name)}${s.modifiers ? ` (${escAttr(s.modifiers)})` : ""}`).join(", ");
         if (statuses) attrs.push(`statuses="${statuses}"`);
-        return `  <enemy ${attrs.join(" ")}/>`;
+        return `<enemy ${attrs.join(" ")}/>`;
     };
 
     // Visible state only: special states stay visible (a downed fighter is
@@ -74,20 +74,20 @@ function collectContext(maxActions) {
         for (const r of c.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}"`);
         const statuses = (c.statuses || []).map(s => escAttr(s.name)).join(", ");
         if (statuses) attrs.push(`statuses="${statuses}"`);
-        return `  <char ${attrs.join(" ")}/>`;
+        return `<char ${attrs.join(" ")}/>`;
     };
 
     const blocks = [
         "<enemy_ai_context>",
-        "  <scene>",
-        ...history.map(l => `  ${l}`),
-        "  </scene>",
-        "  <enemy_sheets>",
+        "<scene>",
+        ...history,
+        "</scene>",
+        "<enemy_sheets>",
         ...(d.enemies || []).map(sheetXml),
-        "  </enemy_sheets>",
-        "  <party_summary>",
+        "</enemy_sheets>",
+        "<party_summary>",
         ...(d.characters || []).filter(c => c.state?.mode !== "dead").map(partyXml),
-        "  </party_summary>",
+        "</party_summary>",
         "</enemy_ai_context>",
         `Decide the enemy actions for this round (at most ${maxActions} <action> entries).`,
     ];

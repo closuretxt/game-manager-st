@@ -18,17 +18,18 @@ import { sendRequestViaProfile, resolveWizardProfile, hasConnectionProfile } fro
 import { buildDeepContext } from "../util/loreContext.js";
 
 const CHAR_RESPONSE_SHAPE = [
+    // No indentation in examples: LLMs read tags sequentially, alignment just wastes tokens
     '<setup name="<short source/title>">',
-    "  <party>",
-    '    <char name="..." level="N">  <!-- exactly ONE char; level = progression level (see rules); give only the containers that matter for them -->',
-    '      <resource name="Health" value="80" min="0" max="100" description="..."/>',
-    '      <attribute name="Strength" value="5" description="..."/>',
-    '      <item name="Rope" qty="1" description="..."/>',
-    '      <skill name="Fireball" cost="10 Mana" cooldown="2" description="..."/>  <!-- cooldown in messages; 0 or omitted = always ready -->',
-    '      <passive name="Tough" ptype="stat" description="..."/>  <!-- ptype: special|stat -->',
-    '      <status name="Dazed" modifiers="Aim -2" effect="..."/>  <!-- TEMPORARY conditions only, removed when they end -->',
-    "    </char>",
-    "  </party>",
+    "<party>",
+    '<char name="..." level="N"> <!-- exactly ONE char; level = progression level (see rules); give only the containers that matter for them -->',
+    '<resource name="Health" value="80" min="0" max="100" description="..."/>',
+    '<attribute name="Strength" value="5" description="..."/>',
+    '<item name="Rope" qty="1" description="..."/>',
+    '<skill name="Fireball" cost="10 Mana" cooldown="2" description="..."/> <!-- cooldown in messages; 0 or omitted = always ready -->',
+    '<passive name="Tough" ptype="stat" description="..."/> <!-- ptype: special|stat -->',
+    '<status name="Dazed" modifiers="Aim -2" effect="..."/> <!-- TEMPORARY conditions only, removed when they end -->',
+    "</char>",
+    "</party>",
     "</setup>",
 ].join("\n");
 
@@ -144,9 +145,9 @@ function briefBlocks({ name, details, references, level = null, kind = "party" }
     const d = stateManager.getData();
     // Existing names as compact XML — the LLM reads it far better than JSON.
     const existingParts = [
-        `  <party>${(d.characters || []).map(c => escAttr(c.name)).join(", ")}</party>`,
-        `  <roster>${(d.roster || []).map(r => escAttr(r.name)).join(", ")}</roster>`,
-        ...(kind === "enemy" ? [`  <enemies>${(d.enemies || []).map(e => escAttr(e.name)).join(", ")}</enemies>`] : []),
+        `<party>${(d.characters || []).map(c => escAttr(c.name)).join(", ")}</party>`,
+        `<roster>${(d.roster || []).map(r => escAttr(r.name)).join(", ")}</roster>`,
+        ...(kind === "enemy" ? [`<enemies>${(d.enemies || []).map(e => escAttr(e.name)).join(", ")}</enemies>`] : []),
     ];
     const blocks = [
         `ENTRY FIELD SHAPES: resource {${fieldKeysFor("resource")}}, attribute {${fieldKeysFor("attribute")}}, item {${fieldKeysFor("item")}}, skill {${fieldKeysFor("skill")}}, passive {${fieldKeysFor("passive")}} (ptype: special|stat), status {${fieldKeysFor("status")}}.`,
