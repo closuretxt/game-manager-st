@@ -124,6 +124,20 @@
     background: rgba(255, 255, 255, 0.06);
 }
 
+/* Header toggles: edit mode glows with the theme accent; the power button
+   fades to red while the extension is off. */
+.gm_window_btn.gm_btn_active {
+    opacity: 1;
+}
+
+.gm_window_btn.gm_btn_active i {
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b8912f));
+}
+
+#gm_btn_power.gm_btn_off i {
+    color: #e5484d;
+}
+
 #gm_window_body {
     display: flex;
     flex-direction: column;

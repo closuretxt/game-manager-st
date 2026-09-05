@@ -1,7 +1,7 @@
 // Floating, draggable, resizable Game Manager window.
 // Tabs: Party (home) | Resource Manager | Custom.
 // All mutation controls (add/edit/delete, +/-) are hidden unless edit mode
-// (the lock toggle in the header) is enabled — view-only by default for a
+// (the pencil toggle in the header) is enabled — view-only by default for a
 // hardcore feel. Window geometry/open-state persist in extension settings
 // (global, not per-chat); z-index is kept deliberately low.
 
@@ -83,6 +83,7 @@ class MainPanel {
 
         $("#gm_btn_close").on("click", () => this.close());
         $("#gm_btn_edit").on("click", () => this.toggleEditMode());
+        $("#gm_btn_power").on("click", () => this.toggleEnabled());
         $("#gm_btn_rerun").on("click", async () => {
             gmNotify("Running agent pass...", "info");
             const applied = await manualRun();
@@ -215,6 +216,17 @@ class MainPanel {
         this.render();
     }
 
+    // Master on/off switch (same as the Enabled checkbox in settings).
+    toggleEnabled() {
+        const s = extension_settings[extensionName];
+        s.enabled = !s.enabled;
+        // Keep the settings checkbox in sync — its change event also saves and
+        // refreshes listeners bound to it (bubble button, etc.).
+        $("#gm_setting_enabled").prop("checked", s.enabled).trigger("change");
+        this._refreshPowerButton();
+        gmNotify(s.enabled ? "Game Manager enabled." : "Game Manager disabled.", s.enabled ? "success" : "info");
+    }
+
     // ---------- geometry ----------
     _saveGeometry() {
         const win = this._window;
@@ -298,6 +310,7 @@ class MainPanel {
             this.activeTab = "party";
         }
         this._refreshEditButton();
+        this._refreshPowerButton();
         this._renderWarnings();
         this._renderTabs();
         this._renderContent();
@@ -323,8 +336,13 @@ class MainPanel {
     }
 
     _refreshEditButton() {
-        $("#gm_btn_edit").find("i").attr("class", this.editMode ? "fa-solid fa-lock-open" : "fa-solid fa-lock");
+        $("#gm_btn_edit").find("i").attr("class", "fa-solid fa-pen");
+        $("#gm_btn_edit").toggleClass("gm_btn_active", this.editMode);
         $("#gm_btn_rerun").toggle(this.editMode);
+    }
+
+    _refreshPowerButton() {
+        $("#gm_btn_power").toggleClass("gm_btn_off", !extension_settings[extensionName].enabled);
     }
 
     _renderTabs() {
@@ -576,7 +594,7 @@ class MainPanel {
         }
         if (!chars.length) {
             list.append($("<div>").addClass("gm_empty")
-                .text("No characters yet. Unlock edit mode (lock icon in the header) to add one."));
+                .text("No characters yet. Unlock edit mode (pencil icon in the header) to add one."));
         }
         wrap.append(header, list);
         content.append(wrap);

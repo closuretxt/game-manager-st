@@ -24,7 +24,7 @@ This extension DOES NOT inject content by itself. It just exposes macros and exp
 - `{{gamemaster-high-priority}}` - one-shot immediate reports: roll results and transaction checks. Place together with your top chat instructions. If you have writing guidances or other injections put them there.
 - Place them anywhere in your preset; Whatever you feel the best.
 - It's highly recommended to use a quick agentic model like GLM FLASH 5.3 or Gemini Flash Lite. Tweak thinking effort for faster results or more creative results.
-- The lock icon on the panel switch across the standard and edit mode. You can only make changes/setup in the edit mode.
+- The pen icon on the panel switch across the standard and edit mode. You can only make changes/setup in the edit mode.
 
 ## HOW TO USE IT
 1 - Check the ST extension page for the extension, enable the bubble if you are mobile or open the panel if you don't see it.
@@ -32,7 +32,7 @@ This extension DOES NOT inject content by itself. It just exposes macros and exp
 *(Choose a cheap, low thinking model, then change as you go.)*
 *(For the Scenario Wizard, choose a strong model with lots of thinking. That's the one that will craft everything you will need.)*
 
-The UI by default is on the standard mode, if you want to setup the scenario or modify something **click the LOCK icon** on the panel, you will enter the creative mode. Once there you can setup the scenario, add characters etc. As you learn at first just setup a scenario and see how it works.
+The UI by default is on the standard mode, if you want to setup the scenario or modify something **click the PEN icon** on the panel, you will enter the creative mode. Once there you can setup the scenario, add characters etc. As you learn at first just setup a scenario and see how it works.
 
 ## HOW TO BEGIN
 > Use Wizard to create every stat and progression you will need and framework from your scenario/persona/character/lorebooks.
