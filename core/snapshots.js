@@ -2,13 +2,21 @@
 // state (chatMetadata.game_manager.snapshots). Before an agentic pass applies
 // changes to message N, the pre-change state is snapshotted under N. Deleting
 // that message, swiping it, or re-running the pass rolls the state back.
-// Only the last MAX_SNAPSHOTS messages are kept to avoid bloating chat data.
+// Only the last MAX_SNAPSHOTS MESSAGES are kept (the limit is messages deep,
+// not entries) to avoid bloating chat data.
+//
+// Swipe versions: every swipe of message N gets its own recorded post-pass
+// state (entry.versions[swipeId]), so navigating between swipe versions of
+// the last message restores exactly the tracker state that version produced.
 
 import { getContext } from "../../../../extensions.js";
 import { stateManager } from "./stateManager.js";
 import { logDebug } from "./debug.js";
 
 export const MAX_SNAPSHOTS = 5;
+
+// Swipe versions kept per message (the newest wins).
+const MAX_SWIPE_VERSIONS = 10;
 
 function store() {
     const st = getContext();
@@ -49,14 +57,17 @@ export function captureSnapshot(mesId, { messageText = null } = {}) {
     const gm = store();
     if (!gm) return false;
     const key = String(mesId);
-    if (gm.snapshots[key]) {
+    if (gm.snapshots[key]?.state) {
         logDebug(`snapshot: baseline for message ${key} already exists, keeping it`);
         return false;
     }
+    // Fresh baseline — either a first capture or a re-capture after a
+    // rollback consumed the previous one (per-swipe versions survive).
     gm.snapshots[key] = {
         ts: Date.now(),
         state: structuredClone(stateManager.getData()),
         messageText: messageText ?? null,
+        versions: gm.snapshots[key]?.versions || {},
     };
     trim(gm);
     persist();
@@ -64,9 +75,11 @@ export function captureSnapshot(mesId, { messageText = null } = {}) {
     return true;
 }
 
-// Rolls the live state back to the baseline of a message and drops that
+// Rolls the live state back to the baseline of a message and consumes that
 // baseline. Also restores the pre-roll message text if one was stored (dice
 // rolls append to the player's message). Returns true if a restore happened.
+// The recorded per-swipe states are KEPT: older swipe versions of the message
+// stay restorable when the user navigates back to them.
 export function restoreSnapshot(mesId) {
     const st = getContext();
     const gm = store();
@@ -77,9 +90,9 @@ export function restoreSnapshot(mesId) {
         console.info(`[GM DIAG] restoreSnapshot: no snapshot for message ${key} (have keys=[${Object.keys(gm.snapshots)}])`);
         return false;
     }
-    stateManager.replaceData(snap.state);
+    if (snap.state) stateManager.replaceData(snap.state);
 
-    if (typeof snap.messageText === "string") {
+    if (typeof snap.messageText === "string" && snap.messageText) {
         const msg = st?.chat?.[Number(key)];
         if (msg && typeof msg.mes === "string" && msg.mes !== snap.messageText) {
             msg.mes = snap.messageText;
@@ -89,10 +102,12 @@ export function restoreSnapshot(mesId) {
         }
     }
 
-    delete gm.snapshots[key];
+    // The baseline is consumed by this rollback; a re-capture during the next
+    // generation writes a fresh one (versions survive).
+    gm.snapshots[key] = { ts: snap.ts, state: null, messageText: null, versions: snap.versions || {} };
     persist();
     logDebug(`snapshot: restored state from message ${key}`);
-    return true;
+    return !!snap.state;
 }
 
 export function discardSnapshot(mesId) {
@@ -113,9 +128,51 @@ export function restoreNewestFrom(minId) {
     const ids = Object.keys(gm.snapshots)
         .map(Number)
         .sort((a, b) => b - a);
-    const target = ids.find(id => id >= minId);
-    if (target === undefined) return false;
-    return restoreSnapshot(target);
+    // Version-only entries (baseline already consumed) restore nothing — keep
+    // walking down until a real baseline is found.
+    for (const id of ids) {
+        if (id < minId) return false;
+        if (restoreSnapshot(id)) return true;
+    }
+    return false;
+}
+
+// Records the CURRENT state as the post-pass state of swipe version `swipeId`
+// of message `mesId` (called at the end of every tracker pass).
+export function captureSwipeState(mesId, swipeId) {
+    const id = Number(mesId);
+    const ver = Number(swipeId);
+    if (!Number.isFinite(id) || !Number.isFinite(ver)) return false;
+    const gm = store();
+    if (!gm) return false;
+    const key = String(id);
+    const entry = gm.snapshots[key]
+        || (gm.snapshots[key] = { ts: Date.now(), state: null, messageText: null, versions: {} });
+    entry.versions = entry.versions || {};
+    entry.versions[String(ver)] = { ts: Date.now(), state: structuredClone(stateManager.getData()) };
+    // Cap versions per message: only the newest survive.
+    const vers = Object.entries(entry.versions).sort((a, b) => a[1].ts - b[1].ts);
+    while (vers.length > MAX_SWIPE_VERSIONS) {
+        const [oldest] = vers.shift();
+        delete entry.versions[oldest];
+    }
+    trim(gm);
+    persist();
+    logDebug(`snapshot: recorded post-pass state for message ${key} swipe #${ver}`);
+    return true;
+}
+
+// Restores the recorded post-pass state of swipe version `swipeId` of message
+// `mesId`. Returns false when no record exists (the live state stays as-is —
+// older chats and fresh swipes have no version recorded yet).
+export function restoreSwipeState(mesId, swipeId) {
+    const gm = store();
+    if (!gm) return false;
+    const v = gm.snapshots[String(Number(mesId))]?.versions?.[String(Number(swipeId))];
+    if (!v?.state) return false;
+    stateManager.replaceData(v.state);
+    logDebug(`snapshot: restored post-pass state of message ${mesId} swipe #${swipeId}`);
+    return true;
 }
 
 // MESSAGE_DELETED does not report which message was removed. The common case

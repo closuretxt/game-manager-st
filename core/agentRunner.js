@@ -20,7 +20,7 @@ import { stateManager } from "./stateManager.js";
 import { progression } from "./progression.js";
 import { parseToolBlocks, applyToolBlocks, escAttr } from "./toolParser.js";
 import { getLastInjections } from "./injection.js";
-import { captureSnapshot } from "./snapshots.js";
+import { captureSnapshot, captureSwipeState } from "./snapshots.js";
 import { sendRequestViaProfile, resolveConnectionProfile, getProfileNameById } from "../util/connectionService.js";
 import { swapProfile } from "../util/profileSwapper.js";
 import { buildDeepContext } from "../util/loreContext.js";
@@ -294,18 +294,22 @@ export async function runAgentPass(reason = "manual", mesId = null) {
         }
 
         const blocks = parseToolBlocks(reply || "");
-        if (!blocks.length) {
-            logDebug(`agent pass (${reason}): no changes reported`);
-            setPanelBusy(false);
-            return 0;
-        }
         // Baseline for rollback: the state before this message's first changes.
         const st2 = getContext();
         const snapId = mesId ?? Math.max(0, st2.chat.length - 1);
-        console.info(`[GM DIAG] agent pass: capturing baseline snapshot for message ${snapId} (chat.length=${st2.chat.length})`);
-        captureSnapshot(snapId);
-        const applied = applyToolBlocks(blocks);
-        logDebug(`agent pass (${reason}): applied ${applied} change(s)`);
+        let applied = 0;
+        if (blocks.length) {
+            console.info(`[GM DIAG] agent pass: capturing baseline snapshot for message ${snapId} (chat.length=${st2.chat.length})`);
+            captureSnapshot(snapId);
+            applied = applyToolBlocks(blocks);
+            logDebug(`agent pass (${reason}): applied ${applied} change(s)`);
+        } else {
+            logDebug(`agent pass (${reason}): no changes reported`);
+        }
+        // Post-pass state of THIS swipe version: switching between swipe
+        // versions of this message later restores exactly what this pass
+        // produced (recorded even when the pass applied nothing).
+        captureSwipeState(snapId, st2.chat[snapId]?.swipe_id);
         setPanelBusy(false);
         return applied;
     } catch (e) {

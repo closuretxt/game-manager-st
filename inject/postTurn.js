@@ -26,7 +26,7 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "../core/constants.js";
 import { logDebug } from "../core/debug.js";
 import { runAgentPass } from "../core/agentRunner.js";
-import { restoreSnapshot } from "../core/snapshots.js";
+import { restoreSnapshot, restoreSwipeState } from "../core/snapshots.js";
 
 // Tiny replies ("...", "Ok.", short emotes) carry nothing worth tracking —
 // skip the tracker instead of paying a full LLM call for them.
@@ -80,5 +80,25 @@ export function initPostTurn() {
         }
     });
 
-    logDebug("postTurn: tracker wired to MESSAGE_RECEIVED");
+    // SWIPED — the user navigated between swipe versions of the last AI
+    // message: the tracker state follows the version being viewed (the
+    // post-pass state its tracker produced). No-op when the version has no
+    // record yet (older chats, or a fresh swipe still generating — the
+    // pre-turn rollback runs first in that case).
+    st.eventSource.on(st.event_types.SWIPED, async (mesId) => {
+        try {
+            const id = Number.isFinite(mesId) ? mesId : st.chat.length - 1;
+            const msg = st.chat?.[id];
+            if (!msg || msg.is_user) return;
+            const swipeId = Number(msg.swipe_id);
+            if (!Number.isFinite(swipeId)) return;
+            if (restoreSwipeState(id, swipeId)) {
+                logDebug(`postTurn: state restored for swipe #${swipeId} of message ${id}`);
+            }
+        } catch (e) {
+            console.error("[Game Manager] swipe state restore failed:", e);
+        }
+    });
+
+    logDebug("postTurn: tracker wired to MESSAGE_RECEIVED + SWIPED");
 }

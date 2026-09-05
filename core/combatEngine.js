@@ -142,6 +142,24 @@ function queueCombatRound(groups, winners) {
     queueHigh(`  <combat_round note="This turn's actions were already resolved by dice; narrate these outcomes as ground truth, never re-roll or re-resolve them.">\n${lines.join("\n")}\n  </combat_round>`);
 }
 
+// Rebuilds the <combat_round> high-priority injection from a persisted
+// gm_combat record (swipe recovery after a reload) — no re-roll.
+export function requeueCombatRound(stored) {
+    const groups = Array.isArray(stored?.groups) ? stored.groups : [];
+    const winners = Array.isArray(stored?.winners) ? stored.winners : [];
+    const lines = groups.map((g, i) => {
+        const w = winners[i];
+        if (!w?.name) return null;
+        const a = g.sides?.[0] || { actor: "", action: "" };
+        const b = g.sides?.[1] || null;
+        const vs = b ? ` versus="${esc(b.actor)}"` : "";
+        return `  <clash actor="${esc(a.actor)}" action="${esc(a.action)}"${vs} result="${esc(w.name)}">${esc(w.outcome)}</clash>`;
+    }).filter(Boolean);
+    if (!lines.length) return false;
+    queueHigh(`  <combat_round note="This turn's actions were already resolved by dice; narrate these outcomes as ground truth, never re-roll or re-resolve them.">\n${lines.join("\n")}\n  </combat_round>`);
+    return true;
+}
+
 // Full combat flow for a player action on message `mesId`. `plan.combat` comes
 // from the pre-pass: { engaged: true, speed }. Returns true if a round was
 // resolved.
@@ -198,12 +216,16 @@ export async function runCombatTurn(action, plan, mesId) {
         await new Promise(r => setTimeout(r, 1600));
 
         // Permanent record: DOM-only tag on the message + high-priority
-        // injection. The message text itself is NEVER edited. The chip data
+        // injection. The message text itself is NEVER edited. The round data
         // is persisted on the message (gm_combat) so the attachment restore
-        // pass rebuilds the chips after ST re-renders the chat.
+        // pass rebuilds the chips after ST re-renders the chat AND swipes
+        // replay the resolved round instead of re-running the engines.
         captureSnapshot(mesId);
         storeMessageData(mesId, "gm_combat", {
-            groups: groups.map(g => ({ title: g.title })),
+            groups: groups.map(g => ({
+                title: g.title,
+                sides: (g.sides || []).map(s => ({ actor: s.actor, action: s.action })),
+            })),
             winners: winners.map(w => ({ name: w.name, chance: w.chance, outcome: w.outcome })),
         });
         attachCombatToMessage(mesId, groups, winners);

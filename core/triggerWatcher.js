@@ -34,11 +34,12 @@ import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { rollDice, requeueRollResult } from "./diceRoller.js";
-import { runCombatTurn } from "./combatEngine.js";
+import { runCombatTurn, requeueCombatRound } from "./combatEngine.js";
 import { runTransaction } from "./transactions.js";
 import { runPrePass, planFromRaw } from "./prePass.js";
 import { restoreSnapshot } from "./snapshots.js";
 import { attachRollToMessage } from "../ui/diceBubble.js";
+import { attachCombatToMessage } from "../ui/combatBubble.js";
 import { queueLowOnce, queueLowNote, queueRewrite, queueSkillUse, replayHigh, stashHigh, resetInjectionRecord } from "./injection.js";
 import { attachRewriteToMessage } from "../ui/rewriteTag.js";
 import { statusBubble } from "../ui/statusBubble.js";
@@ -157,6 +158,17 @@ async function recoverSwipePlan(targetMsgId) {
         rollReplayed = true;
     }
 
+    // Same combat round as the first generation — same contract as rolls:
+    // re-attach the chips and re-queue the round; a swipe never re-runs the
+    // opposed resolution (no ally/enemy/clash API calls).
+    let combatReplayed = false;
+    if (s.feature_combat && Array.isArray(prev.gm_combat?.groups) && prev.gm_combat.groups.length) {
+        console.info(`[GM DIAG] recoverSwipePlan: replaying stored combat round (${prev.gm_combat.groups.length} group(s))`);
+        attachCombatToMessage(userMsgId, prev.gm_combat.groups, prev.gm_combat.winners);
+        requeueCombatRound(prev.gm_combat);
+        combatReplayed = true;
+    }
+
     // Fast path: reuse the persisted pre-pass judgment — zero API calls.
     const storedRaw = prev.gm_prepass ? String(prev.gm_prepass) : "";
     if (storedRaw) {
@@ -164,6 +176,7 @@ async function recoverSwipePlan(targetMsgId) {
         const plan = planFromRaw(storedRaw);
         if (!plan || plan.nothing) return { plan: null, action, reused: true };
         if (rollReplayed) plan.roll = null; // the outcome already exists — never re-roll
+        if (combatReplayed) plan.combat = null; // the round already exists — never re-resolve
         return { plan, action, reused: true };
     }
 
@@ -173,6 +186,7 @@ async function recoverSwipePlan(targetMsgId) {
     const plan = await runPrePass(action);
     if (!plan || plan.nothing) return { plan: null, action, reused: false };
     if (rollReplayed) plan.roll = null; // the outcome already exists — never re-roll
+    if (combatReplayed) plan.combat = null; // the round already exists — never re-resolve
     return { plan, action, reused: false };
 }
 
