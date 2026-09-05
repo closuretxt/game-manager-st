@@ -141,7 +141,8 @@ function planFromTriggers(hits) {
 async function recoverSwipePlan(targetMsgId) {
     const s = extension_settings[extensionName];
     const st = getContext();
-    const prev = st.chat?.[targetMsgId - 1];
+    const userMsgId = targetMsgId - 1; // the action the AI reply answers to
+    const prev = st.chat?.[userMsgId];
     const action = prev?.is_user ? String(prev.mes ?? "").trim() : "";
     if (!action) return null;
 
@@ -151,7 +152,7 @@ async function recoverSwipePlan(targetMsgId) {
     if (s.feature_dice && prev.gm_roll?.title && prev.gm_roll?.tier?.name) {
         const stored = prev.gm_roll;
         console.info(`[GM DIAG] recoverSwipePlan: replaying stored roll "${stored.title}" -> ${stored.tier.name}`);
-        attachRollToMessage(targetMsgId, stored.title, stored.tier);
+        attachRollToMessage(userMsgId, stored.title, stored.tier);
         requeueRollResult(stored.title, stored.tier);
         rollReplayed = true;
     }
@@ -376,7 +377,10 @@ export async function handlePreTurn(type = "normal") {
             if (s.feature_rewrite && plan.rewrite) {
                 logDebug(`pre-turn: rewrite planned "${plan.rewrite}"`);
                 statusBubble.update("Clarifying action...");
-                attachRewriteToMessage(targetMsgId, plan.rewrite);
+                // Fresh actions target the user message directly; on a
+                // swipe/regenerate targetMsgId is the AI reply — the tag
+                // belongs on the action it clarifies (targetMsgId - 1).
+                attachRewriteToMessage(isPlayerAction ? targetMsgId : targetMsgId - 1, plan.rewrite);
                 queueRewrite(plan.rewrite);
             }
 

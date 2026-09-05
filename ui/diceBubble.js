@@ -10,7 +10,7 @@
 import { extension_settings } from "../../../../extensions.js";
 import { extensionName } from "../core/constants.js";
 import { logDebug } from "../core/debug.js";
-import { onMessageRendered } from "../util/messageDom.js";
+import { onMessageRendered, registerAttachmentRestorer } from "../util/messageDom.js";
 
 const DICE_FACES = ["fa-dice-one", "fa-dice-two", "fa-dice-three", "fa-dice-four", "fa-dice-five", "fa-dice-six"];
 
@@ -224,3 +224,19 @@ export function attachRollToMessage(mesId, title, winner) {
 }
 
 export const diceBubble = new DiceBubble();
+
+// Re-attaches the roll chip from the persisted gm_roll record after ST
+// re-renders the message (swipes, edits, chat reload).
+registerAttachmentRestorer((mesEl, msg) => {
+    if (!msg?.is_user) return; // chips belong to the player's action only
+    const stored = msg?.gm_roll;
+    if (!rollAttachment() || !stored?.title || !stored?.tier?.name) return;
+    if (mesEl.querySelector(".gm_roll_file")) return; // already rendered
+    const pct = Math.max(0, Math.min(100, Math.round(Number(stored.tier.chance) || 0)));
+    appendResultChip(mesEl, {
+        icon: "fa-dice-d6",
+        title: stored.title,
+        tier: `${stored.tier.name} (${pct}%)`,
+        outcome: stored.tier.outcome,
+    });
+});

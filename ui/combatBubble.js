@@ -13,7 +13,7 @@
 import { extension_settings } from "../../../../extensions.js";
 import { extensionName } from "../core/constants.js";
 import { appendResultChip, rollAttachment } from "./diceBubble.js";
-import { onMessageRendered } from "../util/messageDom.js";
+import { onMessageRendered, registerAttachmentRestorer } from "../util/messageDom.js";
 
 const DICE_FACES = ["fa-dice-one", "fa-dice-two", "fa-dice-three", "fa-dice-four", "fa-dice-five", "fa-dice-six"];
 
@@ -325,3 +325,23 @@ export function attachCombatToMessage(mesId, groups, winners) {
 }
 
 export const combatBubble = new CombatBubble();
+
+// Re-attaches the combat chips from the persisted gm_combat record after ST
+// re-renders the message (swipes, edits, chat reload).
+registerAttachmentRestorer((mesEl, msg) => {
+    if (!msg?.is_user) return; // chips belong to the player's action only
+    const stored = msg?.gm_combat;
+    if (!rollAttachment() || !Array.isArray(stored?.groups) || !stored.groups.length) return;
+    if (mesEl.querySelector(".gm_roll_file")) return; // already rendered
+    stored.groups.forEach((g, i) => {
+        const w = stored.winners?.[i];
+        if (!g?.title || !w?.name) return;
+        const pct = Math.max(0, Math.min(100, Math.round(Number(w.chance) || 0)));
+        appendResultChip(mesEl, {
+            icon: "fa-hand-fist",
+            title: g.title,
+            tier: `${w.name} (${pct}%)`,
+            outcome: w.outcome,
+        });
+    });
+});

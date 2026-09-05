@@ -16,7 +16,7 @@ import { stateManager, playerLabel } from "./stateManager.js";
 import { captureSnapshot } from "./snapshots.js";
 import { queueHigh } from "./injection.js";
 import { getPreviousPrePassRaw } from "./prePass.js";
-import { storeActionData } from "../util/chatStore.js";
+import { storeMessageData } from "../util/chatStore.js";
 import { parseAttrs, escAttr } from "./toolParser.js";
 import { sendRequestViaProfile, resolveDiceProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
@@ -245,8 +245,10 @@ export async function rollDice(playerAction, mesId, { title = null } = {}) {
         queueRollResult(rollTitle, winner);
         // Persist the resolved roll on the triggering user message: a swipe
         // of the reply re-attaches THIS result instead of re-rolling (same
-        // action, same state — the odds were already decided once).
-        storeActionData(playerAction, "gm_roll", { title: rollTitle, tier: winner });
+        // action, same state — the odds were already decided once). Keyed by
+        // message id (not action text) so the first send persists even in
+        // send flows where the message lands after the pre-turn pass.
+        storeMessageData(mesId, "gm_roll", { title: rollTitle, tier: winner });
         logDebug(`diceRoller: rolled "${rollTitle}" -> ${winner.name}`);
         return true;
     } catch (e) {

@@ -22,6 +22,8 @@ import { initPostTurn } from "./inject/postTurn.js";
 // Connection profiles
 import { swapProfile } from "./util/profileSwapper.js";
 export { swapProfile };
+// Attachment restore
+import { initAttachmentRestore } from "./util/messageDom.js";
 
 // Base functions
 // Utility to get ST context
@@ -48,6 +50,7 @@ jQuery(async () => {
         initMacros();
         initPreTurn();
         initPostTurn();
+        initAttachmentRestore();
 
         logDebug("Game Manager initialized.", extension_settings[extensionName]);
     } catch (e) {

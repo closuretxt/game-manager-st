@@ -27,6 +27,7 @@ import { runEnemyAI } from "./enemyAI.js";
 import { resolveClashes } from "./clashResolver.js";
 import { combatBubble, attachCombatToMessage } from "../ui/combatBubble.js";
 import { playRoll, playTierResult } from "./soundFx.js";
+import { storeMessageData } from "../util/chatStore.js";
 
 function esc(v) {
     return String(v ?? "")
@@ -197,8 +198,14 @@ export async function runCombatTurn(action, plan, mesId) {
         await new Promise(r => setTimeout(r, 1600));
 
         // Permanent record: DOM-only tag on the message + high-priority
-        // injection. The message text itself is NEVER edited.
+        // injection. The message text itself is NEVER edited. The chip data
+        // is persisted on the message (gm_combat) so the attachment restore
+        // pass rebuilds the chips after ST re-renders the chat.
         captureSnapshot(mesId);
+        storeMessageData(mesId, "gm_combat", {
+            groups: groups.map(g => ({ title: g.title })),
+            winners: winners.map(w => ({ name: w.name, chance: w.chance, outcome: w.outcome })),
+        });
         attachCombatToMessage(mesId, groups, winners);
         queueCombatRound(groups, winners);
         bubble.done("Combat resolved.");
