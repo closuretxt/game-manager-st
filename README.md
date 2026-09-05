@@ -61,19 +61,19 @@ Skill Tree System (expands as you reach the end)
 
 Clash resolver with multi-character and ally action.
 
-![alt text](https://github.com/closuretxt/closure-imgdump/blob/main/Clashresolverexample.png)
-
-Dice roller for one-sided actions and non-combat interactions.
-
-![alt text](https://github.com/closuretxt/closure-imgdump/blob/main/ChanceTracking.png)
+![alt text](https://raw.githubusercontent.com/closuretxt/closure-imgdump/refs/heads/main/clash.png)
 
 Party UI.
 
-![alt text](https://github.com/closuretxt/closure-imgdump/blob/main/PartyUI.png)
+![alt text](https://raw.githubusercontent.com/closuretxt/closure-imgdump/refs/heads/main/UI.png)
 
 Character details page (All values are customizeable)
 
-![alt text](https://github.com/closuretxt/closure-imgdump/blob/main/CharacterDetails.png)
+![alt text](https://raw.githubusercontent.com/closuretxt/closure-imgdump/refs/heads/main/image.png)
+
+Change summary
+
+![alt text](https://raw.githubusercontent.com/closuretxt/closure-imgdump/refs/heads/main/resume.png)
 
 ## Minimal injections
 As said before, your actual LLM just receives relevant information and they are split into high and low priorities. High-priorities are intended to go with your author's note and low-priorities nested inside lorebooks.
