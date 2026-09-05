@@ -9,7 +9,7 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel } from "./stateManager.js";
-import { parseAttrs, escAttr } from "./toolParser.js";
+import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
 import { hasConnectionProfile, resolvePremasterProfile, sendRequestViaProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 
@@ -111,7 +111,7 @@ export function parseEnemyActions(text) {
             enemy,
             speed: Math.max(0, Math.trunc(Number(a.speed) || 0)),
             title: String(a.title || "Attack").slice(0, 80),
-            text: String(m[2] || "").replace(/\s+/g, " ").trim().slice(0, 200),
+            text: decodeEntities(String(m[2] || "")).replace(/\s+/g, " ").trim().slice(0, 200),
         });
     }
     return actions.length ? actions : null;

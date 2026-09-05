@@ -28,7 +28,7 @@ import { logDebug } from "./debug.js";
 import { stateManager, playerLabel } from "./stateManager.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
-import { parseAttrs, escAttr } from "./toolParser.js";
+import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
 
 const MAX_CONTEXT_MESSAGES = 8;
 
@@ -217,14 +217,16 @@ function parseReply(text) {
     const noteRe = /<note\b([^>]*?)(?:\/>|>([\s\S]*?)<\/note>)/gi;
     while ((m = noteRe.exec(text)) !== null) {
         const a = parseAttrs(m[1]);
-        const note = String(a.text || a.content || m[2] || "").trim();
+        // Element content can carry XML-escaped quotes ("...") —
+        // decode it; attribute values are already decoded by parseAttrs.
+        const note = String(a.text || a.content || decodeEntities(m[2]) || "").trim();
         if (note) plan.notes.push(note);
     }
 
     const rwM = text.match(/<rewrite\b([^>]*?)(?:\/>|>([\s\S]*?)<\/rewrite>)/i);
     if (rwM) {
         const a = parseAttrs(rwM[1]);
-        const rewrite = String(a.text || a.action || rwM[2] || "").trim();
+        const rewrite = String(a.text || a.action || decodeEntities(rwM[2]) || "").trim();
         if (rewrite) plan.rewrite = rewrite;
     }
 

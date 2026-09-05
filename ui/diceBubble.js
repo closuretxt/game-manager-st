@@ -10,6 +10,7 @@
 import { extension_settings } from "../../../../extensions.js";
 import { extensionName } from "../core/constants.js";
 import { logDebug } from "../core/debug.js";
+import { decodeEntities } from "../core/toolParser.js";
 import { onMessageRendered, registerAttachmentRestorer } from "../util/messageDom.js";
 
 const DICE_FACES = ["fa-dice-one", "fa-dice-two", "fa-dice-three", "fa-dice-four", "fa-dice-five", "fa-dice-six"];
@@ -191,11 +192,13 @@ export function appendResultChip(mesEl, { icon = "fa-dice-d6", title, tier, outc
     // Tier-driven hue: failures read red, successes read green.
     chip.addClass(/failure/i.test(tier) ? "gm_tier_bad" : /success/i.test(tier) ? "gm_tier_good" : "");
     chip.find(".mes_file_icon").removeClass("fa-file-alt").addClass(icon);
-    chip.find(".mes_file_name").text(title).attr("title", title);
+    chip.find(".mes_file_name").text(decodeEntities(title)).attr("title", title);
     chip.find(".mes_file_size").text(tier).attr("title", tier);
     // The template's open/delete buttons belong to real files — chips are read-only.
     chip.find(".mes_file_open, .mes_file_delete").remove();
-    chip.append($("<div>").addClass("gm_roll_file_outcome").text(outcome));
+    // decodeEntities: rolls persisted before agent output was entity-decoded
+    // still carry "-style escapes — heal them at render time.
+    chip.append($("<div>").addClass("gm_roll_file_outcome").text(decodeEntities(outcome)));
     const wrap = mesEl.querySelector(".mes_file_wrapper");
     if (wrap) $(wrap).append(chip);
     else $(mesEl.querySelector(".mes_text")).after(chip);

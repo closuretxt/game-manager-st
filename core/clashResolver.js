@@ -15,7 +15,7 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel } from "./stateManager.js";
-import { parseAttrs, escAttr } from "./toolParser.js";
+import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
 import { resolveDiceProfile, sendRequestViaProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 
@@ -148,7 +148,7 @@ export function extractStreamedClashes(partialText) {
             tiers.push({
                 name: String(a.name || ""),
                 chance: Number(a.chance) || 0,
-                outcome: String(t[2] || "").replace(/\s+/g, " ").trim(),
+                outcome: decodeEntities(String(t[2] || "")).replace(/\s+/g, " ").trim(),
             });
         }
         groups.push({ title: String(attrs.title || "Clash").slice(0, 100), sides, tiers });

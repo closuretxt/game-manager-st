@@ -17,7 +17,7 @@ import { captureSnapshot } from "./snapshots.js";
 import { queueHigh } from "./injection.js";
 import { getPreviousPrePassRaw } from "./prePass.js";
 import { storeMessageData } from "../util/chatStore.js";
-import { parseAttrs, escAttr } from "./toolParser.js";
+import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
 import { sendRequestViaProfile, resolveDiceProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 import { diceBubble, attachRollToMessage } from "../ui/diceBubble.js";
@@ -88,7 +88,9 @@ export function extractStreamedTiers(partialText) {
         tiers.push({
             name: String(a.name || ""),
             chance: Number(a.chance) || 0,
-            outcome: String(m[2] || "").replace(/\s+/g, " ").trim(),
+            // Agents XML-escape dialogue in tier content ("...") —
+            // decode before the text reaches the bubble/chip/injection.
+            outcome: decodeEntities(String(m[2] || "")).replace(/\s+/g, " ").trim(),
         });
     }
     return tiers;
@@ -111,7 +113,7 @@ function parseReply(text) {
         tiers.push({
             name: String(a.name || ""),
             chance: Number(a.chance) || 0,
-            outcome: String(m[2] || "").replace(/\s+/g, " ").trim(),
+            outcome: decodeEntities(String(m[2] || "")).replace(/\s+/g, " ").trim(),
         });
     }
     return { needsRoll: true, title: String(attrs.title || "Roll"), tiers };
@@ -130,7 +132,9 @@ export function weightedRoll(tiers) {
 }
 
 function queueRollResult(title, tier) {
-    queueHigh(`<roll title="${title}" tier="${tier.name}">${tier.outcome}</roll>`);
+    // Swipe-recovered tiers are read from the persisted gm_roll record and may
+    // predate agent-output entity decoding — normalize before injecting.
+    queueHigh(`<roll title="${decodeEntities(title)}" tier="${tier.name}">${decodeEntities(tier.outcome)}</roll>`);
 }
 
 // Re-queues an ALREADY RESOLVED roll result (swipe recovery) — the outcome
