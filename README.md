@@ -63,6 +63,10 @@ Clash resolver with multi-character and ally action.
 
 ![alt text](https://raw.githubusercontent.com/closuretxt/closure-imgdump/refs/heads/main/clash.png)
 
+Dice roller for one-sided actions and non-combat interactions.
+
+![alt text](https://github.com/closuretxt/closure-imgdump/blob/main/ChanceTracking.png)
+
 Party UI.
 
 ![alt text](https://raw.githubusercontent.com/closuretxt/closure-imgdump/refs/heads/main/UI.png)
