@@ -32,6 +32,7 @@ const SYSTEM_PROMPT = [
     "If a roll IS needed, respond with ONLY XML (no markdown fences, no prose):",
     '<roll title="<short action title, e.g. Use Fireball on Goblin>">',
     "NEVER include dialogue, quoted speech, or spoken lines of any kind in tier outcomes — narration only.",
+    "NEVER roleplay as the characters in tier outcomes: no thoughts, feelings, words, or deliberate choices for them — describe only what physically happens as a consequence of the roll, and let the main GM narrative handle how everyone reacts.",
     '<tier name="Critical Failure" chance="10">The mage\'s Fireball bursts in her palm, scorching her sleeve — she staggers back, and the goblin grins and starts to close in</tier>',
     '<tier name="Failure" chance="25">The fireball roars wide and slams into the wall; the goblin cackles and levels its blade at her</tier>',
     '<tier name="Success" chance="50">The blast catches the goblin square in the chest and sends it sprawling, smoke curling off its armor</tier>',
