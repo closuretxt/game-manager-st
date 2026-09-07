@@ -91,6 +91,12 @@ export const defaultSettings = {
     notify_dice: true,        // True-RNG dice rolls resolved from LLM-reported values.
     notify_enemies: false,    // Also notify for enemy sheets (HP changes, skill use...).
 
+    // Prompt guidance — shared NUMERIC VALUE GUIDELINES (core/valueGuidelines.js)
+    // injected into the engine prompts (tracker, combat engines, pre-pass).
+    // Off = engines keep their own local instructions; the value resolver
+    // keeps parsing arithmetic and dice regardless.
+    value_guidelines: true,
+
     // Sound FX — synthesized dice sounds (Web Audio, no assets) for rolls and
     // per-tier outcomes in the dice and combat bubbles.
     sound_enabled: true, // Master switch for sound effects.
@@ -153,6 +159,7 @@ export async function loadSettings() {
     $("#gm_setting_notify_states").prop("checked", !!s.notify_states);
     $("#gm_setting_notify_dice").prop("checked", !!s.notify_dice);
     $("#gm_setting_notify_enemies").prop("checked", !!s.notify_enemies);
+    $("#gm_setting_value_guidelines").prop("checked", !!s.value_guidelines);
     $("#gm_setting_sound").prop("checked", !!s.sound_enabled);
     $("#gm_setting_sound_volume").val(Number.isFinite(+s.sound_volume) ? +s.sound_volume : 60);
     $("#gm_sound_volume_value").text(`${s.sound_volume}%`);
@@ -201,6 +208,7 @@ export function saveSettings() {
     s.notify_states = $("#gm_setting_notify_states").prop("checked");
     s.notify_dice = $("#gm_setting_notify_dice").prop("checked");
     s.notify_enemies = $("#gm_setting_notify_enemies").prop("checked");
+    s.value_guidelines = $("#gm_setting_value_guidelines").prop("checked");
     s.sound_enabled = $("#gm_setting_sound").prop("checked");
     s.sound_volume = Number($("#gm_setting_sound_volume").val()) || 60;
     saveSettingsDebounced();
@@ -213,7 +221,8 @@ export function initSettingsListeners() {
       "#gm_setting_feat_enemies, #gm_setting_feat_rewrite, #gm_setting_feat_skill_suggest, #gm_setting_feat_progression, #gm_setting_feat_skill_tree, " +
       "#gm_setting_feat_combat, #gm_setting_feat_ally_ai, #gm_setting_rich_clash, #gm_setting_roll_attachment, #gm_setting_feat_death, " +
       "#gm_setting_notify, #gm_setting_notify_stats, #gm_setting_notify_items, #gm_setting_notify_skills, " +
-      "#gm_setting_notify_progression, #gm_setting_notify_states, #gm_setting_notify_dice, #gm_setting_notify_enemies, #gm_setting_sound").on("change", saveSettings);
+      "#gm_setting_notify_progression, #gm_setting_notify_states, #gm_setting_notify_dice, #gm_setting_notify_enemies, #gm_setting_sound, " +
+      "#gm_setting_value_guidelines").on("change", saveSettings);
     // Volume slider: live label + persist on input (same feel as the opacity slider).
     $("#gm_setting_sound_volume").off("input.gm").on("input.gm", () => {
         const val = Number($("#gm_setting_sound_volume").val()) || 60;
