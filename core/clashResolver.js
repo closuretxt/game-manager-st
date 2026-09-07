@@ -9,7 +9,10 @@
 // one party-side action per group; unopposed actions become single-sided
 // groups; chances are earned harshly from the stat sheets (health, attributes,
 // passives, statuses; unknown abilities are impossible); speed decides
-// initiative flavor in the outcome lines.
+// initiative flavor in the outcome lines. The resolver may also REWRITE a
+// side's action text so a pair reads as one coherent exchange, and NEGATE an
+// action outright when the opposing act shuts it down completely (the engine
+// then skips the roll for that group).
 
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { substituteParams } from "../../../../../script.js";
@@ -21,13 +24,15 @@ import { valueGuidelines } from "./valueGuidelines.js";
 import { resolveDiceProfile, sendRequestViaProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 
+import { recentMessages } from "../util/chatStore.js";
+
 const MAX_CONTEXT_MESSAGES = 8;
 
 const SYSTEM_PROMPT = [
     "You are the CLASH RESOLVER of a tabletop-style roleplay game system: you turn both sides' combat actions into opposed probability groups. REALISM FIRST: chances are EARNED from the sheets, never generous by default. Every tier must be justifiable by a stat, skill, passive, status or resource — if nothing on the sheet supports a chance, lower it.",
     "",
     "WHAT YOU RECEIVE:",
-    "- <scene>: the last few messages of the roleplay.",
+    "- <scene>: the last few messages of the roleplay — PAST context only. The round you resolve happens NOW and is defined ENTIRELY by <party_actions>/<enemy_actions>; everything in <scene> (actions, orders, outcomes) is already-resolved history — never resolve or re-pair actions taken from the scene.",
     "- <party_actions> / <enemy_actions>: what each side is doing this round, with initiative speeds.",
     "- <sheets>: resources (current health!), attributes, skills, passives, statuses of EVERY actor in the round.",
     "",
@@ -63,16 +68,18 @@ const SYSTEM_PROMPT = [
     "- Tier outcome lines are short, vivid, and ALWAYS third person, referring to EVERY actor by name — including player characters (\"The knight's slash lands\"; \"The goblin's swing connects\"). Never use \"you\"/\"your\"/\"I\" in outcome lines, even for the player's own action.",
     "- Every action on either side must appear in exactly one group.",
     "- TIER CHANCES are plain percentages — the engine weights them into a true random pick. When an action's text carries dice terms (variable damage, random effects), keep them in the outcome line as written (\"slashes for 2d6+2\"): the tracker rolls them with TRUE RNG when it applies the numbers.",
+    "- ACTION REWRITES: you may rewrite the action text of any <side> so a paired clash reads as ONE coherent exchange — when the opposing action changes the situation mid-move, fold it in (\"Leap the chasm\" paired with \"Shoot arrow\" becomes \"Shoot the Scout as she leaps\"). Keep the actor, the intent and any dice terms intact: rewrite wording/context only, NEVER invent actions nobody declared.",
+    "- NEGATION: when one action so completely shuts another down that no contest remains (a raised shield wall against a thrown pebble, a point-blank shot at someone still sheathing a weapon), mark the shut-down side with negated=\"true\". The group still carries 4 tiers describing the negating side's execution, and every outcome line makes clear the negated action never gets to matter. Use it SPARINGLY: a hard, contestable exchange is never a negation.",
     valueGuidelines(),
 ].join("\n");
 
 //
 
 function collectContext(playerAction, partyActions, enemyActions) {
-    const st = getContext();
-    const chat = Array.isArray(st?.chat) ? st.chat : [];
-    const history = chat.slice(-MAX_CONTEXT_MESSAGES, -1)
-        .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 1200)}`);
+    // Always ends at the AI's last reply (trailing user action excluded).
+    // No char cap — messages stay intact; the message count bounds the size.
+    const history = recentMessages(MAX_CONTEXT_MESSAGES)
+        .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "")}`);
 
     const d = stateManager.getData();
 
@@ -104,6 +111,10 @@ function collectContext(playerAction, partyActions, enemyActions) {
     const blocks = [
         "<clash_context>",
         "<scene>",
+        // Newest message = the AI's last reply: already tracked, sheets
+        // already reflect it. Said here, next to the data, not only in the
+        // system prompt.
+        "<!-- past context; the newest message (the AI's last reply) is ALREADY tracked and reflected in the sheets below -->",
         ...history,
         "</scene>",
         "<party_actions>",
@@ -142,6 +153,9 @@ export function extractStreamedClashes(partialText) {
                 actor: String(a.actor || ""),
                 speed: Math.max(0, Math.trunc(Number(a.speed) || 0)),
                 action: String(a.action || ""),
+                // Set when the opposing act shuts this one down outright —
+                // the engine skips the roll for the whole group.
+                negated: String(a.negated ?? "").toLowerCase() === "true",
             });
         }
         const tiers = [];
@@ -166,7 +180,9 @@ function sanitizeGroups(groups) {
     return (Array.isArray(groups) ? groups : [])
         .map(g => ({
             title: String(g?.title || "Clash").slice(0, 100),
-            sides: (Array.isArray(g?.sides) ? g.sides : []).filter(s => s.actor),
+            sides: (Array.isArray(g?.sides) ? g.sides : [])
+                .map(s => ({ ...s, negated: s?.negated === true }))
+                .filter(s => s.actor),
             tiers: (Array.isArray(g?.tiers) ? g.tiers : [])
                 .filter(t => t && t.name && t.outcome)
                 .map(t => ({ name: String(t.name), chance: Number(t.chance) || 0, outcome: String(t.outcome) })),

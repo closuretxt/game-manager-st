@@ -17,6 +17,7 @@ import { confirmAction } from "./confirmModal.js";
 //   key:       short slug used for the summary label element id
 //   emptyText: label of the "" option (the "Same as ..." fallback)
 //   warning:   when true, an empty selection triggers the red setup warning
+//   divider:   when true, renders a horizontal rule BEFORE this drawer
 const PROFILE_DRAWERS = [
     {
         select: "gm_profile_select", setting: "connection_profile", key: "agentic",
@@ -36,7 +37,10 @@ const PROFILE_DRAWERS = [
         tooltip: "Connection profile used by the Scenario Build Wizard",
         emptyText: "Same as Pre-master",
     },
+    // divider: renders a horizontal rule BEFORE this drawer (separates the
+    // wizard/combat profile group from the engine call profiles).
     {
+        divider: true,
         select: "gm_dice_profile_select", setting: "dice_profile", key: "dice",
         label: "Dice Rolls profile", icon: "fa-dice-d20",
         tooltip: "Connection profile used for chance calculations (dice engine + clash resolver)",
@@ -47,6 +51,12 @@ const PROFILE_DRAWERS = [
         label: "Enemy Creation profile", icon: "fa-skull",
         tooltip: "Connection profile used to auto-generate enemy sheets from the spawn-review popup",
         emptyText: "Same as Wizard",
+    },
+    {
+        select: "gm_combat_profile_select", setting: "combat_profile", key: "combat",
+        label: "Ally & Enemy AI profile", icon: "fa-shield-halved",
+        tooltip: "Connection profile used to decide the character actions (ally/enemy actions)",
+        emptyText: "Same as Pre-master",
     },
 ];
 
@@ -74,6 +84,8 @@ export const settingsUI = {
         // Profile drawers — generated from the registry so new profiles are a
         // one-entry addition. Header click expands/collapses (delegated).
         for (const def of PROFILE_DRAWERS) {
+            // Optional divider BEFORE a drawer (groups related profiles).
+            if (def.divider) $("#gm_profile_drawers").append($("<div>").addClass("gm_profile_divider"));
             $("#gm_profile_drawers").append(this.buildProfileDrawer(def));
             $(`#${def.select}`).on("change", () => {
                 extension_settings[extensionName][def.setting] = $(`#${def.select}`).val();

@@ -3,7 +3,7 @@
 // resolution inside the awaited GENERATION_AFTER_COMMANDS handler:
 //
 //   plan.combat -> ALLY AI (uncommanded party members, friendly)
-//               -> ENEMY AI (hostile side, blind to the player's action)
+//               -> ENEMY AI (hostile side; blind unless the plan is reactive)
 //               -> CLASH RESOLVER (both sides + speeds + full sheets -> groups)
 //               -> weighted roll per group (core/diceRoller.js weightedRoll)
 //                    ├─ ui/combatBubble.js (side-by-side, tiers stream in)
@@ -108,7 +108,8 @@ function buildPartyActions(action, plan, allyActions) {
 // degrades to generic attacks (combat must not die because one call did).
 function buildEnemyActions(enemyActions) {
     const d = stateManager.getData();
-    if (Array.isArray(enemyActions) && enemyActions.length) {
+    if (Array.isArray(enemyActions)) {
+        // An empty array is a deliberate no-op round: kept as-is, no fallback.
         return enemyActions.map(a => {
             const title = cleanActionText(a.title);
             const text = cleanActionText(a.text);
@@ -197,8 +198,14 @@ export async function runCombatTurn(action, plan, mesId) {
         // Phase 1: party action cards stream in right after the ALLY AI.
         bubble.showActions(partyActions);
 
-        // Side B — the enemy AI, blind to everything above.
-        const enemyRaw = await runEnemyAI({ maxActions: Math.max(1, Number(s.combat_max_enemy_actions) || 6) });
+        // Side B — the enemy AI. Blind by default; a reactive pre-pass
+        // judgment (<combat reactive="true"/>) hands it the player's move
+        // so the enemies answer it instead of acting on their own.
+        const reactive = plan?.combat?.reactive === true;
+        const enemyRaw = await runEnemyAI({
+            maxActions: Math.max(1, Number(s.combat_max_enemy_actions) || 6),
+            ...(reactive ? { playerAction: action } : {}),
+        });
         const enemyActions = buildEnemyActions(enemyRaw);
         // Phase 2: enemy cards push in beside the party's.
         bubble.addEnemyActions(enemyActions);
@@ -220,10 +227,22 @@ export async function runCombatTurn(action, plan, mesId) {
         // sweep runs while the roll "happens", then the winner pops.
         const winners = [];
         for (let i = 0; i < groups.length; i++) {
-            bubble.startGroupRoll(i);
-            playRoll(900); // tumbling dice while the slot-machine sweeps
-            await new Promise(r => setTimeout(r, 900)); // let the animation breathe
-            const winner = weightedRoll(groups[i].tiers);
+            // Negated group: the clash resolver decided one side shuts the
+            // other down completely — no roll, the acting side lands its
+            // Success tier outright.
+            const negated = (groups[i].sides || []).some(sd => sd.negated === true);
+            let winner;
+            if (negated) {
+                winner = groups[i].tiers.find(t => t.name === "Success")
+                    || groups[i].tiers.find(t => t.name === "Critical Success")
+                    || groups[i].tiers[Math.min(2, groups[i].tiers.length - 1)];
+                logDebug(`combatEngine: group ${i} negated — no roll, fixed winner "${winner?.name}"`);
+            } else {
+                bubble.startGroupRoll(i);
+                playRoll(900); // tumbling dice while the slot-machine sweeps
+                await new Promise(r => setTimeout(r, 900)); // let the animation breathe
+                winner = weightedRoll(groups[i].tiers);
+            }
             winners.push(winner);
             bubble.resolveGroup(i, winner);
             playTierResult(winner.name);

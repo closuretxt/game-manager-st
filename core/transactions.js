@@ -20,6 +20,7 @@ import { resolveValue } from "./valueResolver.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 import { statusBubble } from "../ui/statusBubble.js";
+import { recentMessages } from "../util/chatStore.js";
 
 const SYSTEM_PROMPT = [
     "You are the game master's accountant for a tabletop-style roleplay session.",
@@ -31,11 +32,14 @@ const SYSTEM_PROMPT = [
 ].join("\n");
 
 function collectContext(resource, playerAction) {
-    const chat = getContext()?.chat || [];
-    const history = chat.slice(-5, -1)
-        .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 800)}`);
+    // Always ends at the AI's last reply (trailing user action excluded).
+    // No char cap — messages stay intact; the message count bounds the size.
+    const history = recentMessages(5)
+        .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "")}`);
     return [
-        "RECENT SCENE:",
+        // Past context only; newest message is already tracked. Said here,
+        // next to the data.
+        "RECENT SCENE (already-resolved history — its newest message, the AI's last reply, is ALREADY tracked; for awareness only, never the source of the transaction):",
         ...history,
         "",
         `RESOURCE: ${resource.name} — current amount: ${resource.qty}`,

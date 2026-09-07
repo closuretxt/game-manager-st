@@ -31,6 +31,8 @@ import { buildDeepContext } from "../util/loreContext.js";
 import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
 import { valueGuidelines } from "./valueGuidelines.js";
 
+import { recentMessages } from "../util/chatStore.js";
+
 const MAX_CONTEXT_MESSAGES = 8;
 
 const SYSTEM_PROMPT = [
@@ -42,8 +44,8 @@ const SYSTEM_PROMPT = [
     "WHAT YOU RECEIVE:",
     "- TRACKED STATE: the party (characters, skills, statuses, each character's own resources and attributes/stats), the party-wide SHARED resources (money, food, ammo...), active warnings, OPEN THREADS, and optionally enemies.",
     "- OPEN THREADS: untracked/unfinished things the post-pass left for itself (ongoing trips with resources spent so far, half-done actions) and secrets hidden from the player. Use them to keep continuity (e.g. a <transaction> or <note> that accounts for the fuel already burned) and to reveal a secret ONLY when the scene genuinely demands it.",
-    "- RECENT SCENE: the last few messages of the roleplay.",
-    "- PLAYER ACTION: the message you must judge.",
+    "- RECENT SCENE: the last few messages of the roleplay — PAST context only. Everything in it (actions, rolls, outcomes) is already-resolved history: use it for situational awareness, never as the thing you are judging.",
+    "- PLAYER ACTION: the message you must judge — the ONLY thing this turn's decisions follow from.",
     "",
     "CORE PRINCIPLES:",
     "- Judge INTENT, not keywords. \"I hand him the coins\" implies a money transaction even though no resource is named; \"I swing at it again\" can need a roll even though no skill is named. Conversely, naming a skill or resource in a trivial context (\"I mention Fireball to the mage\") triggers NOTHING.",
@@ -54,7 +56,7 @@ const SYSTEM_PROMPT = [
     "Respond with ONLY XML tags — no markdown fences, no prose, no explanations. Every tag is OPTIONAL; emit only what applies:",
     
     '<roll needed="true" title="<short action title, e.g. Use Fireball on Goblin>"/>',
-    '<combat engaged="true" speed="<initiative value, 0 if unknown>"/>',
+    '<combat engaged="true" speed="<initiative value, 0 if unknown>" reactive="true"/>',
     '<transaction resource="<shared resource name>" delta="<signed number, negative = spending>" comparison="<plain-language note, under 12 words>"/>',
     '<warning action="set" name="<short name>" text="<under 15 words>"/>  or  <warning action="clear" name="<short name>"/>',
     '<relevant names="<comma-separated shared resource names whose value matters this turn>"/>',
@@ -65,7 +67,7 @@ const SYSTEM_PROMPT = [
     "",
     "TAG RULES:",
     "- <roll>: when the action's outcome is genuinely uncertain AND consequential — risky stunts, contested attempts, unpredictable reactions — OR when the action is a SOCIAL ATTEMPT whose success or quality can vary: negotiating, haggling, persuading, flirting, seducing, intimidating, deceiving, performing, impressing. Anything the character could FAIL at, or pull off noticeably better or worse than average, is a roll — even when failure carries no physical danger. Routine, guaranteed, or purely narrative actions never roll; and merely ASKING or chatting (\"I ask the innkeeper about rumors\") is not an attempt — trying to CHANGE someone's mind, mood, or behavior is.",
-    "- <combat>: INSTEAD of <roll>, when the action ENGAGES tracked enemies (attacking, defending under threat, fleeing from them, using a skill on one). Casual talk with an enemy present or with characters that do NOT PLAN to fight do NOT trigger combat. speed is the actor's initiative judged from their attributes/statuses (Dexterity, Haste...), 0 when unknown. The combat engine runs the opposed resolution (enemy AI + clash + dice); you only decide IF and the speed. Never emit <roll> together with <combat>.",
+    "- <combat>: INSTEAD of <roll>, when the action ENGAGES tracked enemies (attacking, defending under threat, fleeing from them, using a skill on one). Casual talk with an enemy present or with characters that do NOT PLAN to fight do NOT trigger combat. speed is the actor's initiative judged from their attributes/statuses (Dexterity, Haste...), 0 when unknown. The combat engine runs the opposed resolution (enemy AI + clash + dice); you only decide IF and the speed. Never emit <roll> together with <combat>. reactive=\"true\" when the enemies' best play this round is to ANSWER the party's move rather than act on their own initiative (bracing for the declared attack, guarding a retreat, springing a defense the move walks into) — it reveals the player's declared action to the enemy AI so it can respond to it; omit for proactive attacks and advances.",
     "- <transaction>: ONLY for the party-wide shared resources listed in the snapshot, when the action implies spending or gaining. delta is negative when spending, positive when gaining; the transaction engine validates amounts against the current value. Use delta=\"0\" only when the action involves the resource but the amount is unclear — the engine will judge it. The comparison is a plain-language sense of scale (\"Could buy a week's worth of food\").",
     "- <warning>: ONLY for imminent, concrete needs the player should prepare for (supplies running out, deadlines, approaching dangers). action=\"set\" adds or updates one; action=\"clear\" removes one whose cause is resolved. Never re-emit a warning that is already true and unchanged.",
     "- <relevant>: values whose CURRENT VALUE the story engine needs to know this turn even though nothing was spent. Without a character attribute, names are party-wide SHARED resources (haggling, showing off wealth, checking supplies). With character=\"<name>\", names are THAT character's own resources, attributes/stats (checking one's own HP or Mana, flexing a specific attribute to impress) or SKILLS — name a skill when the story engine needs its cooldown state this turn (e.g. it might otherwise have the character use it). Resources flagged always-inject are already visible — never list them.",
@@ -97,10 +99,10 @@ const SYSTEM_PROMPT = [
 //
 
 async function collectContext(playerAction) {
-    const st = getContext();
-    const chat = Array.isArray(st?.chat) ? st.chat : [];
-    const history = chat.slice(-MAX_CONTEXT_MESSAGES, -1)
-        .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 1500)}`);
+    // Always ends at the AI's last reply (trailing user action excluded).
+    // No char cap — messages stay intact; the message count bounds the size.
+    const history = recentMessages(MAX_CONTEXT_MESSAGES)
+        .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "")}`);
 
     // Compact XML snapshot: only what the router needs to judge intent — one
     // line per actor, tracked names as attribute keys, same dialect as the
@@ -111,8 +113,8 @@ async function collectContext(playerAction) {
 
     for (const c of d.characters || []) {
         // The dead have nothing left to judge — collapse their entry.
+        // The dead have nothing left to judge — collapse their entry.
         if (c.state?.mode === "dead") {
-            
             parts.push(`<char name="${escAttr(c.name)}" state="dead"${c.state.reason ? ` reason="${escAttr(c.state.reason)}"` : ""}/>`);
             continue;
         }
@@ -154,7 +156,9 @@ async function collectContext(playerAction) {
         "TRACKED STATE (XML):",
         parts.join("\n"),
         "",
-        "RECENT SCENE:",
+        // The newest scene message (the AI's last reply) was already tracked:
+        // say so HERE, next to the data, not only in the system prompt.
+        "RECENT SCENE (past context — its newest message, the AI's last reply, has ALREADY been tracked: its consequences are reflected in TRACKED STATE above):",
         ...history,
         "",
         `PLAYER ACTION TO JUDGE: ${playerAction}`,
@@ -184,7 +188,12 @@ function parseReply(text) {
     if (combatM) {
         const attrs = parseAttrs(combatM[1]);
         if (String(attrs.engaged ?? "").toLowerCase() === "true") {
-            plan.combat = { engaged: true, speed: Math.max(0, Math.trunc(Number(attrs.speed) || 0)) };
+            plan.combat = {
+                engaged: true,
+                speed: Math.max(0, Math.trunc(Number(attrs.speed) || 0)),
+                // Reactive round: the enemy AI is allowed to see the move.
+                reactive: String(attrs.reactive ?? "").toLowerCase() === "true",
+            };
         }
     }
 
@@ -257,7 +266,7 @@ function sanitizePlan(parsed) {
     // Combat and a plain roll are mutually exclusive: combat takes over the
     // opposed resolution entirely.
     const combat = (parsed.combat && parsed.combat.engaged === true)
-        ? { engaged: true, speed: Math.max(0, Math.trunc(Number(parsed.combat.speed) || 0)) }
+        ? { engaged: true, speed: Math.max(0, Math.trunc(Number(parsed.combat.speed) || 0)), reactive: parsed.combat.reactive === true }
         : null;
 
     const roll = (!combat && parsed.roll && parsed.roll.needed === true)

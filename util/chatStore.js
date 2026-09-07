@@ -36,6 +36,17 @@ export function findActionMessage(action = null) {
     return null;
 }
 
+// Recent scene window for the pre-master engines. Drops a trailing USER
+// message — the current, not-yet-answered action — so the window ALWAYS
+// ends at the AI's last reply, whether or not the user's message has
+// landed in chat when the pass runs (send flows differ).
+export function recentMessages(max = 8) {
+    const chat = getContext()?.chat;
+    const arr = Array.isArray(chat) ? chat.slice(-max) : [];
+    if (arr.length && arr[arr.length - 1]?.is_user) arr.pop();
+    return arr;
+}
+
 // Best-effort chat save after a late (retried) write — ST's own end-of-turn
 // save may already have run by the time the message lands.
 function saveChatBestEffort() {

@@ -12,8 +12,11 @@ import { logDebug } from "./debug.js";
 import { stateManager, playerLabel } from "./stateManager.js";
 import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
 import { valueGuidelines } from "./valueGuidelines.js";
-import { hasConnectionProfile, resolvePremasterProfile, sendRequestViaProfile } from "../util/connectionService.js";
+import { resolveCombatProfile, sendRequestViaProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
+import { getPreviousPrePassRaw } from "./prePass.js";
+
+import { recentMessages } from "../util/chatStore.js";
 
 const MAX_CONTEXT_MESSAGES = 8;
 
@@ -21,10 +24,11 @@ const SYSTEM_PROMPT = [
     "You are the ALLY AI of a tabletop-style roleplay game system: when the player does not command every member of their party, you decide what the uncommanded allies do this combat round.",
     "",
     "WHAT YOU RECEIVE:",
-    "- <scene>: the last few messages of the roleplay.",
+    "- <scene>: the last few messages of the roleplay — PAST context only. The round you decide happens NOW, right after the scene ends. Everything in <scene> (actions, orders, outcomes) is already-resolved history: never act on it. The ONLY current-round instruction is <player_action>.",
     "- <party_sheets>: full stats of every tracked party member (resources, attributes, skills, statuses).",
     "- <enemy_presence>: the hostile side's names and visible state.",
     "- <player_action>: what the player themselves is doing. Allies are FRIENDLY — they may coordinate with it, cover the player, or follow its lead.",
+    "- GM NOTES (optional): the pre-pass router's notes for this turn.",
     "",
     "YOUR OBJECTIVE:",
     "Decide ONE action for each party member whose behavior the player's action does NOT already cover. Members the player clearly commanded (named, ordered, protected...) get NOTHING — never override the player's orders. Actions are NOT mandatory: read the scene and statuses first; dazed, stunned, unconscious or otherwise compromised allies are skipped, and allies may also hold back when the scene justifies it. If the player's action covers everyone (or nobody can act), respond with an empty <ally_actions/>.",
@@ -51,10 +55,10 @@ const SYSTEM_PROMPT = [
 //
 
 function collectContext(playerAction) {
-    const st = getContext();
-    const chat = Array.isArray(st?.chat) ? st.chat : [];
-    const history = chat.slice(-MAX_CONTEXT_MESSAGES, -1)
-        .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 1200)}`);
+    // Always ends at the AI's last reply (trailing user action excluded).
+    // No char cap — messages stay intact; the message count bounds the size.
+    const history = recentMessages(MAX_CONTEXT_MESSAGES)
+        .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "")}`);
 
     const d = stateManager.getData();
 
@@ -83,6 +87,10 @@ function collectContext(playerAction) {
     const blocks = [
         "<ally_ai_context>",
         "<scene>",
+        // Newest message = the AI's last reply: already tracked, sheets
+        // already reflect it. Said here, next to the data, not only in the
+        // system prompt.
+        "Past context; the newest message (the AI's last reply) is ALREADY tracked and reflected in the party sheets.",
         ...history,
         "</scene>",
         "<party_sheets>",
@@ -93,6 +101,13 @@ function collectContext(playerAction) {
         "</enemy_presence>",
         `<player_action>${escAttr(playerAction)}</player_action>`,
         "</ally_ai_context>",
+        // Router notes for this turn — after the context, read as fresh info.
+        ...(String(getPreviousPrePassRaw() || "").trim() ? [
+            "GM NOTES (the pre-pass router's output for this turn):",
+            "<gm_notes>",
+            getPreviousPrePassRaw().trim(),
+            "</gm_notes>",
+        ] : []),
     ];
     return blocks.join("\n");
 }
@@ -129,13 +144,12 @@ export async function runAllyAI({ playerAction = "" } = {}) {
     if (!s.enabled || !s.feature_combat || !s.feature_ally_ai) return null;
 
     const d = stateManager.getData();
-    if (!(d.characters || []).length) return null;
+    // Solo party: nobody besides the player to command — skip the request.
+    if ((d.characters || []).length < 2) return null;
 
     try {
         const st = getContext();
-        const profileId = (s.combat_profile && hasConnectionProfile(st, s.combat_profile))
-            ? s.combat_profile
-            : resolvePremasterProfile(st, s.premaster_profile, s.connection_profile);
+        const profileId = resolveCombatProfile(st, s.combat_profile, s.premaster_profile, s.connection_profile);
         let systemContent = SYSTEM_PROMPT;
         if (s.deep_context_engines) {
             const deep = await buildDeepContext(String(playerAction || ""));

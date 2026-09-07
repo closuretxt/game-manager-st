@@ -70,6 +70,17 @@ export function resolveWizardProfile(st, wizardProfileId = "", premasterProfileI
     return resolvePremasterProfile(st, premasterProfileId, agenticProfileId);
 }
 
+// Resolves which profile id to use for the COMBAT AI passes (ally/enemy
+// actions): its own setting, falling back to the pre-master chain.
+export function resolveCombatProfile(st, combatProfileId = "", premasterProfileId = "", agenticProfileId = "") {
+    if (combatProfileId && hasConnectionProfile(st, combatProfileId)) {
+        return combatProfileId;
+    }
+    return resolvePremasterProfile(st, premasterProfileId, agenticProfileId);
+}
+
+//
+
 // Resolves which profile id to use for DICE/CHANCE calls: its own setting,
 // falling back to the pre-master chain.
 export function resolveDiceProfile(st, diceProfileId = "", premasterProfileId = "", agenticProfileId = "") {

@@ -1,9 +1,12 @@
 // ENEMY AI pass — the hostile side of Combat Mode (Text).
 // When the pre-pass emits <combat/>, this pre-master call decides what every
-// tracked enemy does this round. It is deliberately BLIND to the player's
-// action: the enemy side must not know what the party chose. Output is XML
-// (<enemy_actions>, one <action> per enemy), consumed by the clash resolver
-// (core/clashResolver.js). On failure the caller degrades to generic attacks.
+// tracked enemy does this round. By default it is deliberately BLIND to the
+// player's action: the enemy side must not know what the party chose. A
+// REACTIVE pre-pass judgment (<combat reactive="true"/>) flips this: the
+// caller hands the declared move over and the enemies answer it instead of
+// acting on their own. Output is XML (<enemy_actions>, one <action> per
+// enemy), consumed by the clash resolver (core/clashResolver.js). On failure
+// the caller degrades to generic attacks.
 
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
@@ -11,18 +14,29 @@ import { logDebug } from "./debug.js";
 import { stateManager, playerLabel } from "./stateManager.js";
 import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
 import { valueGuidelines } from "./valueGuidelines.js";
-import { hasConnectionProfile, resolvePremasterProfile, sendRequestViaProfile } from "../util/connectionService.js";
+import { getPreviousPrePassRaw } from "./prePass.js";
+import { resolveCombatProfile, sendRequestViaProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
+
+import { recentMessages } from "../util/chatStore.js";
 
 const MAX_CONTEXT_MESSAGES = 8;
 
-const SYSTEM_PROMPT = [
+// Blind by default: the enemy side must not know what the party chose...
+const BLIND_NOTE = "You do NOT see the player's current action — the enemy side must decide WITHOUT knowing what the party chose this round.";
+
+// Reactive round: the pre-pass judged the enemies should answer the move...
+const REACTIVE_NOTE = "REACTIVE ROUND: the pre-master judged the enemies should respond to the party instead of acting on their own. You DO see the player's declared move in <player_move> — build your actions as ANSWERS to it: counter it, dodge it, block it, intercept it, or exploit the commitment it implies. When nothing beats simply answering the move, hold back instead — never act on impulse while the party's action unfolds.";
+
+function systemPrompt(playerAction) {
+    return [
     "You are the ENEMY AI of a tabletop-style roleplay game system: you decide what the hostile side does each combat round.",
     "",
     "WHAT YOU RECEIVE:",
-    "- <scene>: the last few messages of the roleplay.",
+    "- <scene>: the last few messages of the roleplay — the PREVIOUS turn(s), already played out. The round you decide comes AFTER them: don't repeat, continue or answer what happened there — come up with what the enemies do NEXT, given how things stand now.",
+    "- GM NOTES (optional): the pre-pass router's notes for this turn — on blind rounds ONLY its <rewrite>/<note> entries are included.",
     "- <enemy_sheets>: full stats of every tracked enemy (resources, attributes, skills, statuses).",
-    "- <party_summary>: the opposing party's names and visible state. You do NOT see the player's current action — the enemy side must decide WITHOUT knowing what the party chose this round.",
+    "- <party_summary>: the opposing party's names and visible state. " + (playerAction ? REACTIVE_NOTE : BLIND_NOTE),
     "",
     "YOUR OBJECTIVE:",
     "Decide ONE action per enemy for this round — or none at all. Actions are NOT mandatory: read the scene and statuses first; dazed, stunned, unconscious or otherwise compromised enemies are skipped, and enemies may also hold back when the scene justifies it. Any kind of action is valid — attacking, dodging, shielding an ally, repositioning, fleeing, using a skill. An enemy may take more than one action ONLY if its sheet justifies it (an extra-action status or similar).",
@@ -43,18 +57,31 @@ const SYSTEM_PROMPT = [
     "- title is a short third-person action title (\"Swing club at the Knight\").",
     "- The intent line says WHAT the enemy attempts and AT WHOM — the clash engine needs a concrete target to pair actions against.",
     "- Never invent enemies that are not in the sheets or in the scene.",
+    "- The scene is the PREVIOUS turn: whatever happened there (attacks, outcomes, who faced whom) is done. This round the enemies act on the NEW situation — fresh decisions, not echoes of the last exchange.",
     "- Skip enemies whose statuses/scene prevent acting (Dazed, Stunned, Unconscious...) — a skipped enemy gets no <action> entry. Physical restraints (grappled, tangled in roots, buried in debris) don't force a skip: the enemy may act to break free.",
     "- UNCERTAIN NUMBERS go in dice notation: when the intent carries variable damage or a random effect, write it as a die (\"clubs for 1d8+1\", \"20% chance to poison: 1d5\") — the engine rolls TRUE random dice when the tracker applies it; never invent a fixed average yourself.",
     valueGuidelines(),
 ].join("\n");
+}
 
 //
 
-function collectContext(maxActions) {
-    const st = getContext();
-    const chat = Array.isArray(st?.chat) ? st.chat : [];
-    const history = chat.slice(-MAX_CONTEXT_MESSAGES, -1)
-        .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 1200)}`);
+// GM notes: the pre-pass router's output for this action. On blind rounds
+// ONLY <rewrite>/<note> entries pass through — no <skill>/<roll> or other
+// party-move details; reactive rounds get the full raw output.
+function gmNotes(playerAction) {
+    const raw = String(getPreviousPrePassRaw() || "").trim();
+    if (!raw) return null;
+    if (playerAction) return raw;
+    const picked = raw.match(/<(rewrite|note)\b[^>]*?(?:\/>|>[\s\S]*?<\/\1>)/gi);
+    return picked ? picked.join("\n") : null;
+}
+
+function collectContext(maxActions, playerAction) {
+    // Always ends at the AI's last reply (trailing user action excluded).
+    // No char cap — messages stay intact; the message count bounds the size.
+    const history = recentMessages(MAX_CONTEXT_MESSAGES)
+        .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "")}`);
 
     const d = stateManager.getData();
 
@@ -85,6 +112,10 @@ function collectContext(maxActions) {
     const blocks = [
         "<enemy_ai_context>",
         "<scene>",
+        // Newest message = the AI's last reply: already tracked, sheets
+        // already reflect it. Said here, next to the data, not only in the
+        // system prompt.
+        "The PREVIOUS turn(s) — everything below ALREADY HAPPENED. This round comes after it: the enemies act on the new situation, they don't repeat or continue what is shown here. The newest message (the AI's last reply) is ALREADY tracked and reflected in the enemy sheets.",
         ...history,
         "</scene>",
         "<enemy_sheets>",
@@ -93,7 +124,23 @@ function collectContext(maxActions) {
         "<party_summary>",
         ...(d.characters || []).filter(c => c.state?.mode !== "dead").map(partyXml),
         "</party_summary>",
+        // Only present on reactive rounds: the declared move the enemies
+        // answer instead of acting on their own.
+        ...(playerAction ? [
+            "<player_move>",
+            `The ${playerLabel()}'s declared action this round; the enemies already know it and act in RESPONSE but their action is way slower.`,
+            String(playerAction).slice(0, 600),
+            "</player_move>",
+        ] : []),
         "</enemy_ai_context>",
+        // Router notes for this turn — after the context, read as fresh info.
+        ...(gmNotes(playerAction) ? [
+            "GM NOTES (the pre-pass router's output for this turn):",
+            "<gm_notes>",
+            gmNotes(playerAction),
+            "</gm_notes>",
+        ] : []),
+        "",
         `Decide the enemy actions for this round (at most ${maxActions} <action> entries).`,
     ];
     return blocks.join("\n");
@@ -129,7 +176,7 @@ export function parseEnemyActions(text) {
 // text }), an EMPTY array when the AI deliberately decided nobody acts this
 // round, or null when disabled/failed — only null makes the caller degrade to
 // generic per-enemy attacks.
-export async function runEnemyAI({ maxActions = 6 } = {}) {
+export async function runEnemyAI({ maxActions = 6, playerAction = null } = {}) {
     const s = extension_settings[extensionName];
     if (!s.enabled || !s.feature_combat) return null;
 
@@ -138,17 +185,15 @@ export async function runEnemyAI({ maxActions = 6 } = {}) {
 
     try {
         const st = getContext();
-        const profileId = (s.combat_profile && hasConnectionProfile(st, s.combat_profile))
-            ? s.combat_profile
-            : resolvePremasterProfile(st, s.premaster_profile, s.connection_profile);
-        let systemContent = SYSTEM_PROMPT;
+        const profileId = resolveCombatProfile(st, s.combat_profile, s.premaster_profile, s.connection_profile);
+        let systemContent = systemPrompt(playerAction);
         if (s.deep_context_engines) {
             const deep = await buildDeepContext("");
             if (deep) systemContent += `\n\n<deep_context>\n${deep}\n</deep_context>`;
         }
         const messages = [
             { role: "system", content: systemContent },
-            { role: "user", content: collectContext(maxActions) },
+            { role: "user", content: collectContext(maxActions, playerAction) },
         ];
         const reply = await sendRequestViaProfile(profileId, messages);
         const actions = parseEnemyActions(reply || "");

@@ -20,7 +20,7 @@ import { stateManager, playerLabel } from "./stateManager.js";
 import { captureSnapshot } from "./snapshots.js";
 import { queueHigh } from "./injection.js";
 import { getPreviousPrePassRaw } from "./prePass.js";
-import { storeMessageData } from "../util/chatStore.js";
+import { storeMessageData, recentMessages } from "../util/chatStore.js";
 import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
 import { valueGuidelines } from "./valueGuidelines.js";
 import { sendRequestViaProfile, resolveDiceProfile } from "../util/connectionService.js";
@@ -35,7 +35,7 @@ const SYSTEM_PROMPT = [
     "",
     "WHAT YOU RECEIVE:",
     "- <party>: tracked characters with skills ('*' = on cooldown), statuses (with modifiers), and — when tracked — resources, attributes and passives.",
-    "- RECENT SCENE: the last few messages of the roleplay.",
+    "- RECENT SCENE: the last few messages of the roleplay — PAST context only. The action you judge happens NOW and is the PLAYER ACTION TO JUDGE alone; everything in the scene (actions, rolls, outcomes) is already-resolved history — never judge or re-roll actions taken from the scene.",
     "- GM NOTES (optional): the pre-pass router's full output for this action.",
     "- <deep_context> / <custom> (optional): world lore and the user's standing instructions for this engine.",
     "- PLAYER ACTION TO JUDGE: the action being decided.",
@@ -68,10 +68,10 @@ const SYSTEM_PROMPT = [
 ].join("\n");
 
 function collectContext(playerAction, notes = null, title = null, rewrite = null) {
-    const st = getContext();
-    const chat = Array.isArray(st?.chat) ? st.chat : [];
-    const history = chat.slice(-MAX_CONTEXT_MESSAGES, -1)
-        .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 1500)}`);
+    // Always ends at the AI's last reply (trailing user action excluded).
+    // No char cap — messages stay intact; the message count bounds the size.
+    const history = recentMessages(MAX_CONTEXT_MESSAGES)
+        .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "")}`);
     const d = stateManager.getData();
 
     // Compact XML party snapshot — same dialect as the clash resolver's
@@ -102,7 +102,10 @@ function collectContext(playerAction, notes = null, title = null, rewrite = null
         ...(party.length ? party : ["<!-- no tracked party — judge the actor from the scene alone (RESPONSIBLE GUESSING) -->"]),
         "</party>",
         "",
-        "RECENT SCENE:",
+        // Newest message = the AI's last reply: already tracked, party values
+        // already reflect it. Said here, next to the data, not only in the
+        // system prompt.
+        "RECENT SCENE (past context — its newest message, the AI's last reply, is ALREADY tracked: the party values above already reflect it):",
         ...history,
         ...(gmRaw ? ["", "GM NOTES (the pre-pass router's full output for this action):", "<gm_notes>", gmRaw, "</gm_notes>"] : []),
         "",

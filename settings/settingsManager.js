@@ -72,7 +72,7 @@ export const defaultSettings = {
     connection_profile: "", // Connection profile id for the extension's own AI calls ("" = same as current connection).
     premaster_profile: "",  // Connection profile id for pre-master calls (dice rolls / transactions). "" = same as connection_profile.
     wizard_profile: "",     // Connection profile id for the scenario build wizard (less agentic). "" = same as premaster chain.
-    combat_profile: "",    // Connection profile id for the combat passes (ally/enemy/clash). "" = same as premaster chain.
+    combat_profile: "",    // Connection profile id for the combat AI passes (ally/enemy actions). "" = same as premaster chain.
     dice_profile: "",      // Connection profile id for chance calculations (dice rolls). "" = same as premaster chain.
     enemy_creation_profile: "", // Connection profile id for automatic enemy generation (spawn-review popup flow). "" = same as wizard chain.
     dynamic_enemy_creation: false, // When on, tracker-detected enemies are auto-generated and injected — no review popup (requires Spawn review).
