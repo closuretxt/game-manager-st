@@ -636,6 +636,55 @@
     white-space: nowrap;
 }
 
+/* Anchor for popover menus (Move To / Preset): the menu is absolutely
+   positioned inside the button itself. The :has rule keeps the button in
+   full-opacity "open" styling while its menu is up — otherwise crossing
+   the button->menu gap drops :hover and fades the menu with it. */
+.gm_pop_anchor {
+    position: relative;
+}
+
+.gm_pop_anchor:has(.gm_pop_menu) {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--gm-accent);
+}
+
+.gm_pop_menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 50;
+    min-width: 150px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px;
+    border-radius: var(--gm-radius);
+    border: 1px solid var(--gm-line);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #1a1a1a) 92%, transparent);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    animation: gm_popup_in 0.15s ease-out;
+}
+
+.gm_pop_item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: calc(var(--gm-radius) - 2px);
+    font-size: 12px;
+    white-space: nowrap;
+    color: var(--SmartThemeBodyColor, #ccc);
+    transition: background 0.12s, color 0.12s;
+}
+
+.gm_pop_item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
+}
+
 .gm_sheet_top {
     display: flex;
     gap: 8px;
@@ -1367,6 +1416,80 @@ textarea.gm_input {
 
 .gm_modal_save {
     border: 1px solid color-mix(in srgb, var(--gm-ok, #4caf7d) 50%, transparent);
+}
+
+/* Confirm modal (Continue / Go back) — compact variant of gm_modal with a
+   danger accent edge and a warning badge next to the title. */
+.gm_confirm_overlay {
+    z-index: 10060; /* above the wizard / creator modals it gates */
+    /* Own dim, independent of .gm_modal_overlay: this overlay stacks above
+       another backdrop-filtered overlay (wizard/creator), and some mobile
+       GPUs drop the background paint of a second stacked backdrop-filter
+       layer — so no blur here, just the flat dim. */
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.gm_confirm_modal {
+    width: min(420px, calc(100vw - 32px));
+    gap: 12px; /* same chrome as every other gm_modal — no extra accents */
+}
+
+.gm_confirm_head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.gm_confirm_badge {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: 13px;
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
+    border: 1px solid color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 40%, transparent);
+    background: color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 10%, transparent);
+}
+
+.gm_confirm_badge.gm_confirm_danger_bg {
+    color: var(--gm-danger, #e05c5c);
+    border-color: color-mix(in srgb, var(--gm-danger, #e05c5c) 45%, transparent);
+    background: color-mix(in srgb, var(--gm-danger, #e05c5c) 14%, transparent);
+}
+
+.gm_confirm_title {
+    font-size: 14px;
+    letter-spacing: 0.2px;
+}
+
+.gm_confirm_msg {
+    line-height: 1.5;
+}
+
+/* Go back: quiet, ghosted; Continue: filled danger pill. */
+.gm_confirm_back {
+    opacity: 0.75;
+}
+
+.gm_confirm_back:hover {
+    opacity: 1;
+}
+
+.gm_confirm_danger {
+    border: 1px solid color-mix(in srgb, var(--gm-danger, #e05c5c) 55%, transparent);
+    background: color-mix(in srgb, var(--gm-danger, #e05c5c) 18%, transparent);
+    color: color-mix(in srgb, var(--gm-danger, #e05c5c) 90%, var(--SmartThemeBodyColor, #ccc));
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.gm_confirm_danger:hover {
+    border-color: color-mix(in srgb, var(--gm-danger, #e05c5c) 80%, transparent);
+    background: color-mix(in srgb, var(--gm-danger, #e05c5c) 28%, transparent);
 }
 
 /* Registered custom property so the conic sweep on busy buttons can rotate. */

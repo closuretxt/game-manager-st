@@ -18,6 +18,7 @@ import { CHARACTER_CONTAINERS, genId } from "../core/schemas.js";
 import { generateCharacterProposal, refineCharacterProposal } from "../core/characterGenerator.js";
 import { captureModalScroll, restoreModalScroll } from "../util/scrollKeeper.js";
 import { fadeOutRemove } from "../util/fx.js";
+import { confirmAction } from "./confirmModal.js";
 import { settingsUI } from "./settingsUI.js";
 import { sheetEditor } from "./sheetEditor.js";
 import { iconBtn } from "./characterView.js";
@@ -79,6 +80,18 @@ export const characterCreator = {
         this._targetId = null;
     },
 
+    // Confirm-gated exit for manual closes (Discard / X / backdrop): the
+    // review page holds generated or hand-edited work, so losing it is a
+    // deliberate choice. Apply flows still close() directly.
+    async _confirmClose() {
+        const ok = await confirmAction({
+            title: "Discard this character?",
+            message: "The generated sheet and any edits you made are dropped — nothing has touched state yet.",
+            confirmLabel: " Discard",
+        });
+        if (ok) this.close();
+    },
+
     //
 
     // Reference options: party characters (full sheets) + roster allies that
@@ -123,7 +136,7 @@ export const characterCreator = {
         const modal = $("<div>").addClass("gm_wizard_modal");
         overlay.append(modal);
         overlay.on("mousedown", (e) => {
-            if (e.target === overlay[0]) this.close();
+            if (e.target === overlay[0]) this._confirmClose();
         });
         $("body").append(overlay);
         return modal;
@@ -136,7 +149,7 @@ export const characterCreator = {
             $("<div>").addClass("gm_wizard_spacer"),
         );
         const closeBtn = iconBtn("fa-solid fa-xmark");
-        closeBtn.on("click", () => this.close());
+        closeBtn.on("click", () => this._confirmClose());
         head.append(closeBtn);
         modal.append(head);
     },
@@ -206,7 +219,7 @@ export const characterCreator = {
         const actions = $("<div>").addClass("gm_wizard_actions");
         const cancel = $("<div>").addClass("menu_button gm_small_btn").append(
             $("<i>").addClass("fa-solid fa-xmark"), $("<span>").text(" Cancel"));
-        cancel.on("click", () => this.close());
+        cancel.on("click", () => this._confirmClose());
         const create = $("<div>").addClass("menu_button gm_small_btn").append(
             $("<i>").addClass("fa-solid fa-plus"), $("<span>").text(" Create"));
         create.on("click", () => this._create());
@@ -355,7 +368,7 @@ export const characterCreator = {
         const actions = $("<div>").addClass("gm_wizard_actions");
         const cancel = $("<div>").addClass("menu_button gm_small_btn").append(
             $("<i>").addClass("fa-solid fa-xmark"), $("<span>").text(" Discard"));
-        cancel.on("click", () => this.close());
+        cancel.on("click", () => this._confirmClose());
         const apply = $("<div>").addClass("menu_button gm_small_btn gm_accent_btn").append(
             $("<i>").addClass("fa-solid fa-check"), $("<span>").text(" Apply"));
         apply.on("click", () => {
