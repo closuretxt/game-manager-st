@@ -3013,7 +3013,7 @@ body > #gm_spawn_chip {
 
 #gm_hotbar {
     position: fixed;
-    z-index: 5000; /* above chat, below ST drawers/popups */
+    z-index: var(--gm-window-z); /* same layer as the side panel */
     display: flex;
     gap: 6px;
 }
@@ -3067,7 +3067,7 @@ body > #gm_spawn_chip {
 #gm_hotbar_panel {
     display: none;
     position: fixed;
-    z-index: 5000; /* same layer as the pills */
+    z-index: var(--gm-window-z); /* same layer as the pills */
     max-height: min(440px, 55vh);
     overflow-y: auto;
     padding: 7px;
