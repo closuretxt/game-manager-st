@@ -3202,7 +3202,26 @@ body > #gm_spawn_chip {
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+    /* Dark thin scrollbar — avoids the white system default on Windows. */
     scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+#gm_hotbar_panel::-webkit-scrollbar {
+    width: 8px;
+}
+
+#gm_hotbar_panel::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+}
+
+#gm_hotbar_panel::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+#gm_hotbar_panel::-webkit-scrollbar-track {
+    background: transparent;
 }
 
 #gm_hotbar_panel.open {
