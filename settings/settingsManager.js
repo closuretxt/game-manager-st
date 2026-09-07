@@ -95,7 +95,7 @@ export const defaultSettings = {
     // injected into the engine prompts (tracker, combat engines, pre-pass).
     // Off = engines keep their own local instructions; the value resolver
     // keeps parsing arithmetic and dice regardless.
-    value_guidelines: true,
+    value_guidelines: false,
 
     // Sound FX — synthesized dice sounds (Web Audio, no assets) for rolls and
     // per-tier outcomes in the dice and combat bubbles.
