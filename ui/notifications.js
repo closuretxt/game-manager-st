@@ -18,6 +18,7 @@ import { extensionName } from "../core/constants.js";
 import { logDebug } from "../core/debug.js";
 import { stateManager } from "../core/stateManager.js";
 import { progression } from "../core/progression.js";
+import { onDiceRoll } from "../core/valueResolver.js";
 import { statusBubble } from "./statusBubble.js";
 
 function settings() {
@@ -169,6 +170,14 @@ export const notifications = {
             if (!ok || !allowed("notify_states") || !actorAllowed(charId)) return;
             const char = stateManager.getSheet(charId);
             statusBubble.notify(`${hl.name(char?.name ?? "?")}: ${hl.val(name)} ended`, 14000, true);
+        });
+
+        // ---------- true-RNG dice rolls (valueResolver) ----------
+        // The parser emits one event per dice expression it rolls — the
+        // player sees every honest roll the LLM delegated to the engine.
+        onDiceRoll(({ expr, total, detail }) => {
+            if (!allowed("notify_dice")) return;
+            statusBubble.notify(`🎲 Dice Rolled ${hl.val(expr)} ${hl.pos(`→ ${total}`)}${detail ? hl.dim(` (${detail})`) : ""}`, 16000, true);
         });
 
         logDebug("notifications: wired to state mutations");

@@ -29,6 +29,7 @@ import { stateManager, playerLabel } from "./stateManager.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
+import { valueGuidelines } from "./valueGuidelines.js";
 
 const MAX_CONTEXT_MESSAGES = 8;
 
@@ -74,6 +75,8 @@ const SYSTEM_PROMPT = [
     "- <rewrite>: when the action is transactional and vague or self-contradictory (\"I grab the coins in my pocket and I hand it to the seller\" -> the amount and target become explicit), OR narrates its outcome as already decided: the player controls the ATTEMPT, never the result — \"I do a backflip and I kill the wolf\" -> \"I try to do a backflip and I strike at the wolf\". Rules: actions only (CROP OUT all dialogue — the story engine already sees the original message); NEVER invent actions that are not implicit or decide the attempt's result; under 40 words, plain declarative. If the action is already clear and humble, omit.",
     "- <nothing/>: when NONE of the above applies (pure casual chat, simple dialogue, movement with no stakes). Respond with ONLY <nothing/> and nothing else.",
     "- COOLDOWNS are tracked by the system, not by you: a skill marked on_cooldown in the snapshot is UNAVAILABLE this turn. If the player's action tries to use one, emit a <note> saying that skill is still on cooldown so the story engine can narrate the failed/refused attempt — never decide yourself when a cooldown ends.",
+    "- <transaction> delta may be an arithmetic expression or dice notation (\"15-9+2\", \"1d20\", \"8/1d2\" for a 50% coin flip) — the engine evaluates it exactly and rolls TRUE random dice at application time; never simulate randomness yourself.",
+    valueGuidelines(),
     "",
     "EXAMPLES OF JUDGMENT:",
     "- \"I buy three apples\" -> <transaction resource=\"Dinheiro\" delta=\"-6\" comparison=\"A few days of meals\"/>",
@@ -267,7 +270,10 @@ function sanitizePlan(parsed) {
             if (!entry) return null;
             return {
                 entry,
-                delta: Math.trunc(Number(t?.delta) || 0), // 0 = specialist judges the amount
+                // Math/dice expressions travel RAW — transactions.js resolves
+                // them (dice ROLLED) once at application time. 0 = the
+                // specialist judges the amount.
+                delta: String(t?.delta ?? "").trim().slice(0, 40),
                 comparison: String(t?.comparison || "").slice(0, 120),
             };
         })

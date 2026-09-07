@@ -10,6 +10,7 @@ import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel } from "./stateManager.js";
 import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
+import { valueGuidelines } from "./valueGuidelines.js";
 import { hasConnectionProfile, resolvePremasterProfile, sendRequestViaProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 
@@ -41,6 +42,8 @@ const SYSTEM_PROMPT = [
     "- title is a short third-person action title (\"Swing club at the Knight\").",
     "- The intent line says WHAT the enemy attempts and AT WHOM — the clash engine needs a concrete target to pair actions against.",
     "- Never invent enemies that are not in the sheets; never skip an enemy that is in the sheets.",
+    "- UNCERTAIN NUMBERS go in dice notation: when the intent carries variable damage or a random effect, write it as a die (\"clubs for 1d8+1\", \"20% chance to poison: 1d5\") — the engine rolls TRUE random dice when the tracker applies it; never invent a fixed average yourself.",
+    valueGuidelines(),
 ].join("\n");
 
 //

@@ -17,6 +17,7 @@ import { gmNotify, logDebug } from "../core/debug.js";
 import { generateProposal, refineProposal, applyProposal } from "../core/setupWizard.js";
 import { captureModalScroll, restoreModalScroll } from "../util/scrollKeeper.js";
 import { fadeOutRemove } from "../util/fx.js";
+import { confirmAction } from "./confirmModal.js";
 import { iconBtn } from "./characterView.js";
 import { sheetEditor } from "./sheetEditor.js";
 
@@ -127,6 +128,17 @@ export const setupWizard = {
         this.close();
     },
 
+    // Confirm-gated discard for manual exits (Cancel / backdrop): the wizard
+    // mirrors its session, so dropping it is a deliberate choice.
+    async _confirmDiscard() {
+        const ok = await confirmAction({
+            title: "Discard this setup?",
+            message: "The pasted scenario and any proposal are dropped — nothing has touched state yet.",
+            confirmLabel: " Discard",
+        });
+        if (ok) this._discard();
+    },
+
     _overlay() {
         // Replace the overlay element WITHOUT going through close() — close()
         // nulls this._proposal, which the review step still needs.
@@ -137,7 +149,7 @@ export const setupWizard = {
         const modal = $("<div>").addClass("gm_wizard_modal");
         overlay.append(modal);
         overlay.on("mousedown", (e) => {
-            if (e.target === overlay[0]) this.close();
+            if (e.target === overlay[0]) this._confirmDiscard();
         });
         $("body").append(overlay);
         return modal;
@@ -210,7 +222,7 @@ export const setupWizard = {
         const actions = $("<div>").addClass("gm_wizard_actions");
         const cancel = $("<div>").addClass("menu_button gm_small_btn").append(
             $("<i>").addClass("fa-solid fa-xmark"), $("<span>").text(" Cancel"));
-        cancel.on("click", () => this._discard());
+        cancel.on("click", () => this._confirmDiscard());
         const generate = $("<div>").addClass("menu_button gm_small_btn gm_accent_btn").append(
             $("<i>").addClass("fa-solid fa-wand-magic-sparkles"), $("<span>").text(" Generate Setup"));
         generate.on("click", async () => {
@@ -498,7 +510,13 @@ export const setupWizard = {
         const actions = $("<div>").addClass("gm_wizard_actions");
         const reset = $("<div>").addClass("menu_button gm_small_btn").append(
             $("<i>").addClass("fa-solid fa-trash-can"), $("<span>").text(" Reset"));
-        reset.on("click", () => {
+        reset.on("click", async () => {
+            // Destructive: wipes the scenario, the proposal and all edits.
+            if (!(await confirmAction({
+                title: "Reset the wizard?",
+                message: "The scenario text, the generated proposal and every edit are wiped — the mirrored session too.",
+                confirmLabel: " Reset",
+            }))) return;
             this._discard();
             this._proposal = null;
             this._scenario = "";
@@ -511,7 +529,15 @@ export const setupWizard = {
         });
         const cancel = $("<div>").addClass("menu_button gm_small_btn").append(
             $("<i>").addClass("fa-solid fa-xmark"), $("<span>").text(" Discard"));
-        cancel.on("click", () => this._discard());
+        cancel.on("click", async () => {
+            // Destructive: drops the session entirely (wizard closes).
+            if (!(await confirmAction({
+                title: "Discard the setup?",
+                message: "The scenario text, the generated proposal and every edit are dropped — the mirrored session too.",
+                confirmLabel: " Discard",
+            }))) return;
+            this._discard();
+        });
         const apply = $("<div>").addClass("menu_button gm_small_btn gm_accent_btn").append(
             $("<i>").addClass("fa-solid fa-check"), $("<span>").text(" Apply"));
         apply.on("click", () => {

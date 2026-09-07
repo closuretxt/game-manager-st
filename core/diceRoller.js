@@ -22,6 +22,7 @@ import { queueHigh } from "./injection.js";
 import { getPreviousPrePassRaw } from "./prePass.js";
 import { storeMessageData } from "../util/chatStore.js";
 import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
+import { valueGuidelines } from "./valueGuidelines.js";
 import { sendRequestViaProfile, resolveDiceProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 import { diceBubble, attachRollToMessage } from "../ui/diceBubble.js";
@@ -62,6 +63,8 @@ const SYSTEM_PROMPT = [
     "NEVER roleplay as the characters in tier outcomes: no thoughts, feelings, words, or deliberate choices for them — describe only what physically happens as a consequence of the roll, and let the main GM narrative handle how everyone reacts.",
     "If no roll is needed respond with ONLY: <roll needs=\"false\"/>",
     "When a roll is needed you MUST always produce the full <roll> block with all four <tier> children — never a bare <roll .../> without tiers, never an empty reply.",
+    "TIER CHANCES are plain percentages — the engine weights them into a true random pick. When the action or its outcomes carry dice terms (variable damage, random effects), keep them in the outcome line as written (\"the flask bursts for 2d6+2\"): the tracker rolls them with TRUE RNG when it applies the numbers.",
+    valueGuidelines(),
 ].join("\n");
 
 function collectContext(playerAction, notes = null, title = null, rewrite = null) {

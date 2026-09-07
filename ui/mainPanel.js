@@ -24,6 +24,7 @@ import { resourceManager } from "./resourceManager.js";
 import { setupWizard } from "./setupWizard.js";
 import { characterCreator } from "./characterCreator.js";
 import { iconBtn } from "./characterView.js";
+import { popoverMenu } from "./popoverMenu.js";
 
 const TABS = [
     { id: "party", label: "Party", icon: "fa-solid fa-users" },
@@ -911,21 +912,24 @@ class MainPanel {
             // Spacer pushes the sheet actions right, away from "back".
             backRow.append($("<div>").addClass("gm_wizard_spacer"));
 
-            const toParty = $("<div>").addClass("gm_back_btn").append(
-                $("<i>").addClass("fa-solid fa-user-plus"), $("<span>").text(" To Party"));
-            toParty.on("click", () => {
-                stateManager.enemyToCharacter(enemy.id);
-                this.selectedEnemyId = null;
+            // Move To — one button, two destinations picked from a popover
+            // (back to the party with its sheet, or demoted to the roster).
+            const moveTo = $("<div>").addClass("gm_back_btn gm_pop_anchor").append(
+                $("<i>").addClass("fa-solid fa-person-walking-arrow-right"), $("<span>").text(" Move To"));
+            moveTo.on("click", e => {
+                e.stopPropagation();
+                popoverMenu(moveTo, [
+                    { icon: "fa-solid fa-user-plus", label: "To Party", action: () => {
+                        stateManager.enemyToCharacter(enemy.id);
+                        this.selectedEnemyId = null;
+                    } },
+                    { icon: "fa-solid fa-user-group", label: "To Roster", action: () => {
+                        stateManager.enemyToRoster(enemy.id);
+                        this.selectedEnemyId = null;
+                    } },
+                ]);
             });
-            backRow.append(toParty);
-
-            const toRoster = $("<div>").addClass("gm_back_btn").append(
-                $("<i>").addClass("fa-solid fa-user-group"), $("<span>").text(" To Roster"));
-            toRoster.on("click", () => {
-                stateManager.enemyToRoster(enemy.id);
-                this.selectedEnemyId = null;
-            });
-            backRow.append(toRoster);
+            backRow.append(moveTo);
         }
         content.append(backRow);
 
@@ -1053,29 +1057,39 @@ class MainPanel {
             // Spacer pushes the sheet actions right, away from "back".
             backRow.append($("<div>").addClass("gm_wizard_spacer"));
 
-            // Defection: a party member moves to the enemy side, sheet intact.
-            const toEnemy = $("<div>").addClass("gm_back_btn").append(
-                $("<i>").addClass("fa-solid fa-skull"), $("<span>").text(" To Enemy"));
-            toEnemy.on("click", () => {
-                stateManager.characterToEnemy(char.id);
-                this.selectedCharacterId = null;
+            // Move To — one button, two destinations picked from a popover:
+            // defection to the enemy side, or demotion to the roster (keeps
+            // the full sheet so a later promotion inherits the last state).
+            const moveTo = $("<div>").addClass("gm_back_btn gm_pop_anchor").append(
+                $("<i>").addClass("fa-solid fa-person-walking-arrow-right"), $("<span>").text(" Move To"));
+            moveTo.on("click", e => {
+                e.stopPropagation();
+                popoverMenu(moveTo, [
+                    { icon: "fa-solid fa-skull", label: "To Enemy", action: () => {
+                        stateManager.characterToEnemy(char.id);
+                        this.selectedCharacterId = null;
+                    } },
+                    { icon: "fa-solid fa-user-group", label: "To Roster", action: () => {
+                        stateManager.demoteCharacter(char.id);
+                        this.selectedCharacterId = null;
+                    } },
+                ]);
             });
-            backRow.append(toEnemy);
+            backRow.append(moveTo);
 
-            // Demote to roster — keeps the full sheet so a later promotion
-            // inherits the last state (mission-based party swaps).
-            const toRoster = $("<div>").addClass("gm_back_btn").append(
-                $("<i>").addClass("fa-solid fa-user-group"), $("<span>").text(" To Roster"));
-            toRoster.on("click", () => {
-                stateManager.demoteCharacter(char.id);
-                this.selectedCharacterId = null;
+            // Preset — Save As snapshots this sheet into a new preset, Load
+            // Current overwrites its containers with the active preset (the
+            // destructive part gets a Continue / Go back confirm).
+            const preset = $("<div>").addClass("gm_back_btn gm_pop_anchor").append(
+                $("<i>").addClass("fa-solid fa-wand-magic-sparkles"), $("<span>").text(" Preset"));
+            preset.on("click", e => {
+                e.stopPropagation();
+                popoverMenu(preset, [
+                    { icon: "fa-solid fa-floppy-disk", label: "Save As...", action: () => settingsUI.savePresetFor(char, { newName: true }) },
+                    { icon: "fa-solid fa-file-import", label: "Load Current", action: () => settingsUI.applyTemplateToCharacter(char) },
+                ]);
             });
-            backRow.append(toRoster);
-
-            const applyPreset = $("<div>").addClass("gm_back_btn").append(
-                $("<i>").addClass("fa-solid fa-wand-magic-sparkles"), $("<span>").text(" Apply Preset"));
-            applyPreset.on("click", () => settingsUI.applyTemplateToCharacter(char));
-            backRow.append(applyPreset);
+            backRow.append(preset);
         }
         content.append(backRow);
 

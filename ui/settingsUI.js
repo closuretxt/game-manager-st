@@ -6,6 +6,7 @@ import { CONTAINER_TYPES, GM_SCHEMA, defaultEntry } from "../core/schemas.js";
 import { stateManager } from "../core/stateManager.js";
 import { fadeOutRemove } from "../util/fx.js";
 import { getConnectionProfiles } from "../util/connectionService.js";
+import { confirmAction } from "./confirmModal.js";
 
 // ---------- connection profile drawers ----------
 // Declarative registry: adding a new profile dropdown to the Advanced panel is
@@ -207,11 +208,26 @@ export const settingsUI = {
     },
 
     savePreset() {
+        this.savePresetFor(stateManager.getActiveCharacter());
+    },
+
+    // Snapshot a character's sheet + the current shared resources into a
+    // preset (named via prompt). With `newName` the prompt starts empty of
+    // any existing name, and reusing one asks before overwriting — so
+    // "Save As..." on a sheet never silently replaces the active preset.
+    async savePresetFor(char, { newName = false } = {}) {
         const s = this._settings();
-        const name = window.prompt("Save preset as:", s.active_preset || "New Preset");
+        const name = window.prompt("Save preset as:", newName ? "New Preset" : (s.active_preset || "New Preset"));
         if (!name) return;
+        if (newName && s.presets.some(p => p.name === name)) {
+            const ok = await confirmAction({
+                title: `Overwrite preset "${name}"?`,
+                message: "A preset with this name already exists. Continue replaces it with this sheet.",
+                confirmLabel: " Overwrite",
+            });
+            if (!ok) return;
+        }
         const template = { resources: [], attributes: [], inventory: [], skills: [], passives: [] };
-        const char = stateManager.getActiveCharacter();
         if (char) {
             for (const container of Object.keys(template)) {
                 template[container] = (char[container] || []).map(({ id, ...rest }) => structuredClone(rest));
@@ -229,15 +245,21 @@ export const settingsUI = {
         logDebug("preset saved:", preset);
     },
 
-    loadPreset() {
+    async loadPreset() {
         const preset = this.getActivePreset();
         if (!preset) return;
+        // Destructive: replaces every shared resource in this scenario.
+        const ok = await confirmAction({
+            title: `Load preset "${preset.name}"?`,
+            message: "Shared resources are replaced and new characters will use this template. Existing characters keep their sheets until you load the preset onto them.",
+        });
+        if (!ok) return;
         const d = stateManager.getData();
         d.sharedResources = (preset.sharedResources || []).map(e => defaultEntry("shared", e));
         stateManager.emitChange("preset_loaded");
         gmNotify(
             `Preset "${preset.name}" loaded — shared resources replaced and new characters will use this template. ` +
-            `Unlock edit mode and open a character to apply the template to them (wand button).`,
+            `Unlock edit mode and open a character to apply the template via the Preset button.`,
             "info", 8000
         );
     },
@@ -258,9 +280,15 @@ export const settingsUI = {
         gmNotify(`Preset "${preset.name}" deleted.`, "info");
     },
 
-    applyTemplateToCharacter(char) {
+    async applyTemplateToCharacter(char) {
         const preset = this.getActivePreset();
         if (!preset || !char) return;
+        // Destructive: overwrites every container on this sheet.
+        const ok = await confirmAction({
+            title: `Load "${preset.name}" onto ${char.name}?`,
+            message: "Resources, attributes, inventory, skills and passives on this sheet are replaced by the preset template. This cannot be undone.",
+        });
+        if (!ok) return;
         const entries = this.getTemplateEntries(preset);
         for (const key of Object.keys(entries)) char[key] = entries[key];
         stateManager.emitChange("template_applied");

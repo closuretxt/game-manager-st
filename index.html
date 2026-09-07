@@ -148,6 +148,10 @@
                     <input id="gm_setting_roll_attachment" type="checkbox" />
                     <span>Roll attachments</span>
                 </label>
+                <label class="checkbox_label" for="gm_setting_value_guidelines" title="Inject the shared NUMERIC VALUE GUIDELINES into the engine prompts (tracker, combat engines, pre-pass): arithmetic values (15-9+2) and true-RNG dice (1d20, 8/1d2 chance triggers). Off = engines keep their own instructions; parsing still works.">
+                    <input id="gm_setting_value_guidelines" type="checkbox" />
+                    <span>Advanced Calculations</span>
+                </label>
                 <label class="checkbox_label" for="gm_setting_feat_death" title="Permadeath: the post-pass is directed to be realistic about lethal damage and may kill characters via <deaths>. Dead characters stop acting and can only be revived manually (edit mode).">
                     <input id="gm_setting_feat_death" type="checkbox" />
                     <span>Permadeath</span>
@@ -200,6 +204,10 @@
                 <label class="checkbox_label" for="gm_setting_notify_states" title="Notify on deaths, knockouts, recoveries and status effects">
                     <input id="gm_setting_notify_states" type="checkbox" />
                     <span>States & statuses</span>
+                </label>
+                <label class="checkbox_label" for="gm_setting_notify_dice" title="Notify when the engine rolls true random dice from LLM-reported values (Dice Rolled 1d20 → result)">
+                    <input id="gm_setting_notify_dice" type="checkbox" />
+                    <span>Dice rolls</span>
                 </label>
                 <label class="checkbox_label" for="gm_setting_notify_enemies" title="Also notify for enemy sheets (HP changes, skill use...). Off by default to avoid combat spam.">
                     <input id="gm_setting_notify_enemies" type="checkbox" />
