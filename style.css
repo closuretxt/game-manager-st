@@ -1469,7 +1469,8 @@ textarea.gm_input {
 
 .gm_wizard_modal {
     animation: gm_popup_in 0.22s ease-out;
-    width: min(560px, 92vw);
+    /* Wide on landscape/desktop; portrait mode is forced full-bleed below. */
+    width: min(920px, 92vw);
     max-height: 86vh;
     display: flex;
     flex-direction: column;
