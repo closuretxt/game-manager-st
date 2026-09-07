@@ -31,6 +31,9 @@
 //   <knockouts>       — knock a party character out (<ko char="Name"
 //                       reason="..."/>) or have them recover (<ko_clear
 //                       char="Name"/>); unlike death, the LLM clears it
+// Numeric values (delta/value/qty/amount...) resolve through
+// core/valueResolver.js — pure arithmetic ("15-9+2") evaluates exactly and
+// dice notation ("1d20", "2d6+3") rolls TRUE random dice before applying.
 // Every block may contain a <char>Name</char> (or <target>/<enemy>) tag to
 // scope it; when omitted the active character is used. <warnings> and
 // <threads> are party-level and <char> resolves party characters AND enemies.
@@ -79,69 +82,19 @@ export function parseAttrs(raw) {
     return out;
 }
 
-// Safe arithmetic resolver for LLM-reported numbers: evaluates pure
-// arithmetic expressions ("15-9+2", "(18/2)-3", "2*4") with a tiny
-// recursive-descent parser — no eval, digits/operators/parens only.
-// Returns the resolved number, or null when the input is not a pure
-// arithmetic expression (caller falls back to Number()).
-const EXPR_RE = /^[+\-*/().\s\d]+$/;
-const EXPR_DEPTH_MAX = 50;
-export function resolveNumericExpr(raw) {
-    const s = String(raw ?? "").trim();
-    if (!s || !EXPR_RE.test(s)) return null;
-    let pos = 0;
-    let depth = 0;
-    const peek = () => s[pos];
-    const skip = () => { while (pos < s.length && s[pos] === " ") pos++; };
-    const parseExpr = () => {
-        let v = parseTerm();
-        for (;;) {
-            skip();
-            const c = peek();
-            if (c === "+" || c === "-") { pos++; const r = parseTerm(); v = c === "+" ? v + r : v - r; }
-            else return v;
-        }
-    };
-    const parseTerm = () => {
-        let v = parseFactor();
-        for (;;) {
-            skip();
-            const c = peek();
-            if (c === "*" || c === "/") { pos++; const r = parseFactor(); v = c === "*" ? v * r : (r === 0 ? NaN : v / r); }
-            else return v;
-        }
-    };
-    const parseFactor = () => {
-        skip();
-        if (peek() === "+") { pos++; return parseFactor(); }
-        if (peek() === "-") { pos++; return -parseFactor(); }
-        if (peek() === "(") {
-            if (++depth > EXPR_DEPTH_MAX) { pos = s.length; return NaN; }
-            pos++;
-            const v = parseExpr();
-            skip();
-            if (peek() !== ")") { pos = s.length; return NaN; }
-            pos++;
-            depth--;
-            return v;
-        }
-        const start = pos;
-        while (pos < s.length && /[\d.]/.test(s[pos])) pos++;
-        return start === pos ? NaN : Number(s.slice(start, pos));
-    };
-    const result = parseExpr();
-    skip();
-    if (pos !== s.length || !Number.isFinite(result)) return null;
-    return result;
-}
+// Safe arithmetic + dice resolver for LLM-reported numbers — moved to
+// core/valueResolver.js (registry-based, source-aware); re-exported here so
+// the other LLM-output parsers keep their import path.
+export { resolveNumericExpr } from "./valueResolver.js";
+import { resolveValue } from "./valueResolver.js";
 
 // Numeric attr resolution for the apply paths below: arithmetic expressions
-// resolve exactly, everything else falls back to Number() (NaN propagates to
-// the sink's existing NaN handling). Absent/empty values pass through.
-export function resolveNum(raw) {
-    if (raw === undefined || raw === null || raw === "") return raw;
-    const resolved = resolveNumericExpr(raw);
-    return resolved !== null ? resolved : Number(String(raw).trim());
+// resolve exactly, dice notation rolls true RNG, everything else falls back
+// to Number() (NaN propagates to the sink's existing NaN handling).
+// Absent/empty values pass through. `source` tags where the value came from
+// so source-specific resolvers can register in valueResolver.
+export function resolveNum(raw, source = "tool_action") {
+    return resolveValue(raw, { source });
 }
 
 // Returns [{ type, char, actions: [{ tag, attrs, content }] }]

@@ -17,6 +17,7 @@ import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel } from "./stateManager.js";
 import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
+import { valueGuidelines } from "./valueGuidelines.js";
 import { resolveDiceProfile, sendRequestViaProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 
@@ -61,6 +62,8 @@ const SYSTEM_PROMPT = [
     "- Multiple enemies: one group per pair of actions — separate chances for each group of actions.",
     "- Tier outcome lines are short, vivid, and ALWAYS third person, referring to EVERY actor by name — including player characters (\"The knight's slash lands\"; \"The goblin's swing connects\"). Never use \"you\"/\"your\"/\"I\" in outcome lines, even for the player's own action.",
     "- Every action on either side must appear in exactly one group.",
+    "- TIER CHANCES are plain percentages — the engine weights them into a true random pick. When an action's text carries dice terms (variable damage, random effects), keep them in the outcome line as written (\"slashes for 2d6+2\"): the tracker rolls them with TRUE RNG when it applies the numbers.",
+    valueGuidelines(),
 ].join("\n");
 
 //

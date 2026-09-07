@@ -19,6 +19,7 @@ import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { progression } from "./progression.js";
 import { parseToolBlocks, applyToolBlocks, escAttr } from "./toolParser.js";
+import { valueGuidelines } from "./valueGuidelines.js";
 import { getLastInjections, hadCombatThisTurn } from "./injection.js";
 import { captureSnapshot, captureSwipeState } from "./snapshots.js";
 import { sendRequestViaProfile, resolveConnectionProfile, getProfileNameById } from "../util/connectionService.js";
@@ -204,9 +205,10 @@ async function buildSystemPrompt(exchange = []) {
         '<knockouts><ko char="Name" reason="short cause"/><ko_clear char="Name"/></knockouts>',
         ...(prog ? ['<grant_exp><char>Name</char><exp amount="25"/></grant_exp>'] : []),
         "",
-        // Arithmetic deltas: the parser resolves pure math expressions exactly
-        // (resolveNumericExpr), so the LLM can report auditable terms.
-        "NUMERIC VALUES — every delta/value/qty/amount you report may be an arithmetic expression (\"15-9+2\", \"(18/2)-3\", \"2*4\"): the engine evaluates it exactly before applying. When a number is composed of several sheet terms, report the EXPRESSION instead of a pre-summed guess — e.g. delta=\"-(6+3+2)\" for base damage + attribute + passive.",
+        // Numeric values: shared guidelines — the parser resolves pure math
+        // exactly and rolls true-RNG dice (core/valueResolver.js), so the LLM
+        // can report auditable terms and delegate randomness to the engine.
+        valueGuidelines(),
         "Use <warnings> ONLY for imminent, concrete needs the player should prepare for (supplies running out, deadlines, approaching dangers). Keep warning text under 15 words. Clear a warning when its cause is resolved. Do not re-emit unchanged warnings every turn.",
         "Use <threads> to leave notes to yourself about UNTRACKED or UNFINISHED things the formal containers cannot hold: ongoing trips (fuel/money spent so far), half-done actions, unresolved behavior, or secrets that must stay hidden from the player. ALWAYS record where/when it started (ref) so you can compare progress later (\"started when leaving town\", \"day 2 of the siege\"). Update the thread as things progress; clear it (thread_clear) as soon as it is finished or irrelevant. Threads are invisible to the player and never injected into the story prompt — the pre-pass decides what the story needs to know.",
         "Use <enemies> when enemies or threats appear in the scene: action=\"add\" to introduce one (with its HP resource and notable passives/skills), nested <resource>/<status> tags or hp_delta to update it, and action=\"remove\" AS SOON AS an enemy stops being relevant (defeated, fled, scene moved on) — removed enemies are archived and automatically restored with their last state if they return. An enemy at 0 HP or clearly destroyed/slain in the exchange MUST be removed in this same reply — never leave a dead enemy tracked. You may also damage enemies with <change_values><char>EnemyName</char>.",

@@ -16,6 +16,7 @@ import { stateManager, playerLabel } from "./stateManager.js";
 import { captureSnapshot } from "./snapshots.js";
 import { queueHigh } from "./injection.js";
 import { parseAttrs } from "./toolParser.js";
+import { resolveValue } from "./valueResolver.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 import { statusBubble } from "../ui/statusBubble.js";
@@ -24,7 +25,7 @@ const SYSTEM_PROMPT = [
     "You are the game master's accountant for a tabletop-style roleplay session.",
     "You receive a party-wide resource (name, current amount) and the player's action that mentions it.",
     "Decide the concrete transaction that follows from the action and respond with ONLY XML (no markdown fences, no prose):",
-    '<transaction applies="true" amount="<number spent or gained, negative for spending>" comparison="<short plain-language note, e.g. Could buy a week\'s worth of food>"/>',
+    '<transaction applies="true" amount="<number spent or gained, negative for spending — arithmetic or dice notation allowed, e.g. 15-9+2 or 1d20>" comparison="<short plain-language note, e.g. Could buy a week\'s worth of food>"/>',
     'If the action does not imply any transaction, respond with ONLY: <transaction applies="false"/>',
     "Rules: keep amounts plausible for the setting; if the action implies spending more than owned, cap the transaction at the full amount. Comparison must be under 12 words.",
 ].join("\n");
@@ -48,7 +49,9 @@ function parseReply(text) {
     const a = parseAttrs(m[1]);
     return {
         applies: String(a.applies ?? "").toLowerCase() === "true",
-        transaction: Math.trunc(Number(a.amount) || 0),
+        // Amount may be an arithmetic/dice expression — resolved (dice
+        // ROLLED) below at application time.
+        transaction: String(a.amount ?? "").trim().slice(0, 40),
         comparison: String(a.comparison || ""),
     };
 }
@@ -67,7 +70,9 @@ export async function runTransaction(resource, playerAction, mesId = null, plan 
         let comparison = "";
         if (plan && Number(plan.delta) !== 0) {
             // Pre-pass already judged this transaction — no specialist call.
-            tx = Math.trunc(Number(plan.delta) || 0);
+            // The delta may be an arithmetic/dice expression: resolved here,
+            // once — dice roll TRUE RNG at application time.
+            tx = Math.trunc(Number(resolveValue(plan.delta, { source: "transaction" })) || 0);
             comparison = String(plan.comparison || "").slice(0, 120);
         } else {
             const st = getContext();
@@ -90,7 +95,7 @@ export async function runTransaction(resource, playerAction, mesId = null, plan 
                 logDebug("transactions: no transaction implied");
                 return false;
             }
-            tx = Math.trunc(Number(parsed.transaction) || 0);
+            tx = Math.trunc(Number(resolveValue(parsed.transaction, { source: "transaction" })) || 0);
             comparison = String(parsed.comparison || "").slice(0, 120);
         }
 

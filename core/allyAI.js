@@ -11,6 +11,7 @@ import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel } from "./stateManager.js";
 import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
+import { valueGuidelines } from "./valueGuidelines.js";
 import { hasConnectionProfile, resolvePremasterProfile, sendRequestViaProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 
@@ -42,6 +43,8 @@ const SYSTEM_PROMPT = [
     "- USE SKILLS ACTIVELY. Skills are the ally's signature moves: when a ready skill (no * marker) fits the scene, PREFER it over a plain attack — a fire mage should cast, a healer should heal. Name the skill explicitly in the intent line. Never use a skill marked * (on cooldown), and never invent skills that are not on the sheet.",
     "- Skill costs are real: a skill's (cost: ...) is paid when used — only pick it when the ally can afford it (check current resources).",
     "- Never act for the player themselves; never invent party members that are not in the sheets.",
+    "- UNCERTAIN NUMBERS go in dice notation: when the intent carries variable damage or a random effect, write it as a die (\"slashes for 2d6+2\", \"50% chance to stagger: 1d2\") — the engine rolls TRUE random dice when the tracker applies it; never invent a fixed average yourself.",
+    valueGuidelines(),
 ].join("\n");
 
 //
