@@ -14,6 +14,7 @@ import { progression } from "../core/progression.js";
 import { generateCharacterProposal } from "../core/characterGenerator.js";
 import { skillTree } from "../core/skillTree.js";
 import { skillTreeView } from "./skillTree.js";
+import { bubbleButton } from "./bubbleButton.js";
 import { manualRun } from "../inject/postTurn.js";
 import { getCharacterAvatar, clearAvatarCache, uploadCharacterAvatar, deleteCharacterAvatar, resolveAvatar, extractDominantColor } from "../util/avatars.js";
 import { fadeOutRemove } from "../util/fx.js";
@@ -250,7 +251,8 @@ class MainPanel {
         win.y = null;
         saveSettingsDebounced();
         this._clampIntoViewport();
-        gmNotify("Panel position reset.", "success");
+        bubbleButton.resetPosition();
+        gmNotify("Panel and bubble position reset.", "success");
     }
 
     // Height of ST's fixed top bar — the grab area must stay below it.
