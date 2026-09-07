@@ -76,6 +76,71 @@ export function parseAttrs(raw) {
     return out;
 }
 
+// Safe arithmetic resolver for LLM-reported numbers: evaluates pure
+// arithmetic expressions ("15-9+2", "(18/2)-3", "2*4") with a tiny
+// recursive-descent parser — no eval, digits/operators/parens only.
+// Returns the resolved number, or null when the input is not a pure
+// arithmetic expression (caller falls back to Number()).
+const EXPR_RE = /^[+\-*/().\s\d]+$/;
+const EXPR_DEPTH_MAX = 50;
+export function resolveNumericExpr(raw) {
+    const s = String(raw ?? "").trim();
+    if (!s || !EXPR_RE.test(s)) return null;
+    let pos = 0;
+    let depth = 0;
+    const peek = () => s[pos];
+    const skip = () => { while (pos < s.length && s[pos] === " ") pos++; };
+    const parseExpr = () => {
+        let v = parseTerm();
+        for (;;) {
+            skip();
+            const c = peek();
+            if (c === "+" || c === "-") { pos++; const r = parseTerm(); v = c === "+" ? v + r : v - r; }
+            else return v;
+        }
+    };
+    const parseTerm = () => {
+        let v = parseFactor();
+        for (;;) {
+            skip();
+            const c = peek();
+            if (c === "*" || c === "/") { pos++; const r = parseFactor(); v = c === "*" ? v * r : (r === 0 ? NaN : v / r); }
+            else return v;
+        }
+    };
+    const parseFactor = () => {
+        skip();
+        if (peek() === "+") { pos++; return parseFactor(); }
+        if (peek() === "-") { pos++; return -parseFactor(); }
+        if (peek() === "(") {
+            if (++depth > EXPR_DEPTH_MAX) { pos = s.length; return NaN; }
+            pos++;
+            const v = parseExpr();
+            skip();
+            if (peek() !== ")") { pos = s.length; return NaN; }
+            pos++;
+            depth--;
+            return v;
+        }
+        const start = pos;
+        while (pos < s.length && /[\d.]/.test(s[pos])) pos++;
+        return start === pos ? NaN : Number(s.slice(start, pos));
+    };
+    const result = parseExpr();
+    skip();
+    if (pos !== s.length || !Number.isFinite(result)) return null;
+    return result;
+}
+
+// Numeric attr resolution for the apply paths below: arithmetic expressions
+// resolve exactly, everything else falls back to Number() (NaN propagates to
+// the sink's existing NaN handling). Absent/empty values pass through.
+export function resolveNum(raw) {
+    if (raw === undefined || raw === null || raw === "") return raw;
+    const resolved = resolveNumericExpr(raw);
+    return resolved !== null ? resolved : Number(String(raw).trim());
+}
+
 // Returns [{ type, char, actions: [{ tag, attrs, content }] }]
 export function parseToolBlocks(text) {
     const blocks = [];
@@ -127,18 +192,18 @@ function applyAction(blockType, char, action) {
     const { tag, attrs, content } = action;
     const name = attrs.name ?? attrs.resource ?? attrs.item ?? attrs.attribute ?? attrs.entry ?? "";
     switch (tag) {
-        case "resource":
-            return stateManager.applyDelta(char.id, "resource", name, { delta: attrs.delta, value: attrs.value });
-        case "attribute":
-            return stateManager.applyDelta(char.id, "attribute", name, { delta: attrs.delta, value: attrs.value });
-        case "item":
-            if (blockType === "add_items") {
-                return stateManager.addItem(char.id, { name, qty: attrs.qty ?? 1, description: attrs.description ?? content ?? "" });
-            }
-            if (blockType === "remove_items") {
-                return stateManager.removeItem(char.id, name, attrs.qty ?? null);
-            }
-            return false;
+    case "resource":
+        return stateManager.applyDelta(char.id, "resource", name, { delta: resolveNum(attrs.delta), value: resolveNum(attrs.value) });
+    case "attribute":
+        return stateManager.applyDelta(char.id, "attribute", name, { delta: resolveNum(attrs.delta), value: resolveNum(attrs.value) });
+    case "item":
+        if (blockType === "add_items") {
+            return stateManager.addItem(char.id, { name, qty: resolveNum(attrs.qty) ?? 1, description: attrs.description ?? content ?? "" });
+        }
+        if (blockType === "remove_items") {
+            return stateManager.removeItem(char.id, name, resolveNum(attrs.qty) ?? null);
+        }
+        return false;
         case "entry":
             // Custom features are party-wide; no character scoping needed.
             if (blockType === "update_custom") {
@@ -164,7 +229,7 @@ function applyAction(blockType, char, action) {
             // EXP grants reported by the post-pass — the code owns level-ups
             // and skill points. Counts as applied even without a level-up.
             if (blockType === "grant_exp") {
-                return progression.grantExp(char.id, attrs.amount ?? content).applied;
+                return progression.grantExp(char.id, resolveNum(attrs.amount ?? content)).applied;
             }
             return false;
         case "warning":
@@ -198,11 +263,11 @@ function applyAction(blockType, char, action) {
 function applyEnemyInner(enemy, inner, attrs) {
     let applied = 0;
     if (attrs.hp !== undefined && attrs.hp !== "") {
-        if (stateManager.applyDelta(enemy.id, "resource", "HP", { value: attrs.hp })) applied++;
-        else if (stateManager.addEntry(enemy.id, "resource", { name: "HP", value: Number(attrs.hp) || 0, min: 0, max: Number(attrs.hp_max) || Number(attrs.hp) || 100 })) applied++;
+        if (stateManager.applyDelta(enemy.id, "resource", "HP", { value: resolveNum(attrs.hp) })) applied++;
+        else if (stateManager.addEntry(enemy.id, "resource", { name: "HP", value: resolveNum(attrs.hp) || 0, min: 0, max: resolveNum(attrs.hp_max) || resolveNum(attrs.hp) || 100 })) applied++;
     }
     if (attrs.hp_delta !== undefined && attrs.hp_delta !== "") {
-        if (stateManager.applyDelta(enemy.id, "resource", "HP", { delta: attrs.hp_delta })) applied++;
+        if (stateManager.applyDelta(enemy.id, "resource", "HP", { delta: resolveNum(attrs.hp_delta) })) applied++;
     }
     INNER_RE.lastIndex = 0;
     let im;
@@ -213,11 +278,11 @@ function applyEnemyInner(enemy, inner, attrs) {
         const n = a.name ?? "";
         if (!n) continue;
         if (tag === "resource") {
-            if (stateManager.applyDelta(enemy.id, "resource", n, { delta: a.delta, value: a.value })) applied++;
-            else if (stateManager.addEntry(enemy.id, "resource", { name: n, value: Number(a.value) || 0, min: 0, max: Number(a.max) || 100 })) applied++;
+            if (stateManager.applyDelta(enemy.id, "resource", n, { delta: resolveNum(a.delta), value: resolveNum(a.value) })) applied++;
+            else if (stateManager.addEntry(enemy.id, "resource", { name: n, value: resolveNum(a.value) || 0, min: 0, max: resolveNum(a.max) || 100 })) applied++;
         } else if (tag === "attribute") {
-            if (stateManager.applyDelta(enemy.id, "attribute", n, { delta: a.delta, value: a.value })) applied++;
-            else if (stateManager.addEntry(enemy.id, "attribute", { name: n, value: Number(a.value) || 0 })) applied++;
+            if (stateManager.applyDelta(enemy.id, "attribute", n, { delta: resolveNum(a.delta), value: resolveNum(a.value) })) applied++;
+            else if (stateManager.addEntry(enemy.id, "attribute", { name: n, value: resolveNum(a.value) || 0 })) applied++;
         } else if (tag === "passive") {
             stateManager.addEntry(enemy.id, "passive", { name: n, ptype: a.ptype || "special", description: a.description ?? content ?? "" });
             applied++;
@@ -227,7 +292,7 @@ function applyEnemyInner(enemy, inner, attrs) {
         } else if (tag === "status") {
             if (stateManager.updateStatus(enemy.id, { name: n, modifiers: a.modifiers ?? "", effect: a.effect ?? content ?? "" })) applied++;
         } else if (tag === "item") {
-            if (stateManager.addItem(enemy.id, { name: n, qty: a.qty ?? 1, description: a.description ?? content ?? "" })) applied++;
+            if (stateManager.addItem(enemy.id, { name: n, qty: resolveNum(a.qty) ?? 1, description: a.description ?? content ?? "" })) applied++;
         }
     }
     return applied;
@@ -351,7 +416,7 @@ export function applyToolBlocks(blocks, { autoCreateChars = false } = {}) {
             for (const action of block.actions) {
                 if (action.tag !== "shared") continue;
                 const name = action.attrs.name ?? action.content ?? "";
-                if (stateManager.applySharedDelta(name, { delta: action.attrs.delta, value: action.attrs.value })) applied++;
+                if (stateManager.applySharedDelta(name, { delta: resolveNum(action.attrs.delta), value: resolveNum(action.attrs.value) })) applied++;
             }
             block.actions = block.actions.filter(a => a.tag !== "shared");
             if (!block.actions.length) continue;

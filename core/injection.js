@@ -248,3 +248,11 @@ export function getLastInjections() {
     if (_lastLow) parts.push(_lastLow);
     return `<gamemaster_injections note="Results and context the game system injected into this turn's story prompt (dice rolls, transactions, action rewrites, one-shot notes). Treat as ground truth when reading the exchange.">\n${parts.join("\n")}\n</gamemaster_injections>`;
 }
+
+// Whether THIS turn's story prompt contained a resolved combat round
+// (<combat_round> queued by combatEngine). The post-pass tracker
+// (core/agentRunner.js) uses it to tighten its damage instructions —
+// combat turns need sheet-derived, ground-truth accounting.
+export function hadCombatThisTurn() {
+    return _lastHigh.includes("<combat_round");
+}

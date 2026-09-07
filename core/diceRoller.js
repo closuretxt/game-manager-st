@@ -1,10 +1,14 @@
-// Dice roll pre-master.
-// When the player's action explicitly names a tracked skill, this LLM decides
-// whether the action needs a roll and — if so — provides a title and four
+// DICE ENGINE — the pre-master pass that judges player actions outside of
+// formal combat clashes. It receives the tracked party sheets (skills,
+// statuses, and when available resources/attributes/passives), the recent
+// scene and the pre-pass router's notes, decides whether the action is
+// uncertain enough to need a roll and — if so — provides a title and four
 // ordered chance tiers (Critical Failure / Failure / Success / Critical
-// Success) with short outcome lines. The tiers stream in one by one into a
-// chat bubble while the roll animates; the weighted result is then appended
-// permanently to the player's message and queued for high-priority injection.
+// Success) with short outcome lines. Chances are EARNED from the sheets,
+// never generous by default; untracked actors are judged conservatively from
+// the scene alone. The tiers stream in one by one into a chat bubble while
+// the roll animates; the weighted result is then appended permanently to the
+// player's message and queued for high-priority injection.
 //
 // Uses the pre-master connection profile (util/connectionService.js).
 
@@ -26,21 +30,36 @@ import { playRoll, playTierResult } from "./soundFx.js";
 const MAX_CONTEXT_MESSAGES = 8;
 
 const SYSTEM_PROMPT = [
-    "You are the game master's dice engine for a tabletop-style roleplay session.",
-    "You receive the recent scene and the player's action. Decide if the action's outcome is uncertain enough to require a random roll.",
-    "Routine, guaranteed, or purely narrative actions do NOT need a roll.",
-    "If a roll IS needed, respond with ONLY XML (no markdown fences, no prose):",
+    "You are the DICE ENGINE of a tabletop-style roleplay game system: you judge whether the player's action is uncertain enough to need a random roll and, if so, build a fair 4-tier chance set. REALISM FIRST: chances are EARNED from the actor's sheet and the scene, never generous by default. Every tier must be justifiable by a stat, skill, passive, status or an established scene fact — if nothing supports a chance, lower it.",
+    "",
+    "WHAT YOU RECEIVE:",
+    "- <party>: tracked characters with skills ('*' = on cooldown), statuses (with modifiers), and — when tracked — resources, attributes and passives.",
+    "- RECENT SCENE: the last few messages of the roleplay.",
+    "- GM NOTES (optional): the pre-pass router's full output for this action.",
+    "- <deep_context> / <custom> (optional): world lore and the user's standing instructions for this engine.",
+    "- PLAYER ACTION TO JUDGE: the action being decided.",
+    "",
+    "HARD RESOLUTION RULES:",
+    "- UNCERTAINTY GATE. Routine, guaranteed, or purely narrative actions do NOT need a roll: reply <roll needs=\"false\"/>. Only outcomes with genuine chances of going either way get rolled.",
+    "- UNKNOWN ABILITIES = IMPOSSIBLE. If the action names an ability/technique/spell NOT on the actor's sheet (and the scene never established the actor can do it), Success and Critical Success are 0%: only Failure/Critical Failure tiers describing the fumble (doesn't know the technique, move misfires, nothing happens). A swordsman without 'Dimensional Slash' cannot use it.",
+    "- ATTRIBUTES & SKILLS DECIDE. Match the action to its relevant attribute (Strength for melee, Dexterity for dodging...) and the actor's skills — they must visibly shift the tiers. Trained characters attempting easy tasks skew heavily toward Success; untrained or hard tasks skew toward Failure. Extreme stat or skill gaps cap Success around ~30%.",
+    "- RESOURCES & STATUSES CAP PERFORMANCE. Check current health and statuses: below ~25% health, demanding actions shift hard toward Failure; wounded, slowed, blinded, buffed or exhausted actors apply their modifiers to the chances. Near-death actors cannot perform demanding maneuvers at all.",
+    "- ON-COOLDOWN SKILLS. A skill marked '*' is unavailable this turn: attempting it is a Critical Failure (the technique fizzles, the actor fumbles the timing).",
+    "- RESPONSIBLE GUESSING. If the actor has NO sheet data in <party> (untracked character or creature), infer their capabilities CONSERVATIVELY from the scene alone: their role, gear, described behavior and established lore. Default to middling odds (~40-50% Success) — never extreme chances without clear scene evidence, and never invent sheet entries. An unknown farmhand cannot out-fence a master swordsman.",
+    "",
+    "YOUR OBJECTIVE:",
+    "If a roll IS needed, respond with ONLY XML (no markdown fences, no prose) — exactly 4 ordered tiers (Critical Failure / Failure / Success / Critical Success), chances as percentages of a 100% total:",
     '<roll title="<short action title, e.g. Use Fireball on Goblin>">',
-    "NEVER include dialogue, quoted speech, or spoken lines of any kind in tier outcomes — narration only.",
-    "NEVER roleplay as the characters in tier outcomes: no thoughts, feelings, words, or deliberate choices for them — describe only what physically happens as a consequence of the roll, and let the main GM narrative handle how everyone reacts.",
-    '<tier name="Critical Failure" chance="10">The mage\'s Fireball bursts in her palm, scorching her sleeve — she staggers back, and the goblin grins and starts to close in</tier>',
-    '<tier name="Failure" chance="25">The fireball roars wide and slams into the wall; the goblin cackles and levels its blade at her</tier>',
+    '<tier name="Critical Failure" chance="10">The mage\'s Fireball bursts in her palm, scorching her sleeve — she staggers back, and the goblin starts to close in</tier>',
+    '<tier name="Failure" chance="25">The fireball roars wide and slams into the wall; the goblin levels its blade at her</tier>',
     '<tier name="Success" chance="50">The blast catches the goblin square in the chest and sends it sprawling, smoke curling off its armor</tier>',
-    '<tier name="Critical Success" chance="15">The fireball detonates with a deafening crack — the goblin is thrown clear and simply does not get back up</tier>',
+    '<tier name="Critical Success" chance="15">The fireball detonates with a deafening crack — the goblin is thrown clear and does not get back up</tier>',
     "</roll>",
-    "Always provide exactly 4 tiers in that order. Chances are percentages of a 100% total.",
+    "Tier chances must always sum to 100 and reflect the actor's ACTUAL odds given their stats and the scene — a nimble rogue picking a simple lock is NOT a coin flip, and a wounded novice facing a master is NOT a likely success.",
     "Each tier outcome is a HOOK, not a conclusion: it shows the immediate result of the action (what happens, who reacts) and then STOPS, leaving the scene open — the main GM narrative continues from it and decides everything that follows. Never wrap up, never state final fates (no \"the fight is over\", no aftermath, no closing dialogue), unless the outcome is truly unambiguous (e.g. an instant kill on a critical success).",
     "Outcome lines are short, vivid, and ALWAYS third person, referring to the actor by name (from the party list or the scene) — never \"you\"/\"your\"/\"I\", even though the player's action is written in first person (\"The mage's Fireball explodes in her face\").",
+    "NEVER include dialogue, quoted speech, or spoken lines of any kind in tier outcomes — narration only.",
+    "NEVER roleplay as the characters in tier outcomes: no thoughts, feelings, words, or deliberate choices for them — describe only what physically happens as a consequence of the roll, and let the main GM narrative handle how everyone reacts.",
     "If no roll is needed respond with ONLY: <roll needs=\"false\"/>",
     "When a roll is needed you MUST always produce the full <roll> block with all four <tier> children — never a bare <roll .../> without tiers, never an empty reply.",
 ].join("\n");
@@ -52,14 +71,23 @@ function collectContext(playerAction, notes = null, title = null, rewrite = null
         .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 1500)}`);
     const d = stateManager.getData();
 
-    // Compact XML party snapshot — same dialect as the pre-pass router state
-    // (* = skill on cooldown; statuses as Name (modifiers)).
+    // Compact XML party snapshot — same dialect as the clash resolver's
+    // sheets (* = skill on cooldown; statuses as Name (modifiers); resources
+    // and attributes as value pairs; passives keep their descriptions so
+    // chances are earned from them).
     const party = (d.characters || [])
         .filter(c => c.state?.mode !== "dead")
         .map(c => {
+            const attrs = [`name="${escAttr(c.name)}"`];
+            for (const r of c.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}"`);
+            for (const a of c.attributes || []) attrs.push(`${escAttr(a.name)}="${a.value}"`);
             const skills = (c.skills || []).map(sk => `${escAttr(sk.name)}${(Number(sk.cooldown_left) || 0) > 0 ? "*" : ""}`).join(", ");
+            if (skills) attrs.push(`skills="${skills}"`);
+            const passives = (c.passives || []).map(p => `${escAttr(p.name)}${p.description ? `: ${escAttr(p.description)}` : ""}`).join("; ");
+            if (passives) attrs.push(`passives="${passives}"`);
             const statuses = (c.statuses || []).map(x => `${escAttr(x.name)}${x.modifiers ? ` (${escAttr(x.modifiers)})` : ""}`).join(", ");
-            return `<char name="${escAttr(c.name)}"${skills ? ` skills="${skills}"` : ""}${statuses ? ` statuses="${statuses}"` : ""}/>`;
+            if (statuses) attrs.push(`statuses="${statuses}"`);
+            return `<char ${attrs.join(" ")}/>`;
         });
     // GM notes: the pre-pass router's FULL output for this action, persisted
     // on the user's message (roll call, title, notes, rewrite, transactions...)
@@ -68,7 +96,7 @@ function collectContext(playerAction, notes = null, title = null, rewrite = null
     return [
         "PARTY (tracked characters):",
         "<party>",
-        ...party,
+        ...(party.length ? party : ["<!-- no tracked party — judge the actor from the scene alone (RESPONSIBLE GUESSING) -->"]),
         "</party>",
         "",
         "RECENT SCENE:",

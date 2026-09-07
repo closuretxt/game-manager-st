@@ -19,7 +19,7 @@ import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { progression } from "./progression.js";
 import { parseToolBlocks, applyToolBlocks, escAttr } from "./toolParser.js";
-import { getLastInjections } from "./injection.js";
+import { getLastInjections, hadCombatThisTurn } from "./injection.js";
 import { captureSnapshot, captureSwipeState } from "./snapshots.js";
 import { sendRequestViaProfile, resolveConnectionProfile, getProfileNameById } from "../util/connectionService.js";
 import { swapProfile } from "../util/profileSwapper.js";
@@ -147,6 +147,28 @@ async function buildSystemPrompt(exchange = []) {
         "- NEVER soften, round down, halve, delay or 'forget' damage because the victim is human, sympathetic, innocent, or the player's own character. The dice and the narration already decided the outcome — your only job is to record the numbers faithfully.",
         "- NEVER refuse, moralize, add disclaimers or replace a state change with prose. There is no audience here to protect: this is arithmetic on a game sheet.",
         "- Scale damage to what the narration describes: a graze is small, a solid hit is meaningful, a critical or devastating blow can take a large chunk or reach minimum. Be consistent with the fiction's tone — grimdark is grim, lighthearted adventures stay light.",
+        // Combat turns get a tightened section: the clash engine already
+        // decided the outcomes, so the tracker's job is exact sheet math.
+        ...(hadCombatThisTurn() ? [
+            "",
+            "COMBAT ROUND ACCOUNTING — the game system resolved an opposed combat round this turn (see <combat_round> in GAME SYSTEM RESULTS):",
+            "- The clash tiers and dice are GROUND TRUTH: they already decided who hits and how well. Never re-roll, re-decide a winner or contradict an outcome line — your job is translating the decided outcomes into sheet numbers.",
+            // Damage math as an ordered pipeline (Base > Roll > Buffs >
+            // Debuffs > Stats > Extras > Final) so the tracker reasons
+            // term by term instead of emitting a single guessed number.
+            "- Compute every damage number through the SAME pipeline, in order — reason term by term, then report the FINAL as ONE arithmetic expression in the delta:",
+            "  1. BASE — the move's raw damage: the weapon/skill/moveset damage term from the attacker's sheet, taken as-is (tier scaling comes next, in ROLL).",
+            "  2. ROLL — the decided outcome from GAME SYSTEM RESULTS as its own term: tier quality and any rolled damage numbers (Critical Success full force, Success solid, Failure a graze, Critical Failure a fumble).",
+            "  3. BUFFS — attacker's active bonuses: damage-boosting passives, favorable status modifiers (+X), situational upsides the outcome line grants (flanking, elevated ground).",
+            "  4. DEBUFFS — attacker's penalties: negative status modifiers, wound/exertion degradation, conditional passives that do NOT apply (\"+2 damage below half HP\" only counts while the attacker is actually below half HP — check the current values).",
+            "  5. STATS — the relevant attribute converted into its sheet-stated contribution (STR for melee, DEX/PER for ranged, MAG for casting...).",
+            "  6. EXTRAS — defender-side factors from the DEFENDER's sheet: mitigation (armor-like resources, damage-reduction passives), resistances or immunities; a Critical Success from the outcome may ignore some of these.",
+            "  7. FINAL — sum the terms in order into one expression, e.g. delta=\"-(4*1.5+2-1+3-2)\" = (base × roll) + buffs − debuffs + stats − defender extras. The engine resolves it exactly — never pre-sum or guess.",
+            "- Scale by tier: Critical Success lands the full computed damage (armor-piercing when the outcome says so); Success lands it after mitigation; Failure is a graze or a wasted swing (little or no damage — but resources the attempt cost still count); Critical Failure backfires, landing damage or costs on the actor who failed.",
+            "- Statuses are part of the accounting: when the outcome lines show a status landing (bleeding, staggered, slowed), report it with <set_statuses> AND apply its listed stat modifiers through <change_values>; re-check the sheets for modifiers that change the math (a blinded attacker, a slowed defender).",
+            "- HP thresholds have consequences: a defender pushed below ~25% HP gains a fitting degradation status; a resource reaching its minimum (or an outcome line describing a lethal blow) triggers <knockouts> or <deaths> per the lethality rules — never leave a 0-HP actor standing on the sheet.",
+            "- BOTH directions, EVERY combatant: enemy hits on the player, allies and NPCs are accounted with the same sheet-derived rigor as party hits on enemies. Every combatant who used a skill pays its cost this turn (<use_skills> + matching <change_values>/<remove_items>), and combat exertion (dodging, casting, grappling, sprinting) depletes Stamina/Mana/Ammo-like resources even when the narration does not count them.",
+        ] : []),
         "",
         "RESOURCE SPENDING — the sheet moves whenever the fiction consumes something, not only on damage:",
         "- When the exchange shows a character USING, consuming or depleting anything tracked on their sheet — firing a weapon (Ammo), casting magic without a tracked skill (Mana), sprinting, climbing or fighting (Stamina), eating from their own supplies (Food/Rations), drinking, burning fuel, spending their own money — report the loss with <change_values>.",
@@ -176,6 +198,9 @@ async function buildSystemPrompt(exchange = []) {
         '<knockouts><ko char="Name" reason="short cause"/><ko_clear char="Name"/></knockouts>',
         ...(prog ? ['<grant_exp><char>Name</char><exp amount="25"/></grant_exp>'] : []),
         "",
+        // Arithmetic deltas: the parser resolves pure math expressions exactly
+        // (resolveNumericExpr), so the LLM can report auditable terms.
+        "NUMERIC VALUES — every delta/value/qty/amount you report may be an arithmetic expression (\"15-9+2\", \"(18/2)-3\", \"2*4\"): the engine evaluates it exactly before applying. When a number is composed of several sheet terms, report the EXPRESSION instead of a pre-summed guess — e.g. delta=\"-(6+3+2)\" for base damage + attribute + passive.",
         "Use <warnings> ONLY for imminent, concrete needs the player should prepare for (supplies running out, deadlines, approaching dangers). Keep warning text under 15 words. Clear a warning when its cause is resolved. Do not re-emit unchanged warnings every turn.",
         "Use <threads> to leave notes to yourself about UNTRACKED or UNFINISHED things the formal containers cannot hold: ongoing trips (fuel/money spent so far), half-done actions, unresolved behavior, or secrets that must stay hidden from the player. ALWAYS record where/when it started (ref) so you can compare progress later (\"started when leaving town\", \"day 2 of the siege\"). Update the thread as things progress; clear it (thread_clear) as soon as it is finished or irrelevant. Threads are invisible to the player and never injected into the story prompt — the pre-pass decides what the story needs to know.",
         "Use <enemies> when enemies or threats appear in the scene: action=\"add\" to introduce one (with its HP resource and notable passives/skills), nested <resource>/<status> tags or hp_delta to update it, and action=\"remove\" AS SOON AS an enemy stops being relevant (defeated, fled, scene moved on) — removed enemies are archived and automatically restored with their last state if they return. An enemy at 0 HP or clearly destroyed/slain in the exchange MUST be removed in this same reply — never leave a dead enemy tracked. You may also damage enemies with <change_values><char>EnemyName</char>.",
