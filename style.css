@@ -3008,3 +3008,300 @@ body > #gm_spawn_chip {
         transform: translateY(10px);
     }
 }
+
+/* ---------- Action hotbar (Skills/Items pills above the input bar) ---------- */
+
+#gm_hotbar {
+    position: fixed;
+    z-index: 5000; /* above chat, below ST drawers/popups */
+    display: flex;
+    gap: 6px;
+}
+
+/* Squary, seamless pills — quiet by default, slightly lit on hover. */
+#gm_hotbar .gm_hotbar_pill {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 12px;
+    border-radius: var(--gm-radius, 8px);
+    border: 1px solid color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 15%, transparent);
+    /* Layered theme tint over a translucent dark base — blends into the bar. */
+    background:
+        var(--SmartThemeBlurTintColor, rgba(23, 23, 28, 0.9)),
+        rgba(15, 15, 18, 0.6);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: var(--SmartThemeBodyColor, #ccc);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.2);
+    transition: border-color 0.15s, color 0.15s, transform 0.1s;
+}
+
+#gm_hotbar .gm_hotbar_pill i {
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+#gm_hotbar .gm_hotbar_pill:hover {
+    border-color: color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 40%, transparent);
+}
+
+#gm_hotbar .gm_hotbar_pill:active {
+    transform: scale(0.96);
+}
+
+/* Active pill — accent icon, like a pressed tab. */
+#gm_hotbar .gm_hotbar_pill.active {
+    border-color: color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 55%, transparent);
+}
+
+#gm_hotbar .gm_hotbar_pill.active i {
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
+    opacity: 1;
+}
+
+#gm_hotbar_panel {
+    display: none;
+    position: fixed;
+    z-index: 5000; /* same layer as the pills */
+    max-height: min(440px, 55vh);
+    overflow-y: auto;
+    padding: 7px;
+    border-radius: var(--gm-radius, 10px);
+    border: 1px solid color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 40%, transparent);
+    background:
+        var(--SmartThemeBlurTintColor, rgba(23, 23, 28, 0.97)),
+        rgba(15, 15, 18, 0.92);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+    scrollbar-width: thin;
+}
+
+#gm_hotbar_panel.open {
+    display: block;
+    animation: gm_dice_in 0.22s ease-out both;
+}
+
+/* Fade-out — later rule wins the animation slot over the fade-in above. */
+#gm_hotbar_panel.gm_hotbar_fadeout {
+    animation: gm_bubble_out 0.24s ease both;
+}
+
+/* Frame title — left edge flush with the group headers below it. */
+.gm_hotbar_head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    opacity: var(--gm-muted);
+    padding: 5px 8px 6px;
+    line-height: 1;
+}
+
+.gm_hotbar_group {
+    border: 1px solid var(--gm-line);
+    border-radius: var(--gm-radius);
+    background: rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+}
+
+.gm_hotbar_group + .gm_hotbar_group {
+    margin-top: 6px;
+}
+
+/* Collapsible group header — one per character (MC first). */
+.gm_hotbar_group_head {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 8px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    opacity: 0.8;
+    cursor: pointer;
+    user-select: none;
+}
+
+.gm_hotbar_group_head:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.gm_hotbar_group_head i {
+    font-size: 10px;
+}
+
+.gm_hotbar_group_head .gm_hotbar_chev {
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
+    opacity: 0.8;
+}
+
+/* Closed group — chevron points right, body collapses. */
+.gm_hotbar_group:not(.open) .gm_hotbar_group_head .gm_hotbar_chev {
+    transform: rotate(-90deg);
+}
+
+.gm_hotbar_group_head i:not(.gm_hotbar_chev) {
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
+}
+
+.gm_hotbar_group_body {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.2s ease;
+}
+
+.gm_hotbar_group.open .gm_hotbar_group_body {
+    grid-template-rows: 1fr;
+}
+
+.gm_hotbar_group_inner {
+    min-height: 0;
+    overflow: hidden;
+}
+
+.gm_hotbar_group_head span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.gm_hotbar_item {
+    border-top: 1px solid var(--gm-line);
+}
+
+/* Entries sit one step forward — padding INSIDE the row so the hover
+   highlight covers the full group width. */
+.gm_hotbar_row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px 7px 20px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.gm_hotbar_row:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+/* Skill on cooldown — dimmed until it ticks back. */
+.gm_hotbar_row.gm_hotbar_dim {
+    opacity: 0.45;
+}
+
+.gm_hotbar_chev {
+    flex: 0 0 auto;
+    font-size: 9px;
+    opacity: var(--gm-muted);
+    cursor: pointer;
+    transition: transform 0.15s ease;
+}
+
+.gm_hotbar_chev:hover {
+    opacity: 1;
+}
+
+.gm_hotbar_item.open .gm_hotbar_chev {
+    transform: rotate(180deg);
+}
+
+.gm_hotbar_name {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.gm_hotbar_chip {
+    display: flex;
+    gap: 8px;
+    flex: 0 0 auto;
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+.gm_hotbar_chip .fa-hourglass-half {
+    font-size: 9px;
+    margin-right: 3px;
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
+}
+
+/* Padding + negative margins: the visual stays put, the hit area grows to
+   cover the full row height (plus a little slack). */
+.gm_hotbar_add {
+    flex: 0 0 auto;
+    font-size: 14px;
+    opacity: 0.6;
+    cursor: pointer;
+    padding: 12px 6px 12px 8px;
+    margin: -12px -2px -12px 0;
+    transition: opacity 0.15s, color 0.15s, transform 0.1s;
+}
+
+.gm_hotbar_add:hover {
+    opacity: 1;
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
+}
+
+.gm_hotbar_add:active {
+    transform: scale(0.9);
+}
+
+/* Details slide open/closed — same single-track grid trick as the groups. */
+.gm_hotbar_details {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.2s ease;
+}
+
+.gm_hotbar_item.open .gm_hotbar_details {
+    grid-template-rows: 1fr;
+}
+
+.gm_hotbar_details_inner {
+    min-height: 0;
+    overflow: hidden;
+    font-size: 10px;
+    line-height: 1.5;
+    opacity: 0.75;
+    white-space: pre-wrap;
+    transition: padding 0.2s ease;
+}
+
+/* Padding only when open so the collapsed row reaches zero height. */
+.gm_hotbar_item.open .gm_hotbar_details_inner {
+    padding: 2px 8px 6px 37px;
+}
+
+.gm_hotbar_meta {
+    color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+.gm_hotbar_desc b {
+    color: var(--SmartThemeBodyColor, #ddd);
+    font-weight: 700;
+}
+
+.gm_hotbar_desc i {
+    opacity: 0.85;
+}
+
+.gm_hotbar_empty {
+    padding: 4px 8px 6px 20px;
+    font-size: 10px;
+    font-style: italic;
+    opacity: 0.5;
+}

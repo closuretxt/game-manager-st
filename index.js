@@ -13,6 +13,7 @@ export { logDebug };
 // UI
 import { mainPanel } from "./ui/mainPanel.js";
 import { bubbleButton } from "./ui/bubbleButton.js";
+import { hotbar } from "./ui/hotbar.js";
 import { settingsUI } from "./ui/settingsUI.js";
 import { notifications } from "./ui/notifications.js";
 // Injection
@@ -47,6 +48,7 @@ jQuery(async () => {
         notifications.init();
         mainPanel.init();
         bubbleButton.init();
+        hotbar.init();
         initMacros();
         initPreTurn();
         initPostTurn();
