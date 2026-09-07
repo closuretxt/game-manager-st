@@ -25,7 +25,7 @@ const SYSTEM_PROMPT = [
     "- <party_summary>: the opposing party's names and visible state. You do NOT see the player's current action — the enemy side must decide WITHOUT knowing what the party chose this round.",
     "",
     "YOUR OBJECTIVE:",
-    "Decide ONE action per enemy for this round. Any kind of action is valid — attacking, dodging, shielding an ally, repositioning, fleeing, using a skill — choose what a competent hostile would do given its stats, statuses and the scene. An enemy may take more than one action ONLY if its sheet justifies it (an extra-action status or similar).",
+    "Decide what each enemy does this round — if anything. Actions are NOT mandatory: READ THE SCENE and each enemy's statuses first. An enemy that is dazed, stunned, unconscious, restrained, paralyzed or otherwise compromised CANNOT act and must be skipped. Enemies may also deliberately hold back, wait for an opening, or stay hidden when the scene justifies it. Any kind of action is valid — attacking, dodging, shielding an ally, repositioning, fleeing, using a skill — choose what a competent hostile would do given its stats, statuses and the scene. An enemy may take more than one action ONLY if its sheet justifies it (an extra-action status or similar).",
     "",
     "SKILLS:",
     "- USE SKILLS ACTIVELY. Skills are the enemy's signature moves: when a ready skill (no * marker) fits the scene, PREFER it over a plain attack — a spellcaster should cast, a brute should use its signature maneuver. Name the skill explicitly in the intent line. Never use a skill marked * (on cooldown), and never invent skills that are not on the sheet.",
@@ -36,12 +36,14 @@ const SYSTEM_PROMPT = [
     '<enemy_actions>',
     '<action enemy="<enemy name>" speed="<initiative, 0 if unknown>" title="<short action title>"><short intent line, under 20 words></action>',
     '</enemy_actions>',
+    "If NO enemy can or should act this round (all dazed/stunned, ambush not sprung, etc.), respond with an EMPTY block: '<enemy_actions/>' — do not fabricate actions.",
     "",
     "RULES:",
     "- speed is initiative judged from that enemy's attributes/statuses (Dexterity, Haste...); 0 when unknown.",
     "- title is a short third-person action title (\"Swing club at the Knight\").",
     "- The intent line says WHAT the enemy attempts and AT WHOM — the clash engine needs a concrete target to pair actions against.",
-    "- Never invent enemies that are not in the sheets; never skip an enemy that is in the sheets.",
+    "- Never invent enemies that are not in the sheets; never invent actions for enemies that cannot act.",
+    "- SKIP enemies whose statuses prevent acting (Dazed, Stunned, Unconscious, Paralyzed...) or that the scene shows as out of the fight. A skipped enemy simply has no <action> entry.",
     "- UNCERTAIN NUMBERS go in dice notation: when the intent carries variable damage or a random effect, write it as a die (\"clubs for 1d8+1\", \"20% chance to poison: 1d5\") — the engine rolls TRUE random dice when the tracker applies it; never invent a fixed average yourself.",
     valueGuidelines(),
 ].join("\n");
@@ -97,11 +99,14 @@ function collectContext(maxActions) {
     return blocks.join("\n");
 }
 
-// Tolerant parse of the <enemy_actions> block. Returns an array of actions or
-// null when nothing usable is present.
+// Tolerant parse of the <enemy_actions> block. Returns an array of actions,
+// an EMPTY array when the model deliberately declared a no-op round
+// (<enemy_actions/>), or null when nothing usable is present.
 export function parseEnemyActions(text) {
     if (!text) return null;
     const blockM = text.match(/<enemy_actions>([\s\S]*?)<\/enemy_actions>/i);
+    // Self-closing <enemy_actions/> is a deliberate "nobody acts this round".
+    if (!blockM && /<enemy_actions\s*\/>/i.test(text)) return [];
     const body = blockM ? blockM[1] : text;
     const actions = [];
     const re = /<action\b([^>]*?)(?:\/>|>([\s\S]*?)<\/action>)/gi;
@@ -117,12 +122,13 @@ export function parseEnemyActions(text) {
             text: decodeEntities(String(m[2] || "")).replace(/\s+/g, " ").trim().slice(0, 200),
         });
     }
-    return actions.length ? actions : null;
+    return actions;
 }
 
-// Runs the ENEMY AI pass. Returns an array of actions
-// ({ enemy, speed, title, text }) or null when disabled/failed — the caller
-// then degrades to generic per-enemy attacks.
+// Runs the ENEMY AI pass. Returns an array of actions ({ enemy, speed, title,
+// text }), an EMPTY array when the AI deliberately decided nobody acts this
+// round, or null when disabled/failed — only null makes the caller degrade to
+// generic per-enemy attacks.
 export async function runEnemyAI({ maxActions = 6 } = {}) {
     const s = extension_settings[extensionName];
     if (!s.enabled || !s.feature_combat) return null;
@@ -146,9 +152,13 @@ export async function runEnemyAI({ maxActions = 6 } = {}) {
         ];
         const reply = await sendRequestViaProfile(profileId, messages);
         const actions = parseEnemyActions(reply || "");
-        if (!actions) {
+        if (actions === null) {
             logDebug("enemyAI: no usable actions in reply — caller will fall back to generic attacks");
             return null;
+        }
+        if (!actions.length) {
+            logDebug("enemyAI: AI declared a no-op round (nobody acts)");
+            return [];
         }
         logDebug(`enemyAI: ${actions.length} action(s) — ${actions.map(a => a.enemy).join(", ")}`);
         return actions.slice(0, maxActions);

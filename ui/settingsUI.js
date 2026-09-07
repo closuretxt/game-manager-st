@@ -84,8 +84,9 @@ export const settingsUI = {
         $("#gm_profile_drawers").on("click", ".gm_drawer_header", function () {
             $(this).closest(".gm_drawer").toggleClass("open");
         });
-
         // Custom instructions popup (pre-pass / post-pass standing notes).
+        // Category drawers (LLM, Features, ...) are plain inline-drawers,
+        // toggled by SillyTavern's own global handler.
         $("#gm_custom_instructions").on("click", () => this.openCustomInstructions());
     },
 

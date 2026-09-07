@@ -1756,7 +1756,8 @@ textarea.gm_input {
 .gm_settings_grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 2px 12px;
+    gap: 10px 16px;
+    padding: 4px 0;
 }
 
 .gm_settings_grid .checkbox_label {
@@ -1840,6 +1841,26 @@ textarea.gm_input {
 
 .gm_field_inline input[type="text"]::placeholder {
     opacity: 0.45;
+}
+
+/* Category drawers: same inline-drawer look as the Profiles section, all
+   nested drawers (LLM...Profiles) share one even gap. */
+#gm_settings_block .inline-drawer-content > .inline-drawer {
+    margin-top: 8px;
+}
+
+/* Player name: one-line field at the bottom of the LLM drawer. .gm_field
+   would stack it vertically (column) — force the row back to horizontal. */
+.gm_player_row {
+    flex-direction: row;
+    margin-top: 8px;
+}
+
+.gm_player_row input[type="text"] {
+    flex: 0 1 180px;
+    width: auto;
+    padding: 4px 8px;
+    font-size: 12px;
 }
 
 /* ---------- Progression (EXP / levels / skill points) ---------- */

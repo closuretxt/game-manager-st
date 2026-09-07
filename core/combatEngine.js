@@ -103,11 +103,12 @@ function buildPartyActions(action, plan, allyActions) {
     return [player, ...allies];
 }
 
-// Enemy-side actions, degrading to generic attacks when the ENEMY AI pass
-// failed (combat must not die because one call did).
+// Enemy-side actions. An EMPTY array is a deliberate no-op round (enemies
+// dazed/holding back) and is kept as-is; only null — the pass failed —
+// degrades to generic attacks (combat must not die because one call did).
 function buildEnemyActions(enemyActions) {
     const d = stateManager.getData();
-    if (enemyActions && enemyActions.length) {
+    if (Array.isArray(enemyActions) && enemyActions.length) {
         return enemyActions.map(a => {
             const title = cleanActionText(a.title);
             const text = cleanActionText(a.text);

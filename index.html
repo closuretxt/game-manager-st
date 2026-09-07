@@ -59,181 +59,11 @@
                 <span>Action Hotbar</span>
             </label>
 
-            <div class="gm_settings_sep">LLM</div>
-            <div class="gm_settings_grid">
-                <label class="checkbox_label" for="gm_setting_pre_pass" title="An LLM judges every action (rolls, transactions, warnings) instead of keyword matching">
-                    <input id="gm_setting_pre_pass" type="checkbox" />
-                    <span>Pre-pass router</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_feat_wizard" title="One-button LLM setup of party, roster and resources from a scenario description">
-                    <input id="gm_setting_feat_wizard" type="checkbox" />
-                    <span>Setup Wizard</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_feat_char_creator" title="Add Character modal: instant copy from an existing character or preset, or an LLM-generated sheet with review">
-                    <input id="gm_setting_feat_char_creator" type="checkbox" />
-                    <span>Character Creator</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_spawn_review" title="When the tracker detects a new character or enemy, queue a review chip instead of auto-creating a minimal sheet — clicking it generates the full sheet and opens the review page. Requires Character Creator + Agentic updates.">
-                    <input id="gm_setting_spawn_review" type="checkbox" />
-                    <span>Spawn review</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_dyn_enemies" title="Dynamic enemy creation: when the tracker detects a NEW enemy, its full sheet is generated and injected automatically — no review popup. Requires Spawn review + Enemies.">
-                    <input id="gm_setting_dyn_enemies" type="checkbox" />
-                    <span>Dyn Enemy Creation</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_deep_context" title="Send character card, persona, author's note and activated World Info to the extension's LLMs. Higher token cost.">
-                    <input id="gm_setting_deep_context" type="checkbox" />
-                    <span>Deep context</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_deep_context_engines" title="Deep context for the specialist engines only (dice rolls + transactions). Higher token cost per roll/spend check.">
-                    <input id="gm_setting_deep_context_engines" type="checkbox" />
-                    <span>Deep Context for Engines</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_auto_update" title="Post-pass: an LLM analyses each exchange and applies tool-tag state changes">
-                    <input id="gm_setting_auto_update" type="checkbox" />
-                    <span>Agentic updates</span>
-                </label>
-            </div>
-            <div class="gm_settings_sep">Features</div>
-            <div class="gm_settings_grid">
-                <label class="checkbox_label" for="gm_setting_feat_warnings" title="AI notes on imminent needs (e.g. food running out) — panel strip + low-priority injection">
-                    <input id="gm_setting_feat_warnings" type="checkbox" />
-                    <span>Warnings</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_feat_dice" title="Dice rolls with animated tier bubbles on uncertain actions">
-                    <input id="gm_setting_feat_dice" type="checkbox" />
-                    <span>Dice rolls</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_feat_transactions" title="Fair-use checks when spending shared resources (money, food...)">
-                    <input id="gm_setting_feat_transactions" type="checkbox" />
-                    <span>Transactions</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_feat_injection" title="Inject state via {{gamemaster-low-priority}} / {{gamemaster-high-priority}}">
-                    <input id="gm_setting_feat_injection" type="checkbox" />
-                    <span>Injection</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_feat_enemies" title="Context-based enemies: AI-tracked sheets, archived when irrelevant, restored on return. Hidden entirely when unused.">
-                    <input id="gm_setting_feat_enemies" type="checkbox" />
-                    <span>Enemies</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_feat_rewrite" title="The pre-pass clarifies vague or contradictory actions: a highlighted tag appears on the message and the story engine receives the clarified intent">
-                    <input id="gm_setting_feat_rewrite" type="checkbox" />
-                    <span>Action rewrite</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_feat_skill_suggest" title="The pre-pass may suggest a tracked skill that clearly fits the action; the story engine is told to narrate its use (the cooldown is applied by the tracker afterwards). Requires Pre-Pass Router.">
-                    <input id="gm_setting_feat_skill_suggest" type="checkbox" />
-                    <span>Skill suggestions</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_feat_progression" title="EXP, levels and skill points. The post-pass grants EXP via <grant_exp>; the code computes level-ups. The curve is configured per scenario (Setup Wizard or the party header button).">
-                    <input id="gm_setting_feat_progression" type="checkbox" />
-                    <span>Progression</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_feat_skill_tree" title="Per-character skill trees: LLM-generated 6-tier segments unlocked with skill points. Requires Progression.">
-                    <input id="gm_setting_feat_skill_tree" type="checkbox" />
-                    <span>Skill Trees</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_feat_combat" title="Combat Mode (Text): when the pre-pass judges the action engages enemies, an opposed resolution runs — ALLY AI (uncommanded party members), ENEMY AI (blind to the player's action), a clash pass pairing both sides, and per-group dice shown side by side. Requires Enemies.">
-                    <input id="gm_setting_feat_combat" type="checkbox" />
-                    <span>Combat Mode</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_feat_ally_ai" title="ALLY AI: when the player didn't command every party member, friendly actions are invented for the rest. Requires Combat Mode.">
-                    <input id="gm_setting_feat_ally_ai" type="checkbox" />
-                    <span>Ally AI</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_rich_clash" title="Rich clash UI: face-off titles with a VS pill, party/enemy role chips and a VS badge between opposing sides in the combat bubble. Off = simple layout.">
-                    <input id="gm_setting_rich_clash" type="checkbox" />
-                    <span>Rich Clash UI</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_roll_attachment" title="Render roll and combat results as file-style attachment chips under the player's message (the same chip SillyTavern uses for message files). Off = nothing is attached.">
-                    <input id="gm_setting_roll_attachment" type="checkbox" />
-                    <span>Roll attachments</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_value_guidelines" title="Inject the shared NUMERIC VALUE GUIDELINES into the engine prompts (tracker, combat engines, pre-pass): arithmetic values (15-9+2) and true-RNG dice (1d20, 8/1d2 chance triggers). Off = engines keep their own instructions; parsing still works.">
-                    <input id="gm_setting_value_guidelines" type="checkbox" />
-                    <span>Advanced Calculations</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_feat_death" title="Permadeath: the post-pass is directed to be realistic about lethal damage and may kill characters via <deaths>. Dead characters stop acting and can only be revived manually (edit mode).">
-                    <input id="gm_setting_feat_death" type="checkbox" />
-                    <span>Permadeath</span>
-                </label>
-            </div>
+            <hr class="sysHR" />
 
-            <div class="gm_settings_sep">Interface</div>
-            <div class="gm_settings_grid">
-                <label class="checkbox_label" for="gm_setting_open_panel">
-                    <input id="gm_setting_open_panel" type="checkbox" />
-                    <span>Open on startup</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_debug_mode">
-                    <input id="gm_setting_debug_mode" type="checkbox" />
-                    <span>Debug logging</span>
-                </label>
-            </div>
-            <div class="gm_field gm_field_inline">
-                <label for="gm_setting_bg_opacity">Opacity</label>
-                <input id="gm_setting_bg_opacity" type="range" min="10" max="100" step="5" />
-                <span id="gm_bg_opacity_value"></span>
-            </div>
-            <div class="gm_field gm_field_inline">
-                <label for="gm_setting_player_label" title="Name shown for the player's lines in the game engines' prompt contexts (dice, combat, tracker...). Empty = the current persona name.">Player name</label>
-                <input id="gm_setting_player_label" class="gm_input" type="text" placeholder="(persona name)" maxlength="60" autocomplete="off" spellcheck="false" />
-            </div>
+            <div class="gm_settings_sep">Character & Scenario Presets</div>
 
-            <div class="gm_settings_sep">Notifications</div>
-            <div class="gm_settings_grid">
-                <label class="checkbox_label" for="gm_setting_notify" title="Master switch: game-state events pop up in the status bubble above the input bar. Suppressed while edit mode is on.">
-                    <input id="gm_setting_notify" type="checkbox" />
-                    <span>Notifications</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_notify_stats" title="Notify when a resource or attribute changes (HP -12, STR +1...)">
-                    <input id="gm_setting_notify_stats" type="checkbox" />
-                    <span>Stats & resources</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_notify_items" title="Notify when items are gained or lost">
-                    <input id="gm_setting_notify_items" type="checkbox" />
-                    <span>Items</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_notify_skills" title="Notify when a skill is used (cooldown starts) or earned (skill tree unlocks, grants)">
-                    <input id="gm_setting_notify_skills" type="checkbox" />
-                    <span>Skills used / earned</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_notify_progression" title="Notify on EXP grants and level-ups (with skill points awarded)">
-                    <input id="gm_setting_notify_progression" type="checkbox" />
-                    <span>EXP & level-ups</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_notify_states" title="Notify on deaths, knockouts, recoveries and status effects">
-                    <input id="gm_setting_notify_states" type="checkbox" />
-                    <span>States & statuses</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_notify_dice" title="Notify when the engine rolls true random dice from LLM-reported values (Dice Rolled 1d20 → result)">
-                    <input id="gm_setting_notify_dice" type="checkbox" />
-                    <span>Dice rolls</span>
-                </label>
-                <label class="checkbox_label" for="gm_setting_notify_enemies" title="Also notify for enemy sheets (HP changes, skill use...). Off by default to avoid combat spam.">
-                    <input id="gm_setting_notify_enemies" type="checkbox" />
-                    <span>Include enemies</span>
-                </label>
-            </div>
-
-            <div class="gm_settings_sep">Sounds</div>
-            <div class="gm_settings_grid">
-                <label class="checkbox_label" for="gm_setting_sound" title="Synthesized dice sounds (Web Audio, no assets): a tumbling roll while the dice/combat bubbles animate, and a distinct jingle per outcome — Critical Failure, Failure, Success, Critical Success.">
-                    <input id="gm_setting_sound" type="checkbox" />
-                    <span>Dice sounds</span>
-                </label>
-            </div>
-            <div class="gm_field gm_field_inline">
-                <label for="gm_setting_sound_volume">Volume</label>
-                <input id="gm_setting_sound_volume" type="range" min="0" max="100" step="5" />
-                <span id="gm_sound_volume_value"></span>
-            </div>
-            <div class="gm_field gm_field_inline">
-                <label for="gm_setting_roll_duration" title="How long the dice roll animation (tier sweep + tumble sound) lasts. A random ±0.2s variation is added per roll so repeats don't feel mechanical.">Rolling time</label>
-                <input id="gm_setting_roll_duration" type="range" min="500" max="5000" step="100" />
-                <span id="gm_roll_duration_value"></span>
-            </div>
-
-            <div class="gm_settings_sep">Presets</div>
+            <!-- Presets + panel actions, right under the master switches. -->
             <div class="gm_preset_row">
                 <select id="gm_preset_select"></select>
                 <div id="gm_preset_save" class="menu_button menu_button_icon" title="Save current state as a preset"><i class="fa-solid fa-floppy-disk"></i></div>
@@ -246,14 +76,227 @@
                 <div id="gm_custom_instructions" class="menu_button" title="Standing instructions injected into the pre-pass and post-pass LLM contexts"><i class="fa-solid fa-scroll"></i>&nbsp;Custom instructions</div>
             </div>
 
+            <hr class="sysHR" />
+
+            <div class="inline-drawer gm_cat_drawer">
+                <div class="inline-drawer-toggle inline-drawer-header">
+                    <b>LLM</b>
+                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
+                </div>
+                <div class="inline-drawer-content" style="display:none;">
+                    <div class="gm_settings_grid">
+                        <label class="checkbox_label" for="gm_setting_pre_pass" title="An LLM judges every action (rolls, transactions, warnings) instead of keyword matching">
+                            <input id="gm_setting_pre_pass" type="checkbox" />
+                            <span>Pre-pass router</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_feat_wizard" title="One-button LLM setup of party, roster and resources from a scenario description">
+                            <input id="gm_setting_feat_wizard" type="checkbox" />
+                            <span>Setup Wizard</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_feat_char_creator" title="Add Character modal: instant copy from an existing character or preset, or an LLM-generated sheet with review">
+                            <input id="gm_setting_feat_char_creator" type="checkbox" />
+                            <span>Character Creator</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_spawn_review" title="When the tracker detects a new character or enemy, queue a review chip instead of auto-creating a minimal sheet — clicking it generates the full sheet and opens the review page. Requires Character Creator + Agentic updates.">
+                            <input id="gm_setting_spawn_review" type="checkbox" />
+                            <span>Spawn review</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_dyn_enemies" title="Dynamic enemy creation: when the tracker detects a NEW enemy, its full sheet is generated and injected automatically — no review popup. Requires Spawn review + Enemies.">
+                            <input id="gm_setting_dyn_enemies" type="checkbox" />
+                            <span>Dyn Enemy Creation</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_deep_context" title="Send character card, persona, author's note and activated World Info to the extension's LLMs. Higher token cost.">
+                            <input id="gm_setting_deep_context" type="checkbox" />
+                            <span>Deep context</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_deep_context_engines" title="Deep context for the specialist engines only (dice rolls + transactions). Higher token cost per roll/spend check.">
+                            <input id="gm_setting_deep_context_engines" type="checkbox" />
+                            <span>Deep Context for Engines</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_auto_update" title="Post-pass: an LLM analyses each exchange and applies tool-tag state changes">
+                            <input id="gm_setting_auto_update" type="checkbox" />
+                            <span>Agentic updates</span>
+                        </label>
+                    </div>
+                    <div class="gm_field gm_field_inline gm_player_row">
+                        <label for="gm_setting_player_label" title="Player name — the name used for YOUR lines in the game engines' prompts (dice rolls, combat, state tracker...). Leave empty to use your current SillyTavern persona name.">Player name</label>
+                        <input id="gm_setting_player_label" class="gm_input" type="text" placeholder="(persona name)" maxlength="60" autocomplete="off" spellcheck="false" title="Player name — the name used for YOUR lines in the game engines' prompts (dice rolls, combat, state tracker...). Leave empty to use your current SillyTavern persona name." />
+                    </div>
+                </div>
+            </div>
+
+            <div class="inline-drawer gm_cat_drawer">
+                <div class="inline-drawer-toggle inline-drawer-header">
+                    <b>Features</b>
+                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
+                </div>
+                <div class="inline-drawer-content" style="display:none;">
+                    <div class="gm_settings_grid">
+                        <label class="checkbox_label" for="gm_setting_feat_warnings" title="AI notes on imminent needs (e.g. food running out) — panel strip + low-priority injection">
+                            <input id="gm_setting_feat_warnings" type="checkbox" />
+                            <span>Warnings</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_feat_dice" title="Dice rolls with animated tier bubbles on uncertain actions">
+                            <input id="gm_setting_feat_dice" type="checkbox" />
+                            <span>Dice rolls</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_feat_transactions" title="Fair-use checks when spending shared resources (money, food...)">
+                            <input id="gm_setting_feat_transactions" type="checkbox" />
+                            <span>Transactions</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_feat_injection" title="Inject state via {{gamemaster-low-priority}} / {{gamemaster-high-priority}}">
+                            <input id="gm_setting_feat_injection" type="checkbox" />
+                            <span>Injection</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_feat_enemies" title="Context-based enemies: AI-tracked sheets, archived when irrelevant, restored on return. Hidden entirely when unused.">
+                            <input id="gm_setting_feat_enemies" type="checkbox" />
+                            <span>Enemies</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_feat_rewrite" title="The pre-pass clarifies vague or contradictory actions: a highlighted tag appears on the message and the story engine receives the clarified intent">
+                            <input id="gm_setting_feat_rewrite" type="checkbox" />
+                            <span>Action rewrite</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_feat_skill_suggest" title="The pre-pass may suggest a tracked skill that clearly fits the action; the story engine is told to narrate its use (the cooldown is applied by the tracker afterwards). Requires Pre-Pass Router.">
+                            <input id="gm_setting_feat_skill_suggest" type="checkbox" />
+                            <span>Skill suggestions</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_feat_progression" title="EXP, levels and skill points. The post-pass grants EXP via <grant_exp>; the code computes level-ups. The curve is configured per scenario (Setup Wizard or the party header button).">
+                            <input id="gm_setting_feat_progression" type="checkbox" />
+                            <span>Progression</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_feat_skill_tree" title="Per-character skill trees: LLM-generated 6-tier segments unlocked with skill points. Requires Progression.">
+                            <input id="gm_setting_feat_skill_tree" type="checkbox" />
+                            <span>Skill Trees</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_feat_combat" title="Combat Mode (Text): when the pre-pass judges the action engages enemies, an opposed resolution runs — ALLY AI (uncommanded party members), ENEMY AI (blind to the player's action), a clash pass pairing both sides, and per-group dice shown side by side. Requires Enemies.">
+                            <input id="gm_setting_feat_combat" type="checkbox" />
+                            <span>Combat Mode</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_feat_ally_ai" title="ALLY AI: when the player didn't command every party member, friendly actions are invented for the rest. Requires Combat Mode.">
+                            <input id="gm_setting_feat_ally_ai" type="checkbox" />
+                            <span>Ally AI</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_rich_clash" title="Rich clash UI: face-off titles with a VS pill, party/enemy role chips and a VS badge between opposing sides in the combat bubble. Off = simple layout.">
+                            <input id="gm_setting_rich_clash" type="checkbox" />
+                            <span>Rich Clash UI</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_roll_attachment" title="Render roll and combat results as file-style attachment chips under the player's message (the same chip SillyTavern uses for message files). Off = nothing is attached.">
+                            <input id="gm_setting_roll_attachment" type="checkbox" />
+                            <span>Roll attachments</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_value_guidelines" title="Inject the shared NUMERIC VALUE GUIDELINES into the engine prompts (tracker, combat engines, pre-pass): arithmetic values (15-9+2) and true-RNG dice (1d20, 8/1d2 chance triggers). Off = engines keep their own instructions; parsing still works.">
+                            <input id="gm_setting_value_guidelines" type="checkbox" />
+                            <span>Advanced Calculations</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_feat_death" title="Permadeath: the post-pass is directed to be realistic about lethal damage and may kill characters via <deaths>. Dead characters stop acting and can only be revived manually (edit mode).">
+                            <input id="gm_setting_feat_death" type="checkbox" />
+                            <span>Permadeath</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="inline-drawer gm_cat_drawer">
+                <div class="inline-drawer-toggle inline-drawer-header">
+                    <b>Interface</b>
+                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
+                </div>
+                <div class="inline-drawer-content" style="display:none;">
+                    <div class="gm_settings_grid">
+                        <label class="checkbox_label" for="gm_setting_open_panel">
+                            <input id="gm_setting_open_panel" type="checkbox" />
+                            <span>Open on startup</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_debug_mode">
+                            <input id="gm_setting_debug_mode" type="checkbox" />
+                            <span>Debug logging</span>
+                        </label>
+                    </div>
+                    <div class="gm_field gm_field_inline">
+                        <label for="gm_setting_bg_opacity">Opacity</label>
+                        <input id="gm_setting_bg_opacity" type="range" min="10" max="100" step="5" />
+                        <span id="gm_bg_opacity_value"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="inline-drawer gm_cat_drawer">
+                <div class="inline-drawer-toggle inline-drawer-header">
+                    <b>Notifications</b>
+                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
+                </div>
+                <div class="inline-drawer-content" style="display:none;">
+                    <div class="gm_settings_grid">
+                        <label class="checkbox_label" for="gm_setting_notify" title="Master switch: game-state events pop up in the status bubble above the input bar. Suppressed while edit mode is on.">
+                            <input id="gm_setting_notify" type="checkbox" />
+                            <span>Notifications</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_notify_stats" title="Notify when a resource or attribute changes (HP -12, STR +1...)">
+                            <input id="gm_setting_notify_stats" type="checkbox" />
+                            <span>Stats & resources</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_notify_items" title="Notify when items are gained or lost">
+                            <input id="gm_setting_notify_items" type="checkbox" />
+                            <span>Items</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_notify_skills" title="Notify when a skill is used (cooldown starts) or earned (skill tree unlocks, grants)">
+                            <input id="gm_setting_notify_skills" type="checkbox" />
+                            <span>Skills used / earned</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_notify_progression" title="Notify on EXP grants and level-ups (with skill points awarded)">
+                            <input id="gm_setting_notify_progression" type="checkbox" />
+                            <span>EXP & level-ups</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_notify_states" title="Notify on deaths, knockouts, recoveries and status effects">
+                            <input id="gm_setting_notify_states" type="checkbox" />
+                            <span>States & statuses</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_notify_dice" title="Notify when the engine rolls true random dice from LLM-reported values (Dice Rolled 1d20 → result)">
+                            <input id="gm_setting_notify_dice" type="checkbox" />
+                            <span>Dice rolls</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_notify_enemies" title="Also notify for enemy sheets (HP changes, skill use...). Off by default to avoid combat spam.">
+                            <input id="gm_setting_notify_enemies" type="checkbox" />
+                            <span>Include enemies</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="inline-drawer gm_cat_drawer">
+                <div class="inline-drawer-toggle inline-drawer-header">
+                    <b>Sounds</b>
+                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
+                </div>
+                <div class="inline-drawer-content" style="display:none;">
+                    <div class="gm_settings_grid">
+                        <label class="checkbox_label" for="gm_setting_sound" title="Synthesized dice sounds (Web Audio, no assets): a tumbling roll while the dice/combat bubbles animate, and a distinct jingle per outcome — Critical Failure, Failure, Success, Critical Success.">
+                            <input id="gm_setting_sound" type="checkbox" />
+                            <span>Dice sounds</span>
+                        </label>
+                    </div>
+                    <div class="gm_field gm_field_inline">
+                        <label for="gm_setting_sound_volume">Volume</label>
+                        <input id="gm_setting_sound_volume" type="range" min="0" max="100" step="5" />
+                        <span id="gm_sound_volume_value"></span>
+                    </div>
+                    <div class="gm_field gm_field_inline">
+                        <label for="gm_setting_roll_duration" title="How long the dice roll animation (tier sweep + tumble sound) lasts. A random ±0.2s variation is added per roll so repeats don't feel mechanical.">Rolling time</label>
+                        <input id="gm_setting_roll_duration" type="range" min="500" max="5000" step="100" />
+                        <span id="gm_roll_duration_value"></span>
+                    </div>
+                </div>
+            </div>
+
             <div class="inline-drawer">
                 <div class="inline-drawer-toggle inline-drawer-header">
-                    <b>Advanced</b>
+                    <b>Profiles</b>
                     <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
                 </div>
                 <div class="inline-drawer-content">
                     <!-- Profile drawers are generated from the PROFILE_DRAWERS registry in ui/settingsUI.js -->
                     <div id="gm_profile_drawers"></div>
+                    <hr class="sysHR" />
                     <label class="checkbox_label" for="gm_setting_legacy" title="Swap the active connection profile for extension AI calls instead of per-request profiles">
                         <input id="gm_setting_legacy" type="checkbox" />
                         <span>Legacy profile swapping</span>
