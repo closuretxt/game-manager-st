@@ -20,6 +20,8 @@
 //                       secrets; edit-mode-only UI, pre/post-pass see them)
 //   <enemies>         — add/update/remove context-based enemies (removed ones
 //                       are archived, not deleted, and restored on return)
+//   <transfer>        — move a tracked actor between party, roster bench and
+//                       enemy side, keeping their full sheet in every direction
 //   <new_characters>  — report NEW characters/enemies entering the scene as
 //                       briefs; with spawn review on they are queued for the
 //                       generate + review flow instead of being auto-created
@@ -40,10 +42,11 @@ import { progression } from "./progression.js";
 import { logDebug } from "./debug.js";
 import { characterSpawner, spawnReviewEnabled } from "./characterSpawner.js";
 
-const BLOCK_TAGS = ["change_values", "set_attributes", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies", "deaths", "knockouts", "new_characters"];
+const BLOCK_TAGS = ["change_values", "set_attributes", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies", "transfer", "deaths", "knockouts", "new_characters"];
 const BLOCK_RE = new RegExp(`<(${BLOCK_TAGS.join("|")})>([\\s\\S]*?)<\\/\\1>`, "gi");
 const INNER_RE = /<(char|target|enemy|shared|resource|item|attribute|entry|status|warning|warning_clear|thread|thread_clear|passive|skill|exp|death|ko|ko_clear)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const ENEMY_RE = /<enemy\b([^>]*?)(?:\/>|>([\s\S]*?)<\/enemy>)/gi;
+const MOVE_RE = /<move\b([^>]*?)(?:\/>|>([\s\S]*?)<\/move>)/gi;
 const NEWCHAR_RE = /<char\b([^>]*?)(?:\/>|>([\s\S]*?)<\/char>)/gi;
 
 // Shared with the other LLM-output parsers (prePass, setupWizard).
@@ -339,6 +342,50 @@ function applyEnemiesBlock(raw) {
     return applied;
 }
 
+// Applies a <transfer> block: <move name="..." to="party|roster|enemy"/> —
+// moves an actor between the party, the roster bench and the enemy side.
+// Every direction maps onto a stateManager conversion that preserves the
+// full sheet, so HP/skills/items survive the move. Niche tool: defections,
+// recruitment, demotions.
+function applyTransferBlock(raw) {
+    if (!raw) return 0;
+    const s = extension_settings[extensionName];
+    let applied = 0;
+    MOVE_RE.lastIndex = 0;
+    let m;
+    while ((m = MOVE_RE.exec(raw)) !== null) {
+        const attrs = parseAttrs(m[1] || "");
+        const name = String(attrs.name ?? "").trim();
+        const to = String(attrs.to || "").toLowerCase();
+        if (!name) continue;
+        const d = stateManager.getData();
+        const char = stateManager.getCharacter(name);
+        const enemy = stateManager.getEnemy(name);
+        const roster = d.roster.find(x => String(x.name).toLowerCase() === name.toLowerCase());
+        // Enemy destinations are gated like the <enemies> block: with the
+        // enemies feature off the agent never sees (and never fills) that side.
+        if ((to === "enemy" || to === "party" || to === "character") && s?.feature_enemies === false) continue;
+        let done = null;
+        if (to === "enemy") {
+            if (char) done = stateManager.characterToEnemy(char.id);
+            else if (roster) done = stateManager.rosterToEnemy(roster.id);
+        } else if (to === "roster") {
+            if (char) done = stateManager.demoteCharacter(char.id);
+            else if (enemy) done = stateManager.enemyToRoster(enemy.id);
+        } else if (to === "party" || to === "character") {
+            if (enemy) done = stateManager.enemyToCharacter(enemy.id);
+            else if (roster) done = stateManager.promoteRosterEntry(roster.id);
+        }
+        if (done) {
+            applied++;
+            logDebug(`toolParser: transferred '${name}' -> ${to}${attrs.reason ? ` (${attrs.reason})` : ""}`);
+        } else {
+            logDebug(`toolParser: transfer skipped (unknown actor or direction): '${name}' -> ${to || "(none)"}`);
+        }
+    }
+    return applied;
+}
+
 // Applies parsed blocks to the state. Returns the number of applied actions.
 export function applyToolBlocks(blocks, { autoCreateChars = false } = {}) {
     let applied = 0;
@@ -346,6 +393,12 @@ export function applyToolBlocks(blocks, { autoCreateChars = false } = {}) {
         // Enemies have their own nested format — handled separately.
         if (block.type === "enemies") {
             applied += applyEnemiesBlock(block.raw);
+            continue;
+        }
+        // Transfers move actors between party/roster/enemy — no per-action
+        // character scoping, the <move> tags carry the name themselves.
+        if (block.type === "transfer") {
+            applied += applyTransferBlock(block.raw);
             continue;
         }
         // New-character briefs: queued for the spawn-review flow, never

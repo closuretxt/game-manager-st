@@ -13,6 +13,12 @@
 //          <add_items>, <update_custom>, <warnings>...) -> state changes
 //          + rollback snapshot keyed to the AI message id
 //
+// Catch-up: MESSAGE_RECEIVED never fires for messages that already exist in
+// a chat (reopened session, extension enabled mid-story). On CHAT_CHANGED the
+// last AI reply gets its pass automatically — exactly once per message
+// (tracked in chat metadata), and only when there is a full exchange to
+// analyse: 2+ messages in the chat (a lone greeting is never tracked).
+//
 // Snapshots: keyed to the AI message id, so deleting or swiping that message
 // rolls the state back to the pre-message baseline (core/snapshots.js).
 // Swipes are safe: the swipe/regenerate branch of handlePreTurn restores the
@@ -37,6 +43,49 @@ function updatesEnabled() {
     return !!(s.enabled && s.auto_update);
 }
 
+// Already-tracked bookkeeping: chat metadata maps mesId -> send_date. A NEW
+// message reusing a freed index has a different send_date, so it is never
+// mistaken for a processed one.
+function passesStore() {
+    const st = getContext();
+    if (!st?.chatMetadata) return null;
+    const gm = (st.chatMetadata.game_manager = st.chatMetadata.game_manager || {});
+    gm.post_passes = gm.post_passes || {};
+    return gm.post_passes;
+}
+
+function wasProcessed(mesId, msg) {
+    return passesStore()?.[String(mesId)] === String(msg?.send_date ?? "");
+}
+
+function markProcessed(mesId, msg) {
+    const store = passesStore();
+    if (!store) return;
+    store[String(mesId)] = String(msg?.send_date ?? "");
+    try {
+        getContext().saveMetadata();
+    } catch { /* best effort */ }
+}
+
+// Shared eligibility gate + runner for the tracker: AI message only,
+// substantial reply, never tracked before (catch-up dedup). Marks the
+// message as tracked and runs one pass.
+async function maybeRunPass(id, reason) {
+    const st = getContext();
+    const msg = st.chat[id];
+    if (!msg || msg.is_user) return;
+    if (wasProcessed(id, msg)) {
+        logDebug(`postTurn: message ${id} already tracked — pass skipped`);
+        return;
+    }
+    if (String(msg.mes ?? "").trim().length < MIN_REPLY_CHARS) {
+        logDebug(`postTurn: reply under ${MIN_REPLY_CHARS} chars — tracker skipped`);
+        return;
+    }
+    await runAgentPass(reason, id);
+    markProcessed(id, msg);
+}
+
 // Manual run: reruns the tracker on the last AI message. The state is rolled
 // back to that message's pre-message baseline first (if one exists), so the
 // re-run starts clean instead of stacking on top of the previous tracker
@@ -56,7 +105,9 @@ export async function manualRun() {
     if (restoreSnapshot(mesId)) {
         logDebug(`manual run: state rolled back to pre-message baseline of ${mesId}`);
     }
-    return runAgentPass("manual", mesId);
+    const applied = await runAgentPass("manual", mesId);
+    markProcessed(mesId, msg);
+    return applied;
 }
 
 export function initPostTurn() {
@@ -68,15 +119,25 @@ export function initPostTurn() {
         try {
             if (!updatesEnabled()) return;
             const id = Number.isFinite(mesId) ? mesId : st.chat.length - 1;
-            const msg = st.chat[id];
-            if (!msg || msg.is_user) return;
-            if (String(msg.mes ?? "").trim().length < MIN_REPLY_CHARS) {
-                logDebug(`postTurn: reply under ${MIN_REPLY_CHARS} chars — tracker skipped`);
-                return;
-            }
-            await runAgentPass("post_pass", id);
+            await maybeRunPass(id, "post_pass");
         } catch (e) {
             console.error("[Game Manager] post-turn tracker failed:", e);
+        }
+    });
+
+    // CHAT_CHANGED — catch-up pass for the last AI reply when it never saw a
+    // MESSAGE_RECEIVED pass (reopened chat, extension enabled mid-story).
+    // Requires 2+ messages: the tracker needs a full exchange (player action
+    // + AI reply); a lone greeting has nothing to account. Runs once per
+    // message — already-tracked replies are skipped via chat metadata.
+    st.eventSource.on(st.event_types.CHAT_CHANGED, async () => {
+        try {
+            if (!updatesEnabled()) return;
+            if (!Array.isArray(st.chat) || st.chat.length < 2) return;
+            const id = st.chat.length - 1;
+            await maybeRunPass(id, "catch_up");
+        } catch (e) {
+            console.error("[Game Manager] post-turn catch-up failed:", e);
         }
     });
 
@@ -100,5 +161,5 @@ export function initPostTurn() {
         }
     });
 
-    logDebug("postTurn: tracker wired to MESSAGE_RECEIVED + SWIPED");
+    logDebug("postTurn: tracker wired to MESSAGE_RECEIVED + CHAT_CHANGED + SWIPED");
 }

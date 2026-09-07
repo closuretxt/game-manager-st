@@ -163,7 +163,7 @@ export const setupWizard = {
 
         const body = $("<div>").addClass("gm_wizard_body");
         body.append($("<div>").addClass("gm_section_hint")
-            .text("Describe the scenario — or leave empty to use the recent chat."));
+            .text("Describe the scenario — or leave empty to just use the recent chat."));
 
         const ta = $("<textarea>").addClass("gm_input gm_wizard_scenario")
             .attr("placeholder", "e.g. I command a base with dozens of shipgirls. Food, fuel and repairs matter; the sea is dangerous...")

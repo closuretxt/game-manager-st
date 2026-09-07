@@ -92,6 +92,11 @@ function buildStateSummaryXml() {
     if (s.feature_enemies) {
         for (const e of d.enemies) parts.push(actorXml(e, "enemy"));
     }
+    // Roster bench: names only — the agent needs them for <transfer> moves;
+    // bench allies are never rolled for or injected into the story.
+    if ((d.roster || []).length) {
+        parts.push(`<roster>${d.roster.map(r => escAttr(r.name)).join(", ")}</roster>`);
+    }
     // Shared party resources: visible to the tracker so it can account
     // consumption the pre-pass transaction engine did not already handle.
     if ((d.sharedResources || []).length) {
@@ -193,6 +198,7 @@ async function buildSystemPrompt(exchange = []) {
         '<warnings><warning name="Food" text="You have about two days of food left."/><warning_clear name="Food"/></warnings>',
         '<threads><thread name="Fuel trip" text="Left town with 40L fuel; ~120 km driven so far" ref="started when leaving town"/><thread_clear name="Fuel trip"/></threads>',
         '<enemies><enemy action="add" name="Goblin"><resource name="HP" value="30" max="30"/><passive name="Brutal" description="+2 damage below half HP"/></enemy><enemy action="update" name="Goblin"><resource name="HP" delta="-7"/><status name="Wounded" modifiers="Aim -2"/></enemy><enemy action="remove" name="Goblin" reason="defeated"/></enemies>',
+        '<transfer><move name="Kael" to="enemy" reason="betrayed the party"/><move name="Goblin Scout" to="party" reason="swore loyalty after being spared"/></transfer>',
         ...(spawnReview ? ['<new_characters><char name="Kael" kind="party" details="wounded knight the party rescued, stoic and dry-humored" level="3"/><char name="Goblin Chief" kind="enemy" details="scarred veteran leading the warband, brutal close-quarters fighter"/></new_characters>'] : []),
         ...(s.feature_death !== false ? ['<deaths><death char="Name" reason="short cause of death"/></deaths>'] : []),
         '<knockouts><ko char="Name" reason="short cause"/><ko_clear char="Name"/></knockouts>',
@@ -204,6 +210,7 @@ async function buildSystemPrompt(exchange = []) {
         "Use <warnings> ONLY for imminent, concrete needs the player should prepare for (supplies running out, deadlines, approaching dangers). Keep warning text under 15 words. Clear a warning when its cause is resolved. Do not re-emit unchanged warnings every turn.",
         "Use <threads> to leave notes to yourself about UNTRACKED or UNFINISHED things the formal containers cannot hold: ongoing trips (fuel/money spent so far), half-done actions, unresolved behavior, or secrets that must stay hidden from the player. ALWAYS record where/when it started (ref) so you can compare progress later (\"started when leaving town\", \"day 2 of the siege\"). Update the thread as things progress; clear it (thread_clear) as soon as it is finished or irrelevant. Threads are invisible to the player and never injected into the story prompt — the pre-pass decides what the story needs to know.",
         "Use <enemies> when enemies or threats appear in the scene: action=\"add\" to introduce one (with its HP resource and notable passives/skills), nested <resource>/<status> tags or hp_delta to update it, and action=\"remove\" AS SOON AS an enemy stops being relevant (defeated, fled, scene moved on) — removed enemies are archived and automatically restored with their last state if they return. An enemy at 0 HP or clearly destroyed/slain in the exchange MUST be removed in this same reply — never leave a dead enemy tracked. You may also damage enemies with <change_values><char>EnemyName</char>.",
+        "Use <transfer> ONLY when a tracked actor CHANGES SIDES OR TRACKING STATUS in the exchange: <move name=\"...\" to=\"enemy|party|roster\"/> moves them with their full sheet (party member defects to the enemy side, enemy is recruited or spared and joins the party, active character benched to the roster, roster ally joins the party). One <move> per change, with a short reason. Never use it for deaths (<deaths>) or temporary knockouts (<knockouts>) — and only for names already in the snapshot.",
         ...(spawnReview ? [
             "Use <new_characters> when a NEW named character or enemy clearly enters the scene and matters beyond this exchange: one <char> per newcomer with kind=\"party\" (a potential companion or recurring NPC) or kind=\"enemy\" (a hostile threat), a short details brief (role, appearance, combat style, what makes them different) and their level when progression is active. Never re-emit names already in the state snapshot. When you report a new enemy here, skip the <enemies> add — the player reviews and builds the full sheet from your brief; keep <enemies> for updates and removals.",
         ] : []),
