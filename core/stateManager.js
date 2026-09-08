@@ -296,8 +296,15 @@ export const stateManager = {
         this.emitChange("remove_character");
     },
 
+    // Renames a character wherever it lives (party sheet, enemy sheet or a
+    // roster entry) — a name-only change, everything else survives. The
+    // single rename entry point, usable from the UI and future agent calls;
+    // the first argument resolves by id OR current name.
     renameCharacter(id, name) {
-        const c = this.getCharacter(id);
+        const needle = String(id ?? "").toLowerCase();
+        const c = this.getSheet(id)
+            || this.getData().roster.find(x => x.id === id || String(x.name).toLowerCase() === needle)
+            || null;
         if (c && name) {
             c.name = name;
             this.emitChange("rename_character");
@@ -415,11 +422,13 @@ export const stateManager = {
         return char;
     },
 
-    // Overrides a character's containers with the given proposal-shaped sheet
-    // (fresh entry ids) and clears the needs-build flag — the Setup Wizard
-    // auto build path (Character Creator override mode).
+    // Overrides a character's (party or enemy) containers with the given
+    // proposal-shaped sheet (fresh entry ids) and clears the needs-build
+    // flag — the Setup Wizard auto build path AND the sheet Refine flow
+    // (Character Creator override mode). Only containers change; the
+    // progression track, skill tree, state and avatar all survive.
     applyCharacterSheet(id, sheet) {
-        const char = this.getCharacter(id);
+        const char = this.getSheet(id);
         if (!char) return null;
         for (const key of CHARACTER_CONTAINERS) {
             char[key] = (sheet?.[key] || []).map(e => ({ ...structuredClone(e), id: genId() }));
@@ -427,6 +436,38 @@ export const stateManager = {
         delete char.needs_build;
         delete char.buildNote;
         this.emitChange("apply_character_sheet");
+        return char;
+    },
+
+    // Non-destructive sheet update: proposal entries are MERGED into the
+    // existing containers — same-name entries are edited in place (keeping
+    // their ids and live fields like cooldown_left), new ones are appended,
+    // and NOTHING is ever removed. The sheet Refine flow uses this so an
+    // LLM pass can only add or edit, never destroy.
+    mergeCharacterSheet(id, sheet) {
+        const char = this.getSheet(id);
+        if (!char) return null;
+        for (const key of CHARACTER_CONTAINERS) {
+            const current = Array.isArray(char[key]) ? char[key] : (char[key] = []);
+            for (const raw of (sheet?.[key] || [])) {
+                const entry = structuredClone(raw);
+                const name = String(entry.name || "").toLowerCase();
+                const existing = name ? current.find(e => String(e.name || "").toLowerCase() === name) : null;
+                if (existing) {
+                    // In-place edit: the id survives (references stay valid),
+                    // as does live-only state like the running cooldown.
+                    const live = { id: existing.id };
+                    if (existing.cooldown_left !== undefined) live.cooldown_left = existing.cooldown_left;
+                    Object.assign(existing, entry, live);
+                } else {
+                    entry.id = genId();
+                    current.push(entry);
+                }
+            }
+        }
+        delete char.needs_build;
+        delete char.buildNote;
+        this.emitChange("merge_character_sheet");
         return char;
     },
 

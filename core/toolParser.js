@@ -22,6 +22,8 @@
 //                       are archived, not deleted, and restored on return)
 //   <transfer>        — move a tracked actor between party, roster bench and
 //                       enemy side, keeping their full sheet in every direction
+//   <renames>         — rename a tracked actor (party, enemy or roster) in
+//                       place; name-only change, the full sheet survives
 //   <new_characters>  — report NEW characters/enemies entering the scene as
 //                       briefs; with spawn review on they are queued for the
 //                       generate + review flow instead of being auto-created
@@ -45,11 +47,12 @@ import { progression } from "./progression.js";
 import { logDebug } from "./debug.js";
 import { characterSpawner, spawnReviewEnabled } from "./characterSpawner.js";
 
-const BLOCK_TAGS = ["change_values", "set_attributes", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies", "transfer", "deaths", "knockouts", "new_characters"];
+const BLOCK_TAGS = ["change_values", "set_attributes", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies", "transfer", "renames", "deaths", "knockouts", "new_characters"];
 const BLOCK_RE = new RegExp(`<(${BLOCK_TAGS.join("|")})>([\\s\\S]*?)<\\/\\1>`, "gi");
 const INNER_RE = /<(char|target|enemy|shared|resource|item|attribute|entry|status|warning|warning_clear|thread|thread_clear|passive|skill|exp|death|ko|ko_clear)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const ENEMY_RE = /<enemy\b([^>]*?)(?:\/>|>([\s\S]*?)<\/enemy>)/gi;
 const MOVE_RE = /<move\b([^>]*?)(?:\/>|>([\s\S]*?)<\/move>)/gi;
+const RENAME_RE = /<rename\b([^>]*?)(?:\/>|>([\s\S]*?)<\/rename>)/gi;
 const NEWCHAR_RE = /<char\b([^>]*?)(?:\/>|>([\s\S]*?)<\/char>)/gi;
 
 // Shared with the other LLM-output parsers (prePass, setupWizard).
@@ -357,6 +360,38 @@ function applyTransferBlock(raw) {
     return applied;
 }
 
+// Applies a <renames> block: <rename from="Old Name" to="New Name"/> —
+// renames a tracked actor (party, enemy or roster) in place. A name-only
+// change: ids, sheets, progression and everything else survive.
+function applyRenameBlock(raw) {
+    if (!raw) return 0;
+    let applied = 0;
+    RENAME_RE.lastIndex = 0;
+    let m;
+    while ((m = RENAME_RE.exec(raw)) !== null) {
+        const attrs = parseAttrs(m[1] || "");
+        const from = String(attrs.from ?? attrs.name ?? "").trim();
+        const to = String(attrs.to ?? "").trim();
+        if (!from || !to || from.toLowerCase() === to.toLowerCase()) continue;
+        // Never rename ONTO a name that is already tracked — that would
+        // silently merge two actors into one lookup.
+        const d = stateManager.getData();
+        const taken = stateManager.getSheet(to) || d.roster.some(x => String(x.name).toLowerCase() === to.toLowerCase());
+        if (taken) {
+            logDebug(`toolParser: rename skipped (target name already tracked): '${from}' -> '${to}'`);
+            continue;
+        }
+        const target = stateManager.getSheet(from) || d.roster.find(x => String(x.name).toLowerCase() === from.toLowerCase()) || null;
+        if (target && stateManager.renameCharacter(target.id, to)) {
+            applied++;
+            logDebug(`toolParser: renamed '${from}' -> '${to}'`);
+        } else {
+            logDebug(`toolParser: rename skipped (unknown actor): '${from}'`);
+        }
+    }
+    return applied;
+}
+
 // Applies parsed blocks to the state. Returns the number of applied actions.
 export function applyToolBlocks(blocks, { autoCreateChars = false } = {}) {
     let applied = 0;
@@ -370,6 +405,12 @@ export function applyToolBlocks(blocks, { autoCreateChars = false } = {}) {
         // character scoping, the <move> tags carry the name themselves.
         if (block.type === "transfer") {
             applied += applyTransferBlock(block.raw);
+            continue;
+        }
+        // Renames are per-action scoped too: <rename from="..." to="..."/>
+        // carries the actor's name itself, no <char> scoping needed.
+        if (block.type === "renames") {
+            applied += applyRenameBlock(block.raw);
             continue;
         }
         // New-character briefs: queued for the spawn-review flow, never

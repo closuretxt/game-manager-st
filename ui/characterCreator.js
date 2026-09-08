@@ -32,7 +32,8 @@ export const characterCreator = {
     _proposal: null,  // sanitized char (wizard party-entry shape)
     _history: [],     // previous proposals for rollback
     _refinements: 0,
-    _targetId: null,  // override mode: replace this character's sheet on Apply
+    _targetId: null,  // override mode: apply onto this character's sheet
+    _applyMode: "replace",  // "replace" (needs build) | "merge" (refine — nothing removed)
     onApplied: null,  // set by the host (mainPanel): (char) => select + render
 
     open({ mode = "party" } = {}) {
@@ -54,7 +55,7 @@ export const characterCreator = {
     // proposal — the tracker detected this character and the sheet was built
     // from its brief (core/characterSpawner.js). Skips the input step; the
     // brief is kept so Refine reuses the same context.
-    openWithProposal({ char, mode = "party", level = null, details = "", targetCharacterId = null } = {}) {
+    openWithProposal({ char, mode = "party", level = null, details = "", targetCharacterId = null, applyMode = "replace" } = {}) {
         const s = extension_settings[extensionName];
         if (!s.enabled || !s.feature_character_creator || !char) return false;
         this._name = char.name;
@@ -63,6 +64,7 @@ export const characterCreator = {
         this._mode = mode === "enemy" ? "enemy" : "party";
         this._level = level ?? null;
         this._targetId = targetCharacterId || null;
+        this._applyMode = applyMode === "merge" ? "merge" : "replace";
         this._proposal = char;
         this._history = [];
         this._refinements = 0;
@@ -306,7 +308,9 @@ export const characterCreator = {
         const char = this._proposal;
         const refinedTag = this._refinements ? ` (refined ×${this._refinements})` : "";
         const lvlTag = progression.isEnabled() && this._level ? ` — Lv ${this._level}` : "";
-        const overrideTag = this._targetId ? " — overrides current sheet" : "";
+        const overrideTag = this._targetId
+            ? (this._applyMode === "merge" ? " — merges into current sheet (nothing removed)" : " — overrides current sheet")
+            : "";
         this._header(modal, `Review Character — ${char.name}${lvlTag}${refinedTag}${overrideTag}`);
 
         const body = $("<div>").addClass("gm_wizard_body");
@@ -373,16 +377,23 @@ export const characterCreator = {
             $("<i>").addClass("fa-solid fa-check"), $("<span>").text(" Apply"));
         apply.on("click", () => {
             const sheet = this._cloneSheet(this._proposal);
-            // Override mode: replace an existing character's sheet (Setup
-            // Wizard needs-build flow) instead of creating a new one.
+            // Override mode: write an existing character's sheet instead of
+            // creating a new one. Merge (the refine flow) edits same-name
+            // entries in place and appends new ones — nothing is removed;
+            // replace (the needs-build flow) swaps every container.
             if (this._targetId) {
-                const updated = this._stampLevel(stateManager.applyCharacterSheet(this._targetId, sheet));
+                const merge = this._applyMode === "merge";
+                const updated = this._stampLevel(merge
+                    ? stateManager.mergeCharacterSheet(this._targetId, sheet)
+                    : stateManager.applyCharacterSheet(this._targetId, sheet));
                 if (!updated) {
                     gmNotify("The character to override no longer exists.", "error");
                     return;
                 }
-                gmNotify(`Applied the generated sheet to ${updated.name}.`, "success");
-                logDebug("characterCreator: applied generated sheet (override)");
+                gmNotify(merge
+                    ? `Refined ${updated.name} — entries merged, nothing removed.`
+                    : `Applied the generated sheet to ${updated.name}.`, "success");
+                logDebug(`characterCreator: applied generated sheet (override, ${this._applyMode})`);
                 this._finish(updated);
                 return;
             }

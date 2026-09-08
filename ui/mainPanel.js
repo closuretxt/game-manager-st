@@ -11,6 +11,7 @@ import { extensionName, CHARACTER_STATES } from "../core/constants.js";
 import { gmNotify, logDebug } from "../core/debug.js";
 import { stateManager } from "../core/stateManager.js";
 import { progression } from "../core/progression.js";
+import { CHARACTER_CONTAINERS } from "../core/schemas.js";
 import { generateCharacterProposal } from "../core/characterGenerator.js";
 import { skillTree } from "../core/skillTree.js";
 import { skillTreeView } from "./skillTree.js";
@@ -879,6 +880,41 @@ class MainPanel {
         overlay.on("mousedown", e => { if (e.target === overlay[0]) close(); });
     }
 
+    // Refine an existing character: opens the Character Creator in override
+    // mode seeded with the live sheet. Apply replaces only the containers —
+    // progression, skill tree, state and avatar all survive untouched.
+    _openRefine(char, kind) {
+        const proposal = { name: char.name };
+        for (const key of CHARACTER_CONTAINERS) {
+            proposal[key] = (char[key] || []).map(e => structuredClone(e));
+        }
+        characterCreator.onApplied = () => this.render();
+        const opened = characterCreator.openWithProposal({
+            char: proposal,
+            mode: kind,
+            level: progression.isEnabled() ? progression.trackOf(char).level : null,
+            details: char.buildNote || "",
+            targetCharacterId: char.id,
+            applyMode: "merge",
+        });
+        // The creator is a gated feature — say so instead of doing nothing.
+        if (!opened) gmNotify("Enable the Character Creator feature to refine sheets.", "warning");
+    }
+
+    // Edit popover for a sheet: Rename (name-only, everything else stays)
+    // and Refine (LLM pass through the Character Creator override mode).
+    _editMenu(anchor, char, kind) {
+        const items = [
+            { icon: "fa-solid fa-tag", label: "Rename...", action: () => {
+                const name = window.prompt(`Rename ${char.name} to:`, char.name);
+                if (!name || name.trim() === char.name) return;
+                stateManager.renameCharacter(char.id, name.trim());
+            } },
+            { icon: "fa-solid fa-arrows-rotate", label: "Refine...", action: () => this._openRefine(char, kind) },
+        ];
+        popoverMenu(anchor, items);
+    }
+
     // Level badge + unspent skill-points chip for a sheet header.
     _progBadges(char) {
         const track = progression.trackOf(char);
@@ -932,6 +968,16 @@ class MainPanel {
                 ]);
             });
             backRow.append(moveTo);
+
+            // Edit — Rename (name-only) and Refine (containers rebuilt in the
+            // Character Creator, keeping progression/skill tree/state).
+            const edit = $("<div>").addClass("gm_back_btn gm_pop_anchor").append(
+                $("<i>").addClass("fa-solid fa-pen-to-square"), $("<span>").text(" Edit"));
+            edit.on("click", e => {
+                e.stopPropagation();
+                this._editMenu(edit, enemy, "enemy");
+            });
+            backRow.append(edit);
         }
         content.append(backRow);
 
@@ -1092,6 +1138,16 @@ class MainPanel {
                 ]);
             });
             backRow.append(preset);
+
+            // Edit — Rename (name-only) and Refine (containers rebuilt in the
+            // Character Creator, keeping progression/skill tree/state).
+            const edit = $("<div>").addClass("gm_back_btn gm_pop_anchor").append(
+                $("<i>").addClass("fa-solid fa-pen-to-square"), $("<span>").text(" Edit"));
+            edit.on("click", e => {
+                e.stopPropagation();
+                this._editMenu(edit, char, "party");
+            });
+            backRow.append(edit);
         }
         content.append(backRow);
 
