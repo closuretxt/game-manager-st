@@ -72,16 +72,7 @@ export function escAttr(v) {
         .replace(/"/g, "\u0026quot;");
 }
 
-// One <skill> element per skill: name (with the * cooldown marker), cost and
-// the FULL effect/damage term as the element body — unambiguous to parse even
-// when descriptions contain commas, colons or parentheses, and never capped
-// (the damage term is essential context for every combat pass).
-export function skillXml(sk) {
-    const cost = String(sk?.cost || "").trim();
-    const desc = String(sk?.description || "").replace(/\s+/g, " ").trim();
-    const cd = (Number(sk?.cooldown_left) || 0) > 0 ? "*" : "";
-    return `<skill name="${escAttr(sk?.name)}${cd}"${cost ? ` cost="${escAttr(cost)}"` : ""}>${escAttr(desc)}</skill>`;
-}
+// skillXml moved to core/sheetXml.js — the global sheet renderer.
 
 export function parseAttrs(raw) {
     const out = {};

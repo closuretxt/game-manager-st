@@ -12,7 +12,8 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel } from "./stateManager.js";
-import { parseAttrs, escAttr, decodeEntities, skillXml } from "./toolParser.js";
+import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
+import { sheetXml as renderSheet } from "./sheetXml.js";
 import { valueGuidelines } from "./valueGuidelines.js";
 import { getPreviousPrePassRaw } from "./prePass.js";
 import { resolveCombatProfile, sendRequestViaProfile } from "../util/connectionService.js";
@@ -85,29 +86,13 @@ function collectContext(maxActions, playerAction) {
 
     const d = stateManager.getData();
 
-    // One element per actor: resources as value/max; skills as nested <skill>
-    // elements (name with * cooldown marker, cost, full effect term).
-    const sheetXml = c => {
-        const attrs = [`name="${escAttr(c.name)}"`];
-        for (const r of c.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}"`);
-        for (const a of c.attributes || []) attrs.push(`${escAttr(a.name)}="${a.value}"`);
-        const skills = (c.skills || []).map(s => skillXml(s)).join("");
-        const statuses = (c.statuses || []).map(s => `${escAttr(s.name)}${s.modifiers ? ` (${escAttr(s.modifiers)})` : ""}`).join(", ");
-        if (statuses) attrs.push(`statuses="${statuses}"`);
-        const open = `<enemy ${attrs.join(" ")}`;
-        return skills ? `${open}>${skills}</enemy>` : `${open}/>`;
-    };
+    // Own sheet via the global renderer (core/sheetXml.js) — ALL sections in
+    // full detail (the enemy should know its own boosts and gear).
+    const sheetXml = c => renderSheet(c, { tag: "enemy" });
 
     // Visible state only: special states stay visible (a downed fighter is
     // scene information) but the enemy AI must not target them as active.
-    const partyXml = c => {
-        const attrs = [`name="${escAttr(c.name)}"`];
-        if (c.state?.mode) attrs.push(`state="${c.state.mode}"`);
-        for (const r of c.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}"`);
-        const statuses = (c.statuses || []).map(s => escAttr(s.name)).join(", ");
-        if (statuses) attrs.push(`statuses="${statuses}"`);
-        return `<char ${attrs.join(" ")}/>`;
-    };
+    const partyXml = c => renderSheet(c, { tag: "char", attrs: c.state?.mode ? { state: c.state.mode } : {}, sections: ["resources", "statuses"], descriptions: false });
 
     const blocks = [
         "<enemy_ai_context>",

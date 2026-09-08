@@ -15,6 +15,7 @@ import { logDebug } from "./debug.js";
 import { stateManager, playerLabel } from "./stateManager.js";
 import { captureSnapshot } from "./snapshots.js";
 import { queueHigh } from "./injection.js";
+import { sharedXml } from "./sheetXml.js";
 import { parseAttrs } from "./toolParser.js";
 import { resolveValue } from "./valueResolver.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
@@ -41,7 +42,10 @@ function collectContext(resource, playerAction) {
         // the <scene_context> block, next to the data.
         sceneContextBlock(history),
         "",
-        `RESOURCE: ${resource.name} — current amount: ${resource.qty}`,
+        // All shared resources with their descriptions: what the target is
+        // FOR plus the rest of the party purse — plausible amounts need a
+        // sense of overall wealth, not just the target's current value.
+        `<resources>${(stateManager.getData().sharedResources || []).map(r => sharedXml(r)).join("")}</resources>`,
         `PLAYER ACTION: ${playerAction}`,
         // Closing recency anchor at the VERY bottom of the full prompt.
         "Reminder: whatever else you write, end with the <transaction .../> tag (or <transaction applies=\"false\"/>) — that tag is what the system reads.",

@@ -10,7 +10,8 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel } from "./stateManager.js";
-import { parseAttrs, escAttr, decodeEntities, skillXml } from "./toolParser.js";
+import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
+import { sheetXml as renderSheet, sharedXml } from "./sheetXml.js";
 import { valueGuidelines } from "./valueGuidelines.js";
 import { resolveCombatProfile, sendRequestViaProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
@@ -62,27 +63,12 @@ function collectContext(playerAction) {
 
     const d = stateManager.getData();
 
-    // One element per actor: resources as value/max; skills as nested <skill>
-    // elements (name with * cooldown marker, cost, full effect term).
-    const sheetXml = c => {
-        const attrs = [`name="${escAttr(c.name)}"`];
-        for (const r of c.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}"`);
-        for (const a of c.attributes || []) attrs.push(`${escAttr(a.name)}="${a.value}"`);
-        const skills = (c.skills || []).map(s => skillXml(s)).join("");
-        const statuses = (c.statuses || []).map(s => `${escAttr(s.name)}${s.modifiers ? ` (${escAttr(s.modifiers)})` : ""}`).join(", ");
-        if (statuses) attrs.push(`statuses="${statuses}"`);
-        const open = `<char ${attrs.join(" ")}`;
-        return skills ? `${open}>${skills}</char>` : `${open}/>`;
-    };
+    // Own sheet via the global renderer (core/sheetXml.js) — ALL sections in
+    // full detail (the ally should know its own boosts and gear).
+    const sheetXml = c => renderSheet(c, { tag: "char" });
 
     // Visible state only: the ally AI never sees full enemy sheets.
-    const enemyXml = e => {
-        const attrs = [`name="${escAttr(e.name)}"`];
-        for (const r of e.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}"`);
-        const statuses = (e.statuses || []).map(s => escAttr(s.name)).join(", ");
-        if (statuses) attrs.push(`statuses="${statuses}"`);
-        return `<enemy ${attrs.join(" ")}/>`;
-    };
+    const enemyXml = e => renderSheet(e, { tag: "enemy", sections: ["resources", "statuses"], descriptions: false });
 
     const blocks = [
         "<ally_ai_context>",
@@ -93,6 +79,12 @@ function collectContext(playerAction) {
         "<party_sheets>",
         ...(d.characters || []).filter(c => !c.state).map(sheetXml),
         "</party_sheets>",
+        // Party purse: an ally may act on shared supplies ("grab a ration").
+        ...(d.sharedResources || []).length ? [
+            "<shared_resources>",
+            ...d.sharedResources.map(r => sharedXml(r)),
+            "</shared_resources>",
+        ] : [],
         "<enemy_presence>",
         ...(d.enemies || []).map(enemyXml),
         "</enemy_presence>",

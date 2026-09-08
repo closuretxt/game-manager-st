@@ -21,7 +21,8 @@ import { captureSnapshot } from "./snapshots.js";
 import { queueHigh } from "./injection.js";
 import { getPreviousPrePassRaw } from "./prePass.js";
 import { storeMessageData, recentMessages, sceneContextBlock } from "../util/chatStore.js";
-import { parseAttrs, escAttr, decodeEntities, skillXml } from "./toolParser.js";
+import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
+import { sheetXml as renderSheet } from "./sheetXml.js";
 import { valueGuidelines } from "./valueGuidelines.js";
 import { sendRequestViaProfile, resolveDiceProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
@@ -74,25 +75,12 @@ function collectContext(playerAction, notes = null, title = null, rewrite = null
         .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "")}`);
     const d = stateManager.getData();
 
-    // Compact XML party snapshot — same dialect as the clash resolver's
-    // sheets (skills as nested <skill> elements with their full effect term;
-    // * = skill on cooldown; statuses as Name (modifiers); resources and
-    // attributes as value pairs; passives keep their descriptions so
-    // chances are earned from them).
+    // Compact XML party snapshot — rendered by the global sheet helper
+    // (core/sheetXml.js): full descriptions, * = skill on cooldown, statuses
+    // with modifiers + effects, passives kept so chances are earned from them.
     const party = (d.characters || [])
         .filter(c => c.state?.mode !== "dead")
-        .map(c => {
-            const attrs = [`name="${escAttr(c.name)}"`];
-            for (const r of c.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}"`);
-            for (const a of c.attributes || []) attrs.push(`${escAttr(a.name)}="${a.value}"`);
-            const skills = (c.skills || []).map(sk => skillXml(sk)).join("");
-            const passives = (c.passives || []).map(p => `${escAttr(p.name)}${p.description ? `: ${escAttr(p.description)}` : ""}`).join("; ");
-            if (passives) attrs.push(`passives="${passives}"`);
-            const statuses = (c.statuses || []).map(x => `${escAttr(x.name)}${x.modifiers ? ` (${escAttr(x.modifiers)})` : ""}`).join(", ");
-            if (statuses) attrs.push(`statuses="${statuses}"`);
-            const open = `<char ${attrs.join(" ")}`;
-            return skills ? `${open}>${skills}</char>` : `${open}/>`;
-        });
+        .map(c => renderSheet(c, { tag: "char" }));
     // GM notes: the pre-pass router's FULL output for this action, persisted
     // on the user's message (roll call, title, notes, rewrite, transactions...)
     // — near the bottom so it reads as fresh context, not buried mid-prompt.

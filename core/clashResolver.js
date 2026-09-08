@@ -19,7 +19,8 @@ import { substituteParams } from "../../../../../script.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel } from "./stateManager.js";
-import { parseAttrs, escAttr, decodeEntities, skillXml } from "./toolParser.js";
+import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
+import { sheetXml as renderSheet } from "./sheetXml.js";
 import { valueGuidelines } from "./valueGuidelines.js";
 import { resolveDiceProfile, sendRequestViaProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
@@ -100,21 +101,10 @@ function collectContext(playerAction, partyActions, enemyActions) {
 
     const d = stateManager.getData();
 
-    // One line per actor: resources as value/max; skills keep their
-    // effect/damage terms (committed numbers must come from the sheet);
-    // passives keep their descriptions (chances are earned from them).
-    const sheetXml = c => {
-        const attrs = [`name="${escAttr(c.name)}"`];
-        for (const r of c.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}"`);
-        for (const a of c.attributes || []) attrs.push(`${escAttr(a.name)}="${a.value}"`);
-        const skills = (c.skills || []).map(s => skillXml(s)).join("");
-        const passives = (c.passives || []).map(p => `${escAttr(p.name)}${p.description ? `: ${escAttr(p.description)}` : ""}`).join("; ");
-        if (passives) attrs.push(`passives="${passives}"`);
-        const statuses = (c.statuses || []).map(s => `${escAttr(s.name)}${s.modifiers ? ` (${escAttr(s.modifiers)})` : ""}`).join(", ");
-        if (statuses) attrs.push(`statuses="${statuses}"`);
-        const open = `<actor ${attrs.join(" ")}`;
-        return skills ? `${open}>${skills}</actor>` : `${open}/>`;
-    };
+    // Full actor sheet via the global renderer — ALL sections: skills' damage
+    // terms (committed numbers must come from the sheet), passives, status
+    // effects and item notes included.
+    const sheetXml = c => renderSheet(c, { tag: "actor" });
 
     const actionXml = a => `<action actor="${escAttr(a.actor)}" speed="${Math.max(0, Math.trunc(Number(a.speed) || 0))}">${escAttr(a.action)}</action>`;
 

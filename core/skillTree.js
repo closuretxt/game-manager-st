@@ -16,6 +16,7 @@ import { stateManager } from "./stateManager.js";
 import { progression } from "./progression.js";
 import { genId } from "./schemas.js";
 import { skillGuidelines } from "./skillGuidelines.js";
+import { skillXml, passiveXml } from "./sheetXml.js";
 import { sendRequestViaProfile, resolveWizardProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 
@@ -35,14 +36,16 @@ function escAttr(v) {
         .replace(/"/g, "&" + "quot;");
 }
 
-// Compact sheet summary for the generation prompt (no tree dump).
+// Compact sheet summary for the generation prompt (no tree dump) — skills and
+// passives render with their FULL descriptions: the generator must know what
+// each skill currently reads like before proposing an upgrade to it.
 function charSummary(char) {
     const track = progression.trackOf(char);
     const lines = [
         `<char name="${escAttr(char.name)}" level="${track.level}" skill_points="${track.skill_points}">`,
         `<attributes>${(char.attributes || []).map(a => `${a.name} ${a.value}`).join(", ")}</attributes>`,
-        `<skills>${(char.skills || []).map(s => `${s.name}${s.cost ? ` (cost: ${s.cost})` : ""}${s.cooldown ? ` (cooldown: ${s.cooldown} messages)` : ""}`).join(", ") || "none"}</skills>`,
-        `<passives>${(char.passives || []).map(p => p.name).join(", ") || "none"}</passives>`,
+        `<skills>${(char.skills || []).map(s => skillXml(s)).join("") || "none"}</skills>`,
+        `<passives>${(char.passives || []).map(p => passiveXml(p)).join("") || "none"}</passives>`,
     ];
     lines.push("</char>");
     return lines.join("\n");

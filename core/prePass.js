@@ -29,6 +29,7 @@ import { stateManager, playerLabel } from "./stateManager.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
+import { itemXml, sharedXml, skillXml } from "./sheetXml.js";
 import { valueGuidelines } from "./valueGuidelines.js";
 
 import { recentMessages, sceneContextBlock } from "../util/chatStore.js";
@@ -109,28 +110,35 @@ async function collectContext(playerAction) {
     // post-pass snapshot.
     const d = stateManager.getData();
     const s = extension_settings[extensionName];
-    const parts = ['<state note="* = skill on cooldown; statuses as Name (modifiers)">'];
+    const parts = ['<state note="statuses as Name (modifiers); skills and inventory items carry their full descriptions; * = skill on cooldown">'];
 
     for (const c of d.characters || []) {
-        // The dead have nothing left to judge — collapse their entry.
         // The dead have nothing left to judge — collapse their entry.
         if (c.state?.mode === "dead") {
             parts.push(`<char name="${escAttr(c.name)}" state="dead"${c.state.reason ? ` reason="${escAttr(c.state.reason)}"` : ""}/>`);
             continue;
         }
-        // on_cooldown is a code-computed boolean — the router never sees
-        // (and never computes) remaining cooldown counts.
-        const skills = (c.skills || []).map(sk => `${escAttr(sk.name)}${(Number(sk.cooldown_left) || 0) > 0 ? "*" : ""}`).join(", ");
+        // Skills as nested elements with full descriptions — the router
+        // matches intent to skills ("I dive behind cover" → Sliding Dodge),
+        // so it must know what each skill DOES, not just its name.
+        const skillEls = (c.skills || []).map(sk => skillXml(sk)).join("");
         const statuses = (c.statuses || []).map(st => `${escAttr(st.name)}${st.modifiers ? ` (${escAttr(st.modifiers)})` : ""}`).join(", ");
         // Own resources (HP 12/20) and attributes (STR 3) — the router needs
         // to see them to judge when their value matters this turn.
         const res = (c.resources || []).map(r => `${escAttr(r.name)} ${r.value}${r.max ? `/${r.max}` : ""}`).join(", ");
         const attrs = (c.attributes || []).map(a => `${escAttr(a.name)} ${a.value}`).join(", ");
-        parts.push(`<char name="${escAttr(c.name)}"${c.state ? ` state="${c.state.mode}"` : ""}${skills ? ` skills="${skills}"` : ""}${statuses ? ` statuses="${statuses}"` : ""}${res ? ` resources="${res}"` : ""}${attrs ? ` stats="${attrs}"` : ""}/>`);
+        // Inventory items as nested elements with full descriptions — the
+        // router judges intent ("I drink the potion"), so it must know what
+        // each item is and does.
+        const items = (c.inventory || []).map(i => itemXml(i)).join("");
+        const open = `<char name="${escAttr(c.name)}"${c.state ? ` state="${c.state.mode}"` : ""}${statuses ? ` statuses="${statuses}"` : ""}${res ? ` resources="${res}"` : ""}${attrs ? ` stats="${attrs}"` : ""}`;
+        parts.push((skillEls || items) ? `${open}>${skillEls}${items}</char>` : `${open}/>`);
     }
 
-    const resources = (d.sharedResources || []).map(r => `${escAttr(r.name)}="${escAttr(r.qty)}"`).join(" ");
-    if (resources) parts.push(`<resources ${resources}/>`);
+    // Shared resources as entries with full descriptions — the router judges
+    // <transaction> spends, so it must know what each resource is for.
+    const shared = (d.sharedResources || []).map(r => sharedXml(r)).join("");
+    if (shared) parts.push(`<shared>${shared}</shared>`);
     if ((d.warnings || []).length) parts.push(`<warnings>${d.warnings.map(w => escAttr(w.name)).join(", ")}</warnings>`);
     // Open threads: untracked/unfinished things + secrets left by the
     // post-pass. Never injected into the story prompt directly — the

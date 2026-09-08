@@ -18,7 +18,8 @@ import { extensionName, CHARACTER_STATES } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { progression } from "./progression.js";
-import { parseToolBlocks, applyToolBlocks, escAttr, skillXml } from "./toolParser.js";
+import { parseToolBlocks, applyToolBlocks, escAttr } from "./toolParser.js";
+import { sheetXml, sharedXml, customXml, xmlEl } from "./sheetXml.js";
 import { valueGuidelines } from "./valueGuidelines.js";
 import { getLastInjections, hadCombatThisTurn } from "./injection.js";
 import { captureSnapshot, captureSwipeState } from "./snapshots.js";
@@ -58,32 +59,22 @@ function buildStateSummaryXml() {
         // the entry entirely; recoverable ones keep the sheet (they can come
         // back) flagged with state="<mode>".
         if (c.state && !CHARACTER_STATES[c.state.mode]?.llm_clearable) {
-            return `<${tag} name="${escAttr(c.name)}" state="${c.state.mode}"${c.state.reason ? ` reason="${escAttr(c.state.reason)}"` : ""}/>`;
+            return xmlEl(tag, { name: c.name, state: c.state.mode, reason: c.state.reason });
         }
-        const attrs = [`name="${escAttr(c.name)}"`];
-        if (c.state) attrs.push(`state="${c.state.mode}"`);
+        const attrs = {};
+        if (c.state) attrs.state = c.state.mode;
         if (prog) {
             const track = progression.trackOf(c);
-            attrs.push(`level="${track.level}"`, `exp="${track.exp}/${progression.expToNext(track.level)}"`, `sp="${track.skill_points}"`);
+            attrs.level = track.level;
+            attrs.exp = `${track.exp}/${progression.expToNext(track.level)}`;
+            attrs.sp = track.skill_points;
         }
-        for (const r of c.resources) {
-            attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}${r.min > 0 ? ` (min ${r.min})` : ""}"`);
-        }
-        for (const a of c.attributes) attrs.push(`${escAttr(a.name)}="${a.value}"`);
-        const items = (c.inventory || []).map(i => `${escAttr(i.name)} x${i.qty}`).join(", ");
-        if (items) attrs.push(`items="${items}"`);
-        // One <skill> element per skill with its FULL effect/damage term —
-        // element bodies stay parseable where comma-joined attribute strings
-        // would collide. on_cooldown is code-computed; skills marked * are
-        // on cooldown (legend in the header note).
-        const skills = (c.skills || []).map(sk => skillXml(sk)).join("");
-        const statuses = (c.statuses || []).map(st => `${escAttr(st.name)}${st.modifiers ? ` (${escAttr(st.modifiers)})` : ""}`).join(", ");
-        if (statuses) attrs.push(`statuses="${statuses}"`);
-        const open = `<${tag} ${attrs.join(" ")}`;
-        return skills ? `${open}>${skills}</${tag}>` : `${open}/>`;
+        // Full sheet via the global renderer: every description field travels
+        // (skill damage terms, passives, status effects, item notes).
+        return sheetXml(c, { tag, attrs });
     };
 
-    const parts = ['<state note="values are value/max; skills as nested <skill> elements (name with * cooldown marker, cost, FULL effect/damage term); statuses as Name (modifiers); values are the PRE-TURN snapshot — <transaction> payments are ALREADY deducted; skill costs and combat spends are OWED (report each exactly once)">'];
+    const parts = ['<state note="one-line elements carrying their FULL descriptions (resources value/max, skills marked * are on cooldown, statuses with modifiers + effect); values are the PRE-TURN snapshot — <transaction> payments are ALREADY deducted; skill costs and combat spends are OWED (report each exactly once)">'];
     for (const c of d.characters) parts.push(actorXml(c, "char"));
     // Enemies only when the feature is on AND some exist — otherwise the
     // agent never sees (and never invents) enemy state.
@@ -98,10 +89,10 @@ function buildStateSummaryXml() {
     // Shared party resources: visible to the tracker so it can account
     // consumption the pre-pass transaction engine did not already handle.
     if ((d.sharedResources || []).length) {
-        parts.push(`<shared>${d.sharedResources.map(r => `${escAttr(r.name)}=${escAttr(r.qty)}`).join("; ")}</shared>`);
+        parts.push(`<shared>${d.sharedResources.map(r => sharedXml(r)).join("")}</shared>`);
     }
     if ((d.custom || []).length) {
-        parts.push(`<custom>${d.custom.map(c => `${escAttr(c.name)}=${escAttr(c.value)}`).join("; ")}</custom>`);
+        parts.push(`<custom>${d.custom.map(c => customXml(c)).join("")}</custom>`);
     }
     // Open threads: untracked/unfinished things + secrets the agent left
     // for itself (also visible to the pre-pass, never to the story prompt).
