@@ -195,14 +195,25 @@ function chatBlocks(count = null) {
 
 //
 
+// Enemy spawns usually arrive with no references — fall back to other ACTIVE
+// enemies on the tracker (max 3) so the newcomer mirrors the warband's stat
+// structure, granularity and level instead of inventing its own dialect.
+function enemyFallbackReferences(name) {
+    const needle = String(name || "").trim().toLowerCase();
+    return (stateManager.getData().enemies || [])
+        .filter(e => e.name && String(e.name).trim().toLowerCase() !== needle && e.state?.mode !== "dead")
+        .slice(0, 3);
+}
+
 // Runs the generation call. Returns a sanitized character (wizard party-entry
 // shape) or null on failure.
 export async function generateCharacterProposal({ name, details, references = [], level = null, kind = "party", chatMessages = null, profileId = "" } = {}) {
     const s = extension_settings[extensionName];
     if (!s.enabled) return null;
     try {
+        const refs = kind === "enemy" && !(references || []).length ? enemyFallbackReferences(name) : references;
         const blocks = [
-            ...briefBlocks({ name, details, references, level, kind }),
+            ...briefBlocks({ name, details, references: refs, level, kind }),
             ...(await deepContextBlocks(details)),
             ...chatBlocks(chatMessages),
         ];
@@ -227,8 +238,10 @@ export async function refineCharacterProposal(char, feedback, { name, details, r
     const s = extension_settings[extensionName];
     if (!s.enabled || !char) return null;
     try {
+        // Same enemy fallback as generation — refinement keeps the anchor.
+        const refs = kind === "enemy" && !(references || []).length ? enemyFallbackReferences(name) : references;
         const blocks = [
-            ...briefBlocks({ name, details, references, level, kind }),
+            ...briefBlocks({ name, details, references: refs, level, kind }),
             ...(await deepContextBlocks(details)),
             ...chatBlocks(),
             "",

@@ -408,9 +408,11 @@ export function characterToXml(c) {
     const lines = [`<char name="${escAttr(c?.name)}"${Number.isFinite(lvl) && lvl >= 1 ? ` level="${lvl}"` : ""}>`];
     for (const [container, tag] of Object.entries(PROMPT_CONTAINER_TAGS)) {
         for (const e of c?.[container] || []) {
+            // Every field rides along (descriptions, costs, effects...) —
+            // whitespace collapsed so multi-line text stays single-line.
             const attrs = Object.entries(e)
                 .filter(([k]) => k !== "id")
-                .map(([k, v]) => `${k}="${escAttr(v)}"`)
+                .map(([k, v]) => `${k}="${escAttr(String(v ?? "").replace(/\s+/g, " ").trim())}"`)
                 .join(" ");
             lines.push(`<${tag} ${attrs}/>`);
         }
