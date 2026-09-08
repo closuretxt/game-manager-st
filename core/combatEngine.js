@@ -21,7 +21,7 @@ import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { weightedRoll } from "./diceRoller.js";
 import { captureSnapshot } from "./snapshots.js";
-import { queueHigh } from "./injection.js";
+import { queueHigh, queueClashOverride } from "./injection.js";
 import { runAllyAI } from "./allyAI.js";
 import { runEnemyAI } from "./enemyAI.js";
 import { resolveClashes } from "./clashResolver.js";
@@ -220,6 +220,9 @@ export async function runCombatTurn(action, plan, mesId) {
             enemyActions,
             onStream: (partial) => bubble.syncGroups(partial),
         });
+        // Real clash resolution this run: outcomes can interrupt, cancel or
+        // negate queued skill uses — arm the injection override (one-shot).
+        if (groups) queueClashOverride();
         if (!groups) groups = fallbackGroups(partyActions, enemyActions);
         bubble.syncGroups(groups);
 

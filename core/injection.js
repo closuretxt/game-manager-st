@@ -124,6 +124,14 @@ export function queueSkillUse(character, skill, cost = "") {
     queueHigh(`<skill_use character="${c}" skill="${sk}" note="The game system judged this tracked skill to fit the player's action; narrate the character using it.${costNote} Its cooldown is applied by the tracker afterwards."/>`);
 }
 
+// Queues a ONE-SHOT high-priority clash override — ONLY when a clash
+// resolution actually ran this turn (called from combatEngine). Tells the
+// story engine that clash outcomes supersede the skill-use suggestions
+// whose actions got interrupted, cancelled or negated by a clash.
+export function queueClashOverride() {
+    queueHigh(`<clash_override note="This turn's actions were clash-resolved: a clash outcome that interrupts, cancels or negates an action supersedes any <skill_use> in this block — that action fails before it happens, so narrate ONLY the interruption, pay no cost, apply no cooldown, no effect."/>`);
+}
+
 // Queues a ONE-SHOT low-priority line (e.g. a shared resource value the
 // pre-pass flagged as relevant this turn). Rendered by the next low-priority
 // build, then dropped — unlike always-inject values, it does not persist.
