@@ -105,6 +105,8 @@ function collectContext(playerAction) {
             getPreviousPrePassRaw().trim(),
             "</gm_notes>",
         ] : []),
+        // Closing recency anchor at the VERY bottom of the full prompt.
+        "Reminder: whatever else you write, deliver the actions inside <ally_actions>...</ally_actions> — that block is what the system reads.",
     ];
     return blocks.join("\n");
 }

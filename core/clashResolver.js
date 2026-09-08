@@ -48,7 +48,7 @@ const SYSTEM_PROMPT = [
     "Pair the actions into clash groups and, for each group, provide exactly 4 ordered chance tiers (Critical Failure / Failure / Success / Critical Success) with short outcome lines. Chances are percentages of a 100% total.",
     "",
     "OUTPUT FORMAT:",
-    "Responwith ONLY XML — no markdown fences, no prose:", 
+    "Respond with ONLY XML — no markdown fences, no prose:",
     
     '<clashes>',
     '<clash title="Knight\'s Slash vs Goblin A\'s Swing">',
@@ -140,6 +140,8 @@ function collectContext(playerAction, partyActions, enemyActions) {
         ...sheets,
         "</sheets>",
         "</clash_context>",
+        // Closing recency anchor at the VERY bottom of the full prompt.
+        "Reminder: whatever else you write, deliver the clash groups inside <clashes>...</clashes> — that block is what the system reads.",
     ];
     return blocks.join("\n");
 }

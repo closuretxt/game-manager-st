@@ -162,6 +162,9 @@ async function collectContext(playerAction) {
         sceneContextBlock(history),
         "",
         `PLAYER ACTION TO JUDGE: ${playerAction}`,
+        // Closing recency anchor at the VERY bottom of the full prompt: the
+        // tags are what the parser reads, whatever the model writes around them.
+        "Reminder: whatever else you write, put every decision in one of the XML tags described above (<roll>, <transaction>, <warning>, <combat>, <rewrite>, <note>, <relevant>, <skill>, <nothing/>) — those tags are what the system reads.",
     ];
 
     return blocks.join("\n");

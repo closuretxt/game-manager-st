@@ -43,6 +43,8 @@ function collectContext(resource, playerAction) {
         "",
         `RESOURCE: ${resource.name} — current amount: ${resource.qty}`,
         `PLAYER ACTION: ${playerAction}`,
+        // Closing recency anchor at the VERY bottom of the full prompt.
+        "Reminder: whatever else you write, end with the <transaction .../> tag (or <transaction applies=\"false\"/>) — that tag is what the system reads.",
     ].join("\n");
 }
 

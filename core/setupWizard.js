@@ -151,6 +151,8 @@ async function collectContext(scenarioText, { skipCharacters = false, improvedGr
         if (deep) blocks.push("", "<deep_context>", deep, "</deep_context>");
     }
 
+    // Closing recency anchor at the VERY bottom of the full prompt.
+    blocks.push("Reminder: whatever else you write, deliver the proposal inside <setup>...</setup> — that block is what the system reads.");
     return blocks.join("\n");
 }
 

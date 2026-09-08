@@ -83,9 +83,11 @@ async function runCharLLM(systemPrompt, userContent, name, profileOverride = "")
     const profileId = (profileOverride && hasConnectionProfile(st, profileOverride))
         ? profileOverride
         : resolveWizardProfile(st, s.wizard_profile, s.premaster_profile, s.connection_profile);
+    // Closing recency anchor at the VERY bottom of the full prompt — shared
+    // by every character-generation call (create + refine).
     const reply = await sendRequestViaProfile(profileId, [
         { role: "system", content: systemPrompt },
-        { role: "user", content: userContent },
+        { role: "user", content: `${userContent}\n\nReminder: whatever else you write, deliver the proposal inside <setup>...</setup> — that block is what the system reads.` },
     ]);
     const proposal = sanitizeProposal(parseSetupXml(String(reply || "")));
     const char = proposal?.party?.[0] || null;

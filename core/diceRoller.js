@@ -62,7 +62,7 @@ const SYSTEM_PROMPT = [
     "NEVER include dialogue, quoted speech, or spoken lines of any kind in tier outcomes — narration only.",
     "NEVER roleplay as the characters in tier outcomes: no thoughts, feelings, words, or deliberate choices for them — describe only what physically happens as a consequence of the roll, and let the main GM narrative handle how everyone reacts.",
     "If no roll is needed respond with ONLY: <roll needs=\"false\"/>",
-    "When a roll is needed you MUST always produce the full <roll> block with all four <tier> children — never a bare <roll .../> without tiers, never an empty reply.",
+    "When a roll is needed you MUST always produce the full <roll> block with all four <tier> — never a bare <roll .../> without tiers, never an empty reply.",
     "TIER CHANCES are plain percentages — the engine weights them into a true random pick. When the action or its outcomes carry dice terms (variable damage, random effects), keep them in the outcome line as written (\"the flask bursts for 2d6+2\"): the tracker rolls them with TRUE RNG when it applies the numbers.",
     valueGuidelines(),
 ].join("\n");
@@ -109,6 +109,8 @@ function collectContext(playerAction, notes = null, title = null, rewrite = null
         ...(gmRaw ? ["", "GM NOTES (the pre-pass router's full output for this action):", "<gm_notes>", gmRaw, "</gm_notes>"] : []),
         "",
         `PLAYER ACTION TO JUDGE: ${playerAction}`,
+        // Closing recency anchor at the VERY bottom of the full prompt.
+        "Reminder: whatever else you write, deliver the <roll> block with all four <tier> children (or <roll needs=\"false\"/>) — that block is what the system reads.",
     ].join("\n");
 }
 
@@ -221,7 +223,7 @@ export async function rollDice(playerAction, mesId, { title = null } = {}) {
 
         // Output contract — the LAST thing in the system message (recency):
         // models that self-close <roll/> with no tiers silently drop the roll.
-        systemContent += "\n\nOUTPUT REMINDER: reply with exactly ONE <roll> element and NOTHING else. If a roll is needed, it contains four <tier> children (Critical Failure, Failure, Success, Critical Success) and is NOT self-closing — a reply without all four tiers is a failure. If no roll is needed: <roll needs=\"false\"/>.";
+        systemContent += "\n\nOUTPUT REMINDER: reply with exactly ONE <roll> element and NOTHING else. If a roll is needed, it contains four <tier> (Critical Failure, Failure, Success, Critical Success) and is NOT self-closing — a reply without all four tiers is a failure. If no roll is needed: <roll needs=\"false\"/>.";
 
         const seenTiers = new Set();
         let streamed = "";

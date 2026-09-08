@@ -301,6 +301,8 @@ function buildUserPrompt(exchange, history = []) {
     blocks.push(
         "CURRENT EXCHANGE (the ONLY source of changes — report exactly what happens here, nothing else):",
         ...exchange.map(m => `${m.role}: ${m.text}`),
+        // Closing recency anchor at the VERY bottom of the full prompt.
+        "Reminder: whatever else you write, deliver the report as the tool blocks listed in the instructions, each wrapped in its own <tag>...</tag> — those tags are what the system reads.",
     );
     return blocks.join("\n");
 }

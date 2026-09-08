@@ -139,6 +139,8 @@ function collectContext(maxActions, playerAction) {
         ] : []),
         "",
         `Decide the enemy actions for this round (at most ${maxActions} <action> entries).`,
+        // Closing recency anchor at the VERY bottom of the full prompt.
+        "Reminder: whatever else you write, deliver the actions inside <enemy_actions>...</enemy_actions> — that block is what the system reads.",
     ];
     return blocks.join("\n");
 }
