@@ -19,7 +19,7 @@ import { substituteParams } from "../../../../../script.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel } from "./stateManager.js";
-import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
+import { parseAttrs, escAttr, decodeEntities, skillXml } from "./toolParser.js";
 import { valueGuidelines } from "./valueGuidelines.js";
 import { resolveDiceProfile, sendRequestViaProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
@@ -86,6 +86,7 @@ const DETERMINISTIC_GUIDELINES = [
     "DETERMINISTIC CLASH OUTCOMES — when you are CONFIDENT the sheets justify the numbers, COMMIT them in the tier outcome lines:",
     "- For a tier where an attack lands, write its damage as the sheet's damage term plus stat scaling as ONE arithmetic/dice expression, e.g. \"slashes for 18+4*3 damage\" — the tracker resolves it exactly (arithmetic and true-RNG dice rules apply).",
     "- Also commit what the exchange costs or applies: skill resource costs, ammo/stamina spend, statuses with their modifiers (\"leaves the goblin Wounded: Aim -2\").",
+    "- Generic moves with no sheet term (bare punches, kicks, elbows) follow NO SHEET BASIS: flavor (no damage) or ~10–20% of the actor's weakest damaging skill — always anchored to their build.",
     "- Never invent numbers the sheets do not support — when a damage term is unknown, keep that outcome descriptive. Confidence comes from the sheets ONLY.",
 ].join("\n");
 
@@ -99,19 +100,20 @@ function collectContext(playerAction, partyActions, enemyActions) {
 
     const d = stateManager.getData();
 
-    // One line per actor: resources as value/max; passives keep their
-    // descriptions (chances are earned from them).
+    // One line per actor: resources as value/max; skills keep their
+    // effect/damage terms (committed numbers must come from the sheet);
+    // passives keep their descriptions (chances are earned from them).
     const sheetXml = c => {
         const attrs = [`name="${escAttr(c.name)}"`];
         for (const r of c.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}"`);
         for (const a of c.attributes || []) attrs.push(`${escAttr(a.name)}="${a.value}"`);
-        const skills = (c.skills || []).map(s => escAttr(s.name)).join(", ");
-        if (skills) attrs.push(`skills="${skills}"`);
+        const skills = (c.skills || []).map(s => skillXml(s)).join("");
         const passives = (c.passives || []).map(p => `${escAttr(p.name)}${p.description ? `: ${escAttr(p.description)}` : ""}`).join("; ");
         if (passives) attrs.push(`passives="${passives}"`);
         const statuses = (c.statuses || []).map(s => `${escAttr(s.name)}${s.modifiers ? ` (${escAttr(s.modifiers)})` : ""}`).join(", ");
         if (statuses) attrs.push(`statuses="${statuses}"`);
-        return `<actor ${attrs.join(" ")}/>`;
+        const open = `<actor ${attrs.join(" ")}`;
+        return skills ? `${open}>${skills}</actor>` : `${open}/>`;
     };
 
     const actionXml = a => `<action actor="${escAttr(a.actor)}" speed="${Math.max(0, Math.trunc(Number(a.speed) || 0))}">${escAttr(a.action)}</action>`;

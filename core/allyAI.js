@@ -10,7 +10,7 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel } from "./stateManager.js";
-import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
+import { parseAttrs, escAttr, decodeEntities, skillXml } from "./toolParser.js";
 import { valueGuidelines } from "./valueGuidelines.js";
 import { resolveCombatProfile, sendRequestViaProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
@@ -45,7 +45,7 @@ const SYSTEM_PROMPT = [
     "- The intent line says WHAT the ally attempts and AT WHOM (or for whom) — the clash engine needs a concrete target to pair actions against.",
     "- Any kind of action is valid: attacking, dodging, shielding the player, healing, using a skill — choose what a loyal ally would do given its stats and the scene.",
     "- USE SKILLS ACTIVELY. Skills are the ally's signature moves: when a ready skill (no * marker) fits the scene, PREFER it over a plain attack — a fire mage should cast, a healer should heal. Name the skill explicitly in the intent line. Never use a skill marked * (on cooldown), and never invent skills that are not on the sheet.",
-    "- Skill costs are real: a skill's (cost: ...) is paid when used — only pick it when the ally can afford it (check current resources).",
+    "- Skill costs are real: a skill's cost=\"...\" is paid when used — only pick it when the ally can afford it (check current resources).",
     "- Skip allies whose statuses/scene prevent acting (Dazed, Stunned, Unconscious...) — a skipped ally gets no <action> entry. Physical restraints (grappled, tangled in roots, buried in debris) don't force a skip: the ally may act to break free.",
     "- Never act for the player themselves; never invent party members that are not in the sheets or in the scene.",
     "- UNCERTAIN NUMBERS go in dice notation: when the intent carries variable damage or a random effect, write it as a die (\"slashes for 2d6+2\", \"50% chance to stagger: 1d2\") — the engine rolls TRUE random dice when the tracker applies it; never invent a fixed average yourself.",
@@ -62,17 +62,17 @@ function collectContext(playerAction) {
 
     const d = stateManager.getData();
 
-    // One line per actor: resources as value/max, skills as Name (cost),
-    // * = skill on cooldown.
+    // One element per actor: resources as value/max; skills as nested <skill>
+    // elements (name with * cooldown marker, cost, full effect term).
     const sheetXml = c => {
         const attrs = [`name="${escAttr(c.name)}"`];
         for (const r of c.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}"`);
         for (const a of c.attributes || []) attrs.push(`${escAttr(a.name)}="${a.value}"`);
-        const skills = (c.skills || []).map(s => `${escAttr(s.name)}${String(s.cost || "").trim() ? ` (cost: ${escAttr(s.cost)})` : ""}${(Number(s.cooldown_left) || 0) > 0 ? "*" : ""}`).join(", ");
-        if (skills) attrs.push(`skills="${skills}"`);
+        const skills = (c.skills || []).map(s => skillXml(s)).join("");
         const statuses = (c.statuses || []).map(s => `${escAttr(s.name)}${s.modifiers ? ` (${escAttr(s.modifiers)})` : ""}`).join(", ");
         if (statuses) attrs.push(`statuses="${statuses}"`);
-        return `<char ${attrs.join(" ")}/>`;
+        const open = `<char ${attrs.join(" ")}`;
+        return skills ? `${open}>${skills}</char>` : `${open}/>`;
     };
 
     // Visible state only: the ally AI never sees full enemy sheets.

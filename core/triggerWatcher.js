@@ -362,20 +362,21 @@ export async function handlePreTurn(type = "normal") {
                 for (const rel of plan.relevant) {
                     if (rel.entry) {
                         if (rel.entry.always_inject || transacted.has(rel.entry.id)) continue;
-                        queueLowOnce(`<resource name="${rel.entry.name}" value="${rel.entry.qty}"/>`);
+                        // source="readout" marks these as snapshot mirrors, never payments.
+                        queueLowOnce(`<resource name="${rel.entry.name}" value="${rel.entry.qty}" source="readout"/>`);
                     } else if (rel.skill) {
                         // Skill cooldown state (turns 0 = ready) — relevance-gated
                         // by the pre-pass so the story engine never hallucinates a use.
                         if (rel.cooldown > 0) {
                             logDebug(`pre-turn: skill cooldown queued "${rel.character}.${rel.name}" (${rel.cooldown} left)`);
-                            queueLowOnce(`<skill_cooldown character="${rel.character}" skill="${rel.name}" turns="${rel.cooldown}"/>`);
+                            queueLowOnce(`<skill_cooldown character="${rel.character}" skill="${rel.name}" turns="${rel.cooldown}" source="readout"/>`);
                         } else {
                             logDebug(`pre-turn: skill ready queued "${rel.character}.${rel.name}"`);
-                            queueLowOnce(`<skill_ready character="${rel.character}" skill="${rel.name}"/>`);
+                            queueLowOnce(`<skill_ready character="${rel.character}" skill="${rel.name}" source="readout"/>`);
                         }
                     } else {
                         logDebug(`pre-turn: character stat queued "${rel.character}.${rel.name}" = ${rel.value}`);
-                        queueLowOnce(`<character_stat character="${rel.character}" name="${rel.name}" value="${rel.value}"/>`);
+                        queueLowOnce(`<character_stat character="${rel.character}" name="${rel.name}" value="${rel.value}" source="readout"/>`);
                     }
                 }
             }

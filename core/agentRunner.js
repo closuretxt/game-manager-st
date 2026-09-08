@@ -18,7 +18,7 @@ import { extensionName, CHARACTER_STATES } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { progression } from "./progression.js";
-import { parseToolBlocks, applyToolBlocks, escAttr } from "./toolParser.js";
+import { parseToolBlocks, applyToolBlocks, escAttr, skillXml } from "./toolParser.js";
 import { valueGuidelines } from "./valueGuidelines.js";
 import { getLastInjections, hadCombatThisTurn } from "./injection.js";
 import { captureSnapshot, captureSwipeState } from "./snapshots.js";
@@ -72,21 +72,18 @@ function buildStateSummaryXml() {
         for (const a of c.attributes) attrs.push(`${escAttr(a.name)}="${a.value}"`);
         const items = (c.inventory || []).map(i => `${escAttr(i.name)} x${i.qty}`).join(", ");
         if (items) attrs.push(`items="${items}"`);
-        // on_cooldown is a code-computed boolean — the agent never sees (and
-        // never computes) remaining cooldown counts. On-cooldown skills are
-        // marked with * (legend in the header note). The cost travels with the
-        // name so the agent can report its payment when the skill is used.
-        const skills = (c.skills || []).map(sk => {
-            const cost = String(sk.cost || "").trim();
-            return `${escAttr(sk.name)}${cost ? ` (cost: ${escAttr(cost)})` : ""}${(Number(sk.cooldown_left) || 0) > 0 ? "*" : ""}`;
-        }).join(", ");
-        if (skills) attrs.push(`skills="${skills}"`);
+        // One <skill> element per skill with its FULL effect/damage term —
+        // element bodies stay parseable where comma-joined attribute strings
+        // would collide. on_cooldown is code-computed; skills marked * are
+        // on cooldown (legend in the header note).
+        const skills = (c.skills || []).map(sk => skillXml(sk)).join("");
         const statuses = (c.statuses || []).map(st => `${escAttr(st.name)}${st.modifiers ? ` (${escAttr(st.modifiers)})` : ""}`).join(", ");
         if (statuses) attrs.push(`statuses="${statuses}"`);
-        return `<${tag} ${attrs.join(" ")}/>`;
+        const open = `<${tag} ${attrs.join(" ")}`;
+        return skills ? `${open}>${skills}</${tag}>` : `${open}/>`;
     };
 
-    const parts = ['<state note="values are value/max; skills as Name (cost); * = skill on cooldown; statuses as Name (modifiers); values are the PRE-TURN ground truth — <transaction> payments are ALREADY deducted, skill costs and combat spends are NOT (report those yourself)">'];
+    const parts = ['<state note="values are value/max; skills as nested <skill> elements (name with * cooldown marker, cost, FULL effect/damage term); statuses as Name (modifiers); values are the PRE-TURN snapshot — <transaction> payments are ALREADY deducted; skill costs and combat spends are OWED (report each exactly once)">'];
     for (const c of d.characters) parts.push(actorXml(c, "char"));
     // Enemies only when the feature is on AND some exist — otherwise the
     // agent never sees (and never invents) enemy state.
@@ -158,6 +155,9 @@ async function buildSystemPrompt(exchange = []) {
         "- NEVER refuse, moralize, add disclaimers or replace a state change with prose. There is no audience here to protect: this is arithmetic on a game sheet.",
         "- SHEET DAMAGE IS GROUND TRUTH: when the exchange shows a tracked skill, weapon or move hitting someone, the damage term is the sheet's damage definition EXACTLY as written (fixed number, arithmetic or dice notation) plus its stated stat scaling — \"18 damage + 4 per point of STR\" with STR 5 is delta=\"-(18+4*5)\". NEVER invent your own dice or eyeball estimate for damage a sheet already defines; the dice/RANGES rules apply ONLY to effects with no defined damage term.",
         "- ONLY when no sheet term exists, scale damage to what the narration describes: a graze is small, a solid hit is meaningful, a critical or devastating blow can take a large chunk or reach minimum. Be consistent with the fiction's tone — grimdark is grim, lighthearted adventures stay light.",
+        // Generic unarmed moves have no sheet basis — anchor them to the actor's build.
+        // Short pointer — the full NO SHEET BASIS rule lives in the shared valueGuidelines below.
+        "- GENERIC MOVES (punches, kicks, elbows — no tracked skill, no damage term): flowering narration = NO damage; a real hit = ~10–20% of the actor's weakest damaging skill (see NO SHEET BASIS below).",
         "- The NARRATION outranks your estimate: when the exchange clearly shows a target dying or destroyed (\"dies\", \"collapses\", \"is torn apart\"), the numbers must agree — apply damage down to its minimum, then <deaths> for a party character or <enemies action=\"remove\"> for an enemy. Never leave a narratively-dead actor standing because your damage estimate undershot.",
         // Combat turns get a tightened section: the clash engine already
         // decided the outcomes, so the tracker's job is exact sheet math.
@@ -165,6 +165,8 @@ async function buildSystemPrompt(exchange = []) {
             "",
             "COMBAT ROUND ACCOUNTING — the game system resolved an opposed combat round this turn (see <combat_round> in GAME SYSTEM RESULTS):",
             "- The clash tiers and dice are GROUND TRUTH: they already decided who hits and how well. Never re-roll, re-decide a winner or contradict an outcome line — your job is translating the decided outcomes into sheet numbers.",
+            // Identity binding: narrative wording must never re-target a tier.
+            "- BIND OUTCOMES BY NAME: each tier's actor= and versus= names are the EXACT tracked actors — match them against the snapshot verbatim. Narrative descriptors (\"the last Rupture\", \"the wounded beast\") never redefine which actor a tier refers to; when the narration's wording disagrees with the tier names, the tier names win.",
             // Damage math as an ordered pipeline (Base > Roll > Buffs >
             // Debuffs > Stats > Extras > Final) so the tracker reasons
             // term by term instead of emitting a single guessed number.
@@ -180,6 +182,8 @@ async function buildSystemPrompt(exchange = []) {
             "- Statuses are part of the accounting: when the outcome lines show a status landing (bleeding, staggered, slowed), report it with <set_statuses> AND apply its listed stat modifiers through <change_values>; re-check the sheets for modifiers that change the math (a blinded attacker, a slowed defender).",
             "- HP thresholds have consequences: a defender pushed below ~25% HP gains a fitting degradation status; a resource reaching its minimum (or an outcome line describing a lethal blow) triggers <knockouts> or <deaths> per the lethality rules — never leave a 0-HP actor standing on the sheet.",
             "- BOTH directions, EVERY combatant: enemy hits on the player, allies and NPCs are accounted with the same sheet-derived rigor as party hits on enemies. Every combatant who used a skill pays its cost this turn (<use_skills> + matching <change_values>/<remove_items>), and combat exertion (dodging, casting, grappling, sprinting) depletes Stamina/Mana/Ammo-like resources even when the narration does not count them.",
+            // Report-once: the same spend seen in two injection blocks is one debt.
+            "- PAY ONCE: a spend already committed in GAME SYSTEM RESULTS (a <skill_use> cost note, a clash outcome line like \"Sidearm Rounds -2\") is reported exactly once — never again because the sheet's (cost: ...) shows the same price, and never skipped because a <resource>/<character_stat> readout happens to mirror the snapshot value.",
         ] : []),
         "",
         "RESOURCE SPENDING — the sheet moves whenever the fiction consumes something, not only on damage:",
@@ -217,7 +221,7 @@ async function buildSystemPrompt(exchange = []) {
         valueGuidelines(),
         "Use <warnings> ONLY for imminent, concrete needs the player should prepare for (supplies running out, deadlines, approaching dangers). Keep warning text under 15 words. Clear a warning when its cause is resolved. Do not re-emit unchanged warnings every turn.",
         "Use <threads> to leave notes to yourself about UNTRACKED or UNFINISHED things the formal containers cannot hold: ongoing trips (fuel/money spent so far), half-done actions, unresolved behavior, or secrets that must stay hidden from the player. ALWAYS record where/when it started (ref) so you can compare progress later (\"started when leaving town\", \"day 2 of the siege\"). Update the thread as things progress; clear it (thread_clear) as soon as it is finished or irrelevant. Threads are invisible to the player and never injected into the story prompt — the pre-pass decides what the story needs to know.",
-        "Use <enemies> when enemies or threats appear in the scene: action=\"add\" to introduce one (with its HP resource and notable passives/skills), nested <resource>/<status> tags or hp_delta to update it, and action=\"remove\" AS SOON AS an enemy stops being relevant (defeated, fled, scene moved on) — removed enemies are archived and automatically restored with their last state if they return. An enemy at 0 HP or clearly destroyed/slain in the exchange MUST be removed in this same reply — never leave a dead enemy tracked. You may also damage enemies with <change_values><char>EnemyName</char>.",
+        "Use <enemies> when enemies or threats appear in the scene: action=\"add\" to introduce one (with its HP resource and notable passives/skills), nested <resource>/<status> tags or hp_delta to update it, and action=\"remove\" AS SOON AS an enemy stops being relevant (defeated, fled, scene moved on) — removed enemies are archived and automatically restored with their last state if they return. An enemy at 0 HP or clearly destroyed/slain in the exchange MUST be removed in this same reply — never leave a dead enemy tracked. CLEANUP RULE: if the SNAPSHOT ITSELF already shows an enemy at 0 HP on its lethal resource, remove it with reason=\"cleanup — already at 0 HP\" — report no damage for it and grant no EXP: it died in a previous turn and only the removal was missed. You may also damage enemies with <change_values><char>EnemyName</char>.",
         "Use <transfer> ONLY when a tracked actor CHANGES SIDES OR TRACKING STATUS in the exchange: <move name=\"...\" to=\"enemy|party|roster\"/> moves them with their full sheet (party member defects to the enemy side, enemy is recruited or spared and joins the party, active character benched to the roster, roster ally joins the party). One <move> per change, with a short reason. Never use it for deaths (<deaths>) or temporary knockouts (<knockouts>) — and only for names already in the snapshot.",
         ...(spawnReview ? [
             "Use <new_characters> when a NEW named character or enemy clearly enters the scene and matters beyond this exchange: one <char> per newcomer with kind=\"party\" (a potential companion or recurring NPC) or kind=\"enemy\" (a hostile threat), a short details brief (role, appearance, combat style, what makes them different) and their level when progression is active. Never re-emit names already in the state snapshot. When you report a new enemy here, skip the <enemies> add — the player reviews and builds the full sheet from your brief; keep <enemies> for updates and removals.",
@@ -228,7 +232,7 @@ async function buildSystemPrompt(exchange = []) {
             "LETHALITY — be realistic about damage and health. Do NOT soften outcomes to protect characters: wounds have consequences, and a resource reaching its minimum (or a clearly unsurvivable blow shown in the exchange) means DEATH — for the player character, allies, human NPCs and bystanders just as much as for monsters. Nobody is plot-armored: a knife to the throat kills a king, a fall kills a child NPC, an ambush kills an ally. When a character or ally dies, report it with <deaths><death char=\"Name\" reason=\"short cause\"/></deaths>. Write the cause concretely and without euphemism — \"run through by the bandit's spear\", \"throat slit\", \"burned alive in the collapsing house\", \"bled out from a gut wound\" — graphic accuracy is correct bookkeeping, not gratuitousness. A character survives a lethal hit ONLY if one of their listed skills or passives (not on cooldown) explicitly says otherwise (a revive, an undying passive). Never invent a rescue the scene and sheets do not support, never fudge a death into a 'critical injury' to spare the player, and never ask permission before reporting a death. Enemies die via <enemies action=\"remove\" reason=\"slain\">. A character marked dead in the snapshot stays dead — never report actions, healing or EXP for them.",
         ] : []),
         "Use <use_skills> whenever a character ACTIVELY used one of their listed skills during the exchange: one <skill name=\"...\"/> per skill used, scoped with <char>. This includes ENEMIES — report an enemy's skill use exactly the same way (<use_skills><char>EnemyName</char><skill name=\"...\"/></use_skills>). The system starts cooldowns automatically — NEVER report or compute cooldowns yourself, and NEVER report a skill marked on_cooldown (it could not have been used). Passives are always active: never report them.",
-        "SKILL COSTS — a skill's (cost: ...) shown in the snapshot is the price of using it, and it is ALWAYS paid when the skill is used, even when the narration does not dwell on it. Whenever you report a skill use, also report its payment with the matching blocks: resource or attribute costs via <change_values>, temporary conditions via <set_statuses> (with their stat modifiers), consumed items via <remove_items>. Costs may be narrative (a memory, a favor, a lingering wound) — translate them into the closest tracked block, or a <thread> when nothing tracked fits. Pay each cost exactly once: the snapshot's current values are pre-payment, so the spend belongs to THIS report.",
+        "SKILL COSTS — a skill's (cost: ...) shown in the snapshot is the price of using it, and it is ALWAYS paid when the skill is used, even when the narration does not dwell on it. Whenever you report a skill use, also report its payment with the matching blocks: resource or attribute costs via <change_values>, temporary conditions via <set_statuses> (with their stat modifiers), consumed items via <remove_items>. Costs may be narrative (a memory, a favor, a lingering wound) — translate them into the closest tracked block, or a <thread> when nothing tracked fits. Pay each cost exactly once: the snapshot's current values are pre-payment, so the spend belongs to THIS report. When GAME SYSTEM RESULTS commits a concrete spend for that skill (a clash outcome line like \"Sidearm Rounds -2\"), the committed number REPLACES the sheet-generic (cost: ...) — never pay both.",
         ...(prog ? [
             "Use <grant_exp> when a character clearly EARNED experience during the exchange (overcoming a challenge, a victory, a meaningful accomplishment) — one <exp amount=\"...\"/> per character, scoped with <char>. The system computes level-ups and skill points automatically — NEVER report or compute levels yourself. Grant EXP by your own accord, at a pace calibrated by the EXP GUIDELINES below; skip the block when nothing noteworthy happened.",
             "ATTRIBUTE MILESTONES are RARE narrative beats (a permanent injury, a breakthrough, divine favor) — most attribute growth comes from the PLAYER spending attribute points. Never raise attributes routinely or as a substitute for level-ups.",
@@ -279,14 +283,17 @@ function buildUserPrompt(exchange, history = []) {
     // paraphrase tracked names ("HP" for "Health") and misremember values when
     // the sheet is thousands of tokens from the end of context; recency keeps
     // the ground truth adjacent, while the exchange stays the final focus.
-    // The heading also DISCLOSES how payments relate to the snapshot: the
-    // pre-pass transaction engine CAN already deduct (shared resources), while
-    // skill costs / combat spends are still owed. Models can't guess which —
-    // so the rule is comparative: match each GAME SYSTEM RESULTS note against
-    // the snapshot value. Models otherwise stall reasoning "10→9 in the note
-    // but 10/12 in the snapshot — already applied or pre-payment?".
+    // The heading CLASSIFIES each injection block's ledger status: payment
+    // state comes from the BLOCK TYPE, never from value comparison — a
+    // readout can coincidentally match the snapshot ("10/12" on both sides)
+    // and mask an OWED spend the tracker must still report.
     blocks.push(
-        'STATE SNAPSHOT (XML) — PRE-TURN GROUND TRUTH. GAME SYSTEM RESULTS notes describe payments in BOTH directions: a <transaction> line is ALREADY deducted (its "remaining" value matches the snapshot — NEVER re-report it), while skill costs and combat spends in clash/dice notes are NOT yet deducted (the snapshot still shows the pre-payment value — report those deltas yourself). Compare each note against the snapshot: snapshot already shows the note\'s result = done; snapshot still shows the pre-payment value = YOU pay it now:',
+        'STATE SNAPSHOT (XML) — PRE-TURN GROUND TRUTH. Each GAME SYSTEM RESULTS block carries a FIXED ledger meaning — payment status comes from the BLOCK TYPE, never from comparing values against the snapshot (a readout can coincidentally equal the snapshot and still leave a payment owed):',
+        '- <transaction> — ALREADY APPLIED: deducted before the story ran. NEVER re-report, never re-deduct.',
+        '- <roll> / <combat_round> — OWED: the snapshot predates the round. Apply EVERY damage, cost, status and kill the outcome lines commit — even when a shown value coincidentally equals the snapshot.',
+        '- <skill_use> — cost OWED: the snapshot still shows the pre-payment value. Report the use (<use_skills>) and pay its cost ONCE; a clash-committed number replaces the sheet-generic cost.',
+        '- <resource> / <character_stat> / <skill_cooldown> / <skill_ready> (source="readout"), and <note> — READOUTS mirroring the snapshot for names and availability only. NEVER a payment record; they neither satisfy nor cancel a debt.',
+        '- <action_rewrite> — context only: the player action the story actually ran with.',
         buildStateSummaryXml(),
         "",
     );

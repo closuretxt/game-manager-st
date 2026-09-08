@@ -12,7 +12,7 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel } from "./stateManager.js";
-import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
+import { parseAttrs, escAttr, decodeEntities, skillXml } from "./toolParser.js";
 import { valueGuidelines } from "./valueGuidelines.js";
 import { getPreviousPrePassRaw } from "./prePass.js";
 import { resolveCombatProfile, sendRequestViaProfile } from "../util/connectionService.js";
@@ -43,7 +43,7 @@ function systemPrompt(playerAction) {
     "",
     "SKILLS:",
     "- USE SKILLS ACTIVELY. Skills are the enemy's signature moves: when a ready skill (no * marker) fits the scene, PREFER it over a plain attack — a spellcaster should cast, a brute should use its signature maneuver. Name the skill explicitly in the intent line. Never use a skill marked * (on cooldown), and never invent skills that are not on the sheet.",
-    "- Skill costs are real: a skill's (cost: ...) is paid when used — only pick it when the enemy can afford it (check current resources).",
+    "- Skill costs are real: a skill's cost=\"...\" is paid when used — only pick it when the enemy can afford it (check current resources).",
     "",
     "OUTPUT FORMAT:",
     "Respond with ONLY XML — no markdown fences, no prose:",
@@ -85,17 +85,17 @@ function collectContext(maxActions, playerAction) {
 
     const d = stateManager.getData();
 
-    // One line per actor: resources as value/max, skills as Name (cost),
-    // * = skill on cooldown.
+    // One element per actor: resources as value/max; skills as nested <skill>
+    // elements (name with * cooldown marker, cost, full effect term).
     const sheetXml = c => {
         const attrs = [`name="${escAttr(c.name)}"`];
         for (const r of c.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}"`);
         for (const a of c.attributes || []) attrs.push(`${escAttr(a.name)}="${a.value}"`);
-        const skills = (c.skills || []).map(s => `${escAttr(s.name)}${String(s.cost || "").trim() ? ` (cost: ${escAttr(s.cost)})` : ""}${(Number(s.cooldown_left) || 0) > 0 ? "*" : ""}`).join(", ");
-        if (skills) attrs.push(`skills="${skills}"`);
+        const skills = (c.skills || []).map(s => skillXml(s)).join("");
         const statuses = (c.statuses || []).map(s => `${escAttr(s.name)}${s.modifiers ? ` (${escAttr(s.modifiers)})` : ""}`).join(", ");
         if (statuses) attrs.push(`statuses="${statuses}"`);
-        return `<enemy ${attrs.join(" ")}/>`;
+        const open = `<enemy ${attrs.join(" ")}`;
+        return skills ? `${open}>${skills}</enemy>` : `${open}/>`;
     };
 
     // Visible state only: special states stay visible (a downed fighter is
