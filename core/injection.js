@@ -151,7 +151,7 @@ export function consumeHigh() {
     const out = _pendingHigh.join("\n");
     _pendingHigh = [];
     _lastHigh = out;
-    return `<gamemaster_result note="Outcomes just resolved by the game system (dice rolls, transactions, action rewrites, skill uses). Treat as ground truth; narrate accordingly, do not repeat the numbers or the tags themselves.">\n${out}\n</gamemaster_result>`;
+    return `<gamemaster_result note="Outcomes just resolved by the game system (dice rolls, transactions, action rewrites, skill uses). Treat as ground truth; narrate accordingly, do not repeat the numbers or the tags themselves. Narrate ONLY the actions and outcomes shown here, never invent extra actions or results that are not explicit, characters not mentioned did not act.">\n${out}\n</gamemaster_result>`;
 }
 
 export function clearHigh() {

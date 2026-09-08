@@ -54,6 +54,7 @@ export const defaultSettings = {
     feature_ally_ai: true,        // ALLY AI invents actions for party members the player didn't command.
     combat_max_enemy_actions: 6,  // Sanity cap on enemy actions per combat round.
     combat_rich_clash_ui: false,  // Rich clash bubble: face-off title, role chips, VS badge. Off = simple layout.
+    deterministic_clashes: false, // Clash resolver commits sheet-derived damage expressions, costs and statuses into the tier outcome lines (tracker applies them exactly). Off = descriptive outcomes only.
     roll_attachment: true,        // Roll/combat results render as file-style chips under the player's message.
     roll_duration: 1600,          // Dice roll animation length in ms (a random ±200ms variation is added per roll).
     feature_death: true,          // Permadeath: the post-pass may kill characters (<deaths> tag); only the user revives.
@@ -144,6 +145,7 @@ export async function loadSettings() {
     $("#gm_setting_feat_combat").prop("checked", !!s.feature_combat);
     $("#gm_setting_feat_ally_ai").prop("checked", !!s.feature_ally_ai);
     $("#gm_setting_rich_clash").prop("checked", !!s.combat_rich_clash_ui);
+    $("#gm_setting_deterministic_clashes").prop("checked", !!s.deterministic_clashes);
     $("#gm_setting_roll_attachment").prop("checked", !!s.roll_attachment);
     $("#gm_setting_roll_duration").val(Number.isFinite(+s.roll_duration) ? +s.roll_duration : 1600);
     $("#gm_roll_duration_value").text(`${((Number(s.roll_duration) || 1600) / 1000).toFixed(1)}s`);
@@ -196,6 +198,7 @@ export function saveSettings() {
     s.feature_combat = $("#gm_setting_feat_combat").prop("checked");
     s.feature_ally_ai = $("#gm_setting_feat_ally_ai").prop("checked");
     s.combat_rich_clash_ui = $("#gm_setting_rich_clash").prop("checked");
+    s.deterministic_clashes = $("#gm_setting_deterministic_clashes").prop("checked");
     s.roll_attachment = $("#gm_setting_roll_attachment").prop("checked");
     s.roll_duration = Number($("#gm_setting_roll_duration").val()) || 1600;
     s.player_label = String($("#gm_setting_player_label").val() || "").trim();
@@ -219,7 +222,7 @@ export function initSettingsListeners() {
       "#gm_setting_feat_wizard, #gm_setting_feat_char_creator, #gm_setting_spawn_review, #gm_setting_dyn_enemies, #gm_setting_deep_context, #gm_setting_deep_context_engines, " +
       "#gm_setting_feat_warnings, #gm_setting_feat_dice, #gm_setting_feat_transactions, #gm_setting_feat_injection, " +
       "#gm_setting_feat_enemies, #gm_setting_feat_rewrite, #gm_setting_feat_skill_suggest, #gm_setting_feat_progression, #gm_setting_feat_skill_tree, " +
-      "#gm_setting_feat_combat, #gm_setting_feat_ally_ai, #gm_setting_rich_clash, #gm_setting_roll_attachment, #gm_setting_feat_death, " +
+      "#gm_setting_feat_combat, #gm_setting_feat_ally_ai, #gm_setting_rich_clash, #gm_setting_deterministic_clashes, #gm_setting_roll_attachment, #gm_setting_feat_death, " +
       "#gm_setting_notify, #gm_setting_notify_stats, #gm_setting_notify_items, #gm_setting_notify_skills, " +
       "#gm_setting_notify_progression, #gm_setting_notify_states, #gm_setting_notify_dice, #gm_setting_notify_enemies, #gm_setting_sound, " +
       "#gm_setting_value_guidelines").on("change", saveSettings);

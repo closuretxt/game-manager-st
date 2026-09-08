@@ -18,7 +18,7 @@ import { getPreviousPrePassRaw } from "./prePass.js";
 import { resolveCombatProfile, sendRequestViaProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 
-import { recentMessages } from "../util/chatStore.js";
+import { recentMessages, sceneContextBlock } from "../util/chatStore.js";
 
 const MAX_CONTEXT_MESSAGES = 8;
 
@@ -33,7 +33,7 @@ function systemPrompt(playerAction) {
     "You are the ENEMY AI of a tabletop-style roleplay game system: you decide what the hostile side does each combat round.",
     "",
     "WHAT YOU RECEIVE:",
-    "- <scene>: the last few messages of the roleplay — the PREVIOUS turn(s), already played out. The round you decide comes AFTER them: don't repeat, continue or answer what happened there — come up with what the enemies do NEXT, given how things stand now.",
+    "- <scene_context>: the last few messages of the roleplay — the PREVIOUS turn(s), already played out and tracked (specific note inside the block). The round you decide comes AFTER them: don't repeat, continue or answer what happened there — come up with what the enemies do NEXT, given how things stand now.",
     "- GM NOTES (optional): the pre-pass router's notes for this turn — on blind rounds ONLY its <rewrite>/<note> entries are included.",
     "- <enemy_sheets>: full stats of every tracked enemy (resources, attributes, skills, statuses).",
     "- <party_summary>: the opposing party's names and visible state. " + (playerAction ? REACTIVE_NOTE : BLIND_NOTE),
@@ -111,13 +111,10 @@ function collectContext(maxActions, playerAction) {
 
     const blocks = [
         "<enemy_ai_context>",
-        "<scene>",
-        // Newest message = the AI's last reply: already tracked, sheets
-        // already reflect it. Said here, next to the data, not only in the
-        // system prompt.
-        "The PREVIOUS turn(s) — everything below ALREADY HAPPENED. This round comes after it: the enemies act on the new situation, they don't repeat or continue what is shown here. The newest message (the AI's last reply) is ALREADY tracked and reflected in the enemy sheets.",
-        ...history,
-        "</scene>",
+        // The whole scene window is one <scene_context> block: past context,
+        // already tracked — the specific note INSIDE the block says so next to
+        // the data, not only in the system prompt.
+        sceneContextBlock(history),
         "<enemy_sheets>",
         ...(d.enemies || []).map(sheetXml),
         "</enemy_sheets>",

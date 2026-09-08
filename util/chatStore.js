@@ -47,6 +47,20 @@ export function recentMessages(max = 8) {
     return arr;
 }
 
+// Renders the recent-messages window as ONE <scene_context> block with a
+// specific bottom note: everything inside already happened AND was already
+// tracked by the system, so the engine never acts, judges, resolves or
+// re-rolls from it. Shared by every engine prompt so the wording, tag name
+// and semantics stay identical everywhere.
+export function sceneContextBlock(history) {
+    return [
+        "<scene_context>",
+        ...(history || []),
+        "NOTE: This is the <scene_context> block — everything above is PAST context that has ALREADY HAPPENED and ALREADY been tracked; its consequences are already reflected in the tracked state. History only: never act on, judge, resolve, re-roll or continue any action shown here; the current action comes from the dedicated section below.",
+        "</scene_context>",
+    ].join("\n");
+}
+
 // Best-effort chat save after a late (retried) write — ST's own end-of-turn
 // save may already have run by the time the message lands.
 function saveChatBestEffort() {

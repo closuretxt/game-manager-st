@@ -20,7 +20,7 @@ import { resolveValue } from "./valueResolver.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 import { statusBubble } from "../ui/statusBubble.js";
-import { recentMessages } from "../util/chatStore.js";
+import { recentMessages, sceneContextBlock } from "../util/chatStore.js";
 
 const SYSTEM_PROMPT = [
     "You are the game master's accountant for a tabletop-style roleplay session.",
@@ -37,10 +37,9 @@ function collectContext(resource, playerAction) {
     const history = recentMessages(5)
         .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "")}`);
     return [
-        // Past context only; newest message is already tracked. Said here,
-        // next to the data.
-        "RECENT SCENE (already-resolved history — its newest message, the AI's last reply, is ALREADY tracked; for awareness only, never the source of the transaction):",
-        ...history,
+        // Past context only; already tracked — the specific note lives INSIDE
+        // the <scene_context> block, next to the data.
+        sceneContextBlock(history),
         "",
         `RESOURCE: ${resource.name} — current amount: ${resource.qty}`,
         `PLAYER ACTION: ${playerAction}`,

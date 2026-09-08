@@ -16,7 +16,7 @@ import { resolveCombatProfile, sendRequestViaProfile } from "../util/connectionS
 import { buildDeepContext } from "../util/loreContext.js";
 import { getPreviousPrePassRaw } from "./prePass.js";
 
-import { recentMessages } from "../util/chatStore.js";
+import { recentMessages, sceneContextBlock } from "../util/chatStore.js";
 
 const MAX_CONTEXT_MESSAGES = 8;
 
@@ -24,7 +24,7 @@ const SYSTEM_PROMPT = [
     "You are the ALLY AI of a tabletop-style roleplay game system: when the player does not command every member of their party, you decide what the uncommanded allies do this combat round.",
     "",
     "WHAT YOU RECEIVE:",
-    "- <scene>: the last few messages of the roleplay — PAST context only. The round you decide happens NOW, right after the scene ends. Everything in <scene> (actions, orders, outcomes) is already-resolved history: never act on it. The ONLY current-round instruction is <player_action>.",
+    "- <scene_context>: the last few messages of the roleplay — PAST context only, already tracked (specific note inside the block). The round you decide happens NOW, right after the scene ends; never act on it. The ONLY current-round instruction is <player_action>.",
     "- <party_sheets>: full stats of every tracked party member (resources, attributes, skills, statuses).",
     "- <enemy_presence>: the hostile side's names and visible state.",
     "- <player_action>: what the player themselves is doing. Allies are FRIENDLY — they may coordinate with it, cover the player, or follow its lead.",
@@ -86,13 +86,10 @@ function collectContext(playerAction) {
 
     const blocks = [
         "<ally_ai_context>",
-        "<scene>",
-        // Newest message = the AI's last reply: already tracked, sheets
-        // already reflect it. Said here, next to the data, not only in the
-        // system prompt.
-        "Past context; the newest message (the AI's last reply) is ALREADY tracked and reflected in the party sheets.",
-        ...history,
-        "</scene>",
+        // The whole scene window is one <scene_context> block: past context,
+        // already tracked — the specific note INSIDE the block says so next to
+        // the data, not only in the system prompt.
+        sceneContextBlock(history),
         "<party_sheets>",
         ...(d.characters || []).filter(c => !c.state).map(sheetXml),
         "</party_sheets>",

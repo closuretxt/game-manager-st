@@ -55,6 +55,74 @@ function chatStore() {
     return null;
 }
 
+// ---------- fuzzy name matching (LLM-reported names) ----------
+// The engines echo tracked names from the snapshot, but small models
+// paraphrase ("HP" for the tracked "Health", "Fireball!" with punctuation,
+// "Sidearm Shot" shortened to "Shot"). Resolution order: exact
+// (case-insensitive) -> normalized (punctuation/diacritics/whitespace) ->
+// acronym ("hp" for "Health Points") -> known alias group -> word subset.
+// A fuzzy match is only TRUSTED when exactly ONE candidate matches — an
+// ambiguous sheet falls through to a clean, logged failure.
+const NAME_ALIAS_GROUPS = [
+    // HP family — EN + PT spellings.
+    ["hp", "health", "hit points", "hitpoints", "life", "vida", "vigor vital", "saude", "vitality", "vitalidade"],
+    // Mana family.
+    ["mp", "mana", "magic points", "magia", "ether", "eter"],
+    // Stamina family.
+    ["stamina", "energy", "energia", "vigor", "folego"],
+];
+
+// Lowercases, strips diacritics and collapses everything non-alphanumeric
+// to single spaces ("Heavy-Duty Tarp" -> "heavy duty tarp").
+function normalizeName(v) {
+    return String(v ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function matchName(entries, name) {
+    const list = Array.isArray(entries) ? entries : [];
+    if (!list.length || name == null || String(name).trim() === "") return null;
+    const raw = String(name).trim().toLowerCase();
+    // 1. Exact (case-insensitive) — always wins.
+    let hits = list.filter(e => String(e?.name ?? "").trim().toLowerCase() === raw);
+    const norm = normalizeName(raw);
+    // 2. Normalized: punctuation/diacritics/whitespace-insensitive.
+    if (!hits.length && norm) {
+        hits = list.filter(e => normalizeName(e?.name) === norm);
+    }
+    // 3. Acronym: the report is the initials of the tracked name.
+    if (!hits.length && norm && !norm.includes(" ")) {
+        const initials = e => {
+            const words = normalizeName(e?.name).split(" ").filter(Boolean);
+            return words.length > 1 ? words.map(w => w[0]).join("") : "";
+        };
+        hits = list.filter(e => initials(e) && initials(e) === norm);
+    }
+    // 4. Known alias group ("HP" for tracked "Health", "Magia" for "Mana").
+    if (!hits.length && norm) {
+        const group = NAME_ALIAS_GROUPS.find(g => g.includes(norm));
+        if (group) hits = list.filter(e => group.includes(normalizeName(e?.name)));
+    }
+    // 5. Word subset: every reported word appears in the tracked name
+    // ("Shot" for "Sidearm Shot") — accepted only when unambiguous.
+    if (!hits.length && norm) {
+        const words = norm.split(" ").filter(Boolean);
+        if (words.length) {
+            hits = list.filter(e => {
+                const cand = normalizeName(e?.name).split(" ").filter(Boolean);
+                return words.every(w => cand.includes(w));
+            });
+        }
+    }
+    if (hits.length === 1) {
+        if (String(hits[0]?.name ?? "").trim().toLowerCase() !== raw) {
+            logDebug(`matchName: fuzzy match '${name}' -> '${hits[0].name}'`);
+        }
+        return hits[0];
+    }
+    if (hits.length > 1) logDebug(`matchName: ambiguous match for '${name}' (${hits.length} candidates) — skipped`);
+    return null;
+}
+
 export const stateManager = {
     // ---------- lifecycle ----------
     getData() {
@@ -566,8 +634,7 @@ export const stateManager = {
     applyDelta(characterId, type, name, { delta, value } = {}) {
         const char = this.getSheet(characterId);
         if (!char) return false;
-        const needle = String(name ?? "").toLowerCase();
-        const entry = char[GM_SCHEMA[type].container].find(e => String(e.name).toLowerCase() === needle);
+        const entry = matchName(char[GM_SCHEMA[type].container], name);
         if (!entry) {
             logDebug(`applyDelta: '${name}' not found on '${char.name}'`);
             return false;
@@ -586,8 +653,7 @@ export const stateManager = {
     // Matches by name (case-insensitive); spending below zero clamps to 0.
     applySharedDelta(name, { delta, value } = {}) {
         const d = this.getData();
-        const needle = String(name ?? "").toLowerCase();
-        const entry = (d.sharedResources || []).find(e => String(e.name).toLowerCase() === needle);
+        const entry = matchName(d.sharedResources || [], name);
         if (!entry) {
             logDebug(`applySharedDelta: shared resource '${name}' not found`);
             return false;
@@ -618,8 +684,7 @@ export const stateManager = {
     removeItem(characterId, name, qty = null) {
         const char = this.getSheet(characterId);
         if (!char || !name) return false;
-        const needle = String(name).toLowerCase();
-        const entry = char.inventory.find(e => String(e.name).toLowerCase() === needle);
+        const entry = matchName(char.inventory, name);
         if (!entry) return false;
         if (qty === null || qty === undefined || qty === "") {
             char.inventory = char.inventory.filter(e => e !== entry);
@@ -676,8 +741,7 @@ export const stateManager = {
         const char = this.getSheet(characterId);
         if (!char) return false;
         if (!Array.isArray(char.statuses)) char.statuses = [];
-        const needle = String(name).toLowerCase();
-        let entry = char.statuses.find(e => String(e.name).toLowerCase() === needle);
+        let entry = matchName(char.statuses, name);
         if (!entry) {
             entry = defaultEntry("status", { name });
             char.statuses.push(entry);
@@ -692,10 +756,9 @@ export const stateManager = {
     removeStatusByName(characterId, name) {
         const char = this.getSheet(characterId);
         if (!char || !name || !Array.isArray(char.statuses)) return false;
-        const needle = String(name).toLowerCase();
-        const before = char.statuses.length;
-        char.statuses = char.statuses.filter(e => String(e.name).toLowerCase() !== needle);
-        if (char.statuses.length === before) return false;
+        const entry = matchName(char.statuses, name);
+        if (!entry) return false;
+        char.statuses = char.statuses.filter(e => e !== entry);
         this.emitChange("remove_status");
         return true;
     },
@@ -707,16 +770,24 @@ export const stateManager = {
     // boolean (on_cooldown) — they never reason about the remaining count.
 
     // Marks a skill as just used: starts its cooldown (in messages). Skills
-    // with cooldown 0 are always ready and ignore this call.
+    // with cooldown 0 stay always-ready (nothing to start), but the use is
+    // still RECORDED and announced — a reported use of a real, off-cooldown
+    // skill is valid accounting, and dropping it silently erased "X used Y"
+    // from the turn report for every no-cooldown skill.
     useSkill(characterId, skillName) {
         const char = this.getSheet(characterId);
         if (!char) return false;
-        const needle = String(skillName ?? "").toLowerCase();
-        const skill = (char.skills || []).find(s => String(s.name).toLowerCase() === needle);
-        if (!skill) return false;
+        const skill = matchName(char.skills || [], skillName);
+        if (!skill) {
+            logDebug(`useSkill: skill '${skillName}' not found on '${char.name}' (exact/case-insensitive name match failed)`);
+            return false;
+        }
         const cd = Math.trunc(Number(skill.cooldown) || 0);
-        if (cd <= 0) return false;
-        skill.cooldown_left = cd;
+        if (cd > 0) {
+            skill.cooldown_left = cd;
+        } else {
+            logDebug(`useSkill: '${skillName}' on '${char.name}' has cooldown 0 — use recorded, no cooldown to start`);
+        }
         this.emitChange("use_skill");
         return true;
     },

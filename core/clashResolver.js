@@ -24,7 +24,7 @@ import { valueGuidelines } from "./valueGuidelines.js";
 import { resolveDiceProfile, sendRequestViaProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 
-import { recentMessages } from "../util/chatStore.js";
+import { recentMessages, sceneContextBlock } from "../util/chatStore.js";
 
 const MAX_CONTEXT_MESSAGES = 8;
 
@@ -32,7 +32,7 @@ const SYSTEM_PROMPT = [
     "You are the CLASH RESOLVER of a tabletop-style roleplay game system: you turn both sides' combat actions into opposed probability groups. REALISM FIRST: chances are EARNED from the sheets, never generous by default. Every tier must be justifiable by a stat, skill, passive, status or resource — if nothing on the sheet supports a chance, lower it.",
     "",
     "WHAT YOU RECEIVE:",
-    "- <scene>: the last few messages of the roleplay — PAST context only. The round you resolve happens NOW and is defined ENTIRELY by <party_actions>/<enemy_actions>; everything in <scene> (actions, orders, outcomes) is already-resolved history — never resolve or re-pair actions taken from the scene.",
+    "- <scene_context>: the last few messages of the roleplay — PAST context only, already tracked (specific note inside the block). The round you resolve happens NOW and is defined ENTIRELY by <party_actions>/<enemy_actions>; never resolve or re-pair actions taken from the scene.",
     "- <party_actions> / <enemy_actions>: what each side is doing this round, with initiative speeds.",
     "- <sheets>: resources (current health!), attributes, skills, passives, statuses of EVERY actor in the round.",
     "",
@@ -65,12 +65,28 @@ const SYSTEM_PROMPT = [
     "- Pair each party-side action with the MOST RELEVANT opposing enemy action (match targets from the action text). One enemy action opposes at most one party-side action per group.",
     "- An action with no sensible opponent becomes a SINGLE-SIDED group: one <side> entry and 4 tiers describing how well it goes.",
     "- Multiple enemies: one group per pair of actions — separate chances for each group of actions.",
-    "- Tier outcome lines are short, vivid, and ALWAYS third person, referring to EVERY actor by name — including player characters (\"The knight's slash lands\"; \"The goblin's swing connects\"). Never use \"you\"/\"your\"/\"I\" in outcome lines, even for the player's own action.",
+    "- Tier outcome lines are EXPLICIT RESULTS, not teases: short, vivid, and ALWAYS third person, referring to EVERY actor by name — including player characters (\"The knight's slash lands\"; \"Goblin 2 swing connects\"). Never use \"you\"/\"your\"/\"I\" in outcome lines, even for the player's own action.",
+    "- Each outcome line states exactly what the action DOES — lands or misses, where it lands, the concrete effect on the target (\"Kael's slash opens the goblin's shoulder; it staggers back\") — and NOTHING more: no invented reactions, follow-up actions or flavor embellishments (\"clutching the wound\") — the story engine narrates those. No hedging either: never \"may\", \"might\", \"perhaps\" or \"tries to\" — the tier IS the result.",
+    "- Outcomes must be PLAUSIBLE against the sheets: before writing a result, weigh the attacker's skill/weapon damage term, the target's CURRENT health and its active statuses. A full-health target does not instantly die to a normal hit — such outcomes read as wounded, staggered or knocked back, and lethal results (decapitations, instant deaths) are only justified when the skill's damage (or a Critical Success against a near-death target) is actually enough to kill. Conversely, a target already near death CAN drop to a solid hit. Scale the described effect to the numbers: a graze, a solid hit and a devastating blow must read differently.",
     "- Every action on either side must appear in exactly one group.",
     "- TIER CHANCES are plain percentages — the engine weights them into a true random pick. When an action's text carries dice terms (variable damage, random effects), keep them in the outcome line as written (\"slashes for 2d6+2\"): the tracker rolls them with TRUE RNG when it applies the numbers.",
     "- ACTION REWRITES: you may rewrite the action text of any <side> so a paired clash reads as ONE coherent exchange — when the opposing action changes the situation mid-move, fold it in (\"Leap the chasm\" paired with \"Shoot arrow\" becomes \"Shoot the Scout as she leaps\"). Keep the actor, the intent and any dice terms intact: rewrite wording/context only, NEVER invent actions nobody declared.",
     "- NEGATION: when one action so completely shuts another down that no contest remains (a raised shield wall against a thrown pebble, a point-blank shot at someone still sheathing a weapon), mark the shut-down side with negated=\"true\". The group still carries 4 tiers describing the negating side's execution, and every outcome line makes clear the negated action never gets to matter. Use it SPARINGLY: a hard, contestable exchange is never a negation.",
     valueGuidelines(),
+].join("\n");
+
+// Optional instruction block — injected only when the "Deterministic Clashes"
+// setting is on (settingsManager.js). Pushes the resolver from descriptive
+// outcomes to COMMITTED NUMBERS: when the sheets justify them, the landing
+// tiers carry the full damage expression plus costs/statuses, so the
+// post-pass tracker (agentRunner) translates exact terms into sheet deltas
+// instead of guessing from prose. This is the middle ground between feeding
+// the STORY engine heavy state and leaving the tracker blind.
+const DETERMINISTIC_GUIDELINES = [
+    "DETERMINISTIC CLASH OUTCOMES — when you are CONFIDENT the sheets justify the numbers, COMMIT them in the tier outcome lines:",
+    "- For a tier where an attack lands, write its damage as the sheet's damage term plus stat scaling as ONE arithmetic/dice expression, e.g. \"slashes for 18+4*3 damage\" — the tracker resolves it exactly (arithmetic and true-RNG dice rules apply).",
+    "- Also commit what the exchange costs or applies: skill resource costs, ammo/stamina spend, statuses with their modifiers (\"leaves the goblin Wounded: Aim -2\").",
+    "- Never invent numbers the sheets do not support — when a damage term is unknown, keep that outcome descriptive. Confidence comes from the sheets ONLY.",
 ].join("\n");
 
 //
@@ -110,13 +126,10 @@ function collectContext(playerAction, partyActions, enemyActions) {
 
     const blocks = [
         "<clash_context>",
-        "<scene>",
-        // Newest message = the AI's last reply: already tracked, sheets
-        // already reflect it. Said here, next to the data, not only in the
-        // system prompt.
-        "<!-- past context; the newest message (the AI's last reply) is ALREADY tracked and reflected in the sheets below -->",
-        ...history,
-        "</scene>",
+        // The whole scene window is one <scene_context> block: past context,
+        // already tracked — the specific note INSIDE the block says so next to
+        // the data, not only in the system prompt.
+        sceneContextBlock(history),
         "<party_actions>",
         ...partyActions.map(actionXml),
         "</party_actions>",
@@ -205,6 +218,11 @@ export async function resolveClashes({ playerAction = "", partyActions = [], ene
         // falling back to the pre-master chain) — NOT the combat passes.
         const profileId = resolveDiceProfile(st, s.dice_profile, s.premaster_profile, s.connection_profile);
         let systemContent = SYSTEM_PROMPT;
+        // Deterministic clashes (opt-in): urge the resolver to write committed,
+        // sheet-derived damage/cost/status numbers into the outcome lines.
+        if (s.deterministic_clashes) {
+            systemContent += `\n\n${DETERMINISTIC_GUIDELINES}`;
+        }
         if (s.deep_context_engines) {
             const deep = await buildDeepContext(String(playerAction || ""));
             if (deep) systemContent += `\n\n<deep_context>\n${deep}\n</deep_context>`;

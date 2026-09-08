@@ -147,71 +147,83 @@ export function extractNewCharacterBriefs(raw) {
 function applyAction(blockType, char, action) {
     const { tag, attrs, content } = action;
     const name = attrs.name ?? attrs.resource ?? attrs.item ?? attrs.attribute ?? attrs.entry ?? "";
+    let ok = false;
     switch (tag) {
     case "resource":
-        return stateManager.applyDelta(char.id, "resource", name, { delta: resolveNum(attrs.delta), value: resolveNum(attrs.value) });
+        ok = stateManager.applyDelta(char.id, "resource", name, { delta: resolveNum(attrs.delta), value: resolveNum(attrs.value) });
+        break;
     case "attribute":
-        return stateManager.applyDelta(char.id, "attribute", name, { delta: resolveNum(attrs.delta), value: resolveNum(attrs.value) });
+        ok = stateManager.applyDelta(char.id, "attribute", name, { delta: resolveNum(attrs.delta), value: resolveNum(attrs.value) });
+        break;
     case "item":
         if (blockType === "add_items") {
-            return stateManager.addItem(char.id, { name, qty: resolveNum(attrs.qty) ?? 1, description: attrs.description ?? content ?? "" });
+            ok = stateManager.addItem(char.id, { name, qty: resolveNum(attrs.qty) ?? 1, description: attrs.description ?? content ?? "" });
         }
-        if (blockType === "remove_items") {
-            return stateManager.removeItem(char.id, name, resolveNum(attrs.qty) ?? null);
+        else if (blockType === "remove_items") {
+            ok = stateManager.removeItem(char.id, name, resolveNum(attrs.qty) ?? null);
         }
-        return false;
-        case "entry":
-            // Custom features are party-wide; no character scoping needed.
-            if (blockType === "update_custom") {
-                return stateManager.updateCustom({ name, value: attrs.value ?? content, description: attrs.description ?? "" });
-            }
-            return false;
-        case "status":
-            // Statuses are temporary per-character conditions.
-            if (blockType === "set_statuses") {
-                return stateManager.updateStatus(char.id, { name, modifiers: attrs.modifiers ?? "", effect: attrs.effect ?? attrs.description ?? content ?? "" });
-            }
-            if (blockType === "clear_statuses") {
-                return stateManager.removeStatusByName(char.id, name);
-            }
-            return false;
-        case "skill":
-            // Skill USES reported by the post-pass — the code owns cooldowns.
-            if (blockType === "use_skills") {
-                return stateManager.useSkill(char.id, name);
-            }
-            return false;
-        case "exp":
-            // EXP grants reported by the post-pass — the code owns level-ups
-            // and skill points. Counts as applied even without a level-up.
-            if (blockType === "grant_exp") {
-                return progression.grantExp(char.id, resolveNum(attrs.amount ?? content)).applied;
-            }
-            return false;
-        case "warning":
-            if (blockType === "warnings") {
-                return stateManager.setWarning({ name, text: attrs.text ?? content });
-            }
-            return false;
-        case "warning_clear":
-            if (blockType === "warnings") {
-                return stateManager.clearWarning(name);
-            }
-            return false;
-        case "thread":
-            // Open threads are party-level untracked/unfinished things.
-            if (blockType === "threads") {
-                return stateManager.setThread({ name, text: attrs.text ?? content, ref: attrs.ref ?? "" });
-            }
-            return false;
-        case "thread_clear":
-            if (blockType === "threads") {
-                return stateManager.clearThread(name);
-            }
-            return false;
-        default:
-            return false;
+        break;
+    case "entry":
+        // Custom features are party-wide; no character scoping needed.
+        if (blockType === "update_custom") {
+            ok = stateManager.updateCustom({ name, value: attrs.value ?? content, description: attrs.description ?? "" });
+        }
+        break;
+    case "status":
+        // Statuses are temporary per-character conditions.
+        if (blockType === "set_statuses") {
+            ok = stateManager.updateStatus(char.id, { name, modifiers: attrs.modifiers ?? "", effect: attrs.effect ?? attrs.description ?? content ?? "" });
+        }
+        else if (blockType === "clear_statuses") {
+            ok = stateManager.removeStatusByName(char.id, name);
+        }
+        break;
+    case "skill":
+        // Skill USES reported by the post-pass — the code owns cooldowns.
+        if (blockType === "use_skills") {
+            ok = stateManager.useSkill(char.id, name);
+        }
+        break;
+    case "exp":
+        // EXP grants reported by the post-pass — the code owns level-ups
+        // and skill points. Counts as applied even without a level-up.
+        if (blockType === "grant_exp") {
+            ok = progression.grantExp(char.id, resolveNum(attrs.amount ?? content)).applied;
+        }
+        break;
+    case "warning":
+        if (blockType === "warnings") {
+            ok = stateManager.setWarning({ name, text: attrs.text ?? content });
+        }
+        break;
+    case "warning_clear":
+        if (blockType === "warnings") {
+            ok = stateManager.clearWarning(name);
+        }
+        break;
+    case "thread":
+        // Open threads are party-level untracked/unfinished things.
+        if (blockType === "threads") {
+            ok = stateManager.setThread({ name, text: attrs.text ?? content, ref: attrs.ref ?? "" });
+        }
+        break;
+    case "thread_clear":
+        if (blockType === "threads") {
+            ok = stateManager.clearThread(name);
+        }
+        break;
+    default:
+        break;
     }
+    // DIAG: every parsed-but-not-applied action is logged with its coordinates,
+    // so silent skips (name mismatch on the sheet, no-cooldown skill, unknown
+    // tag) are visible instead of just silently shrinking the applied count.
+    if (!ok) {
+        logDebug(`toolParser: NOT applied — <${blockType}> <${tag}${name ? ` name="${name}"` : ""}>`
+            + `${attrs.delta !== undefined ? ` delta="${attrs.delta}"` : ""}${attrs.amount ? ` amount="${attrs.amount}"` : ""}`
+            + ` on '${char?.name ?? "(party)"}' (resource/item/skill name not found on sheet, no-cooldown skill, or unsupported tag)`);
+    }
+    return ok;
 }
 
 // Applies nested <resource>/<attribute>/<passive>/<skill>/<status>/<item>
@@ -272,6 +284,10 @@ function applyEnemiesBlock(raw) {
             if (enemy) {
                 stateManager.removeEnemy(enemy.id);
                 applied++;
+            } else {
+                // DIAG: a remove for an untracked name (never added, already
+                // removed earlier in the same reply, or exact-name mismatch).
+                logDebug(`toolParser: enemies remove skipped — '${name}' is not tracked (never added, already removed, or name mismatch with the snapshot)`);
             }
             continue;
         }

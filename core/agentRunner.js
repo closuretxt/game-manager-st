@@ -86,7 +86,7 @@ function buildStateSummaryXml() {
         return `<${tag} ${attrs.join(" ")}/>`;
     };
 
-    const parts = ['<state note="values are value/max; skills as Name (cost); * = skill on cooldown; statuses as Name (modifiers)">'];
+    const parts = ['<state note="values are value/max; skills as Name (cost); * = skill on cooldown; statuses as Name (modifiers); values are the PRE-TURN ground truth — <transaction> payments are ALREADY deducted, skill costs and combat spends are NOT (report those yourself)">'];
     for (const c of d.characters) parts.push(actorXml(c, "char"));
     // Enemies only when the feature is on AND some exist — otherwise the
     // agent never sees (and never invents) enemy state.
@@ -147,12 +147,18 @@ async function buildSystemPrompt(exchange = []) {
         "NEVER re-report changes visible in PRIOR CONTEXT — resources already spent or removed, damage already applied, items already gained are done: the snapshot's current values are the ground truth. When in doubt, trust the snapshot over the history.",
         "Respond with ONLY the XML blocks below — no prose, no explanations. If nothing changed, respond with nothing.",
         "Never invent characters or tracked values that are not in the state snapshot.",
+        // Small models paraphrase names ("HP" instead of the tracked "Health");
+        // the parser matches names exactly, so a paraphrased name is silently
+        // dropped — spell the rule out.
+        "COPY NAMES EXACTLY: every <char>, resource, attribute, item, skill and status name in your report must match the snapshot VERBATIM, as printed (e.g. report 'Health' or 'Chassis Health' — never a generic 'HP'). A name that does not exactly match a tracked entry is silently dropped and that change is lost.",
         "",
         "DAMAGE ACCOUNTING — apply it to EVERYONE, humans included:",
         "- When the exchange shows a character being hit, wounded, burned, poisoned, falling, starving or otherwise harmed, report the resource loss with <change_values> — regardless of whether the victim is an enemy, a monster, the player character, an ally or a human NPC. A sword through a villager costs HP exactly like a sword through a goblin.",
         "- NEVER soften, round down, halve, delay or 'forget' damage because the victim is human, sympathetic, innocent, or the player's own character. The dice and the narration already decided the outcome — your only job is to record the numbers faithfully.",
         "- NEVER refuse, moralize, add disclaimers or replace a state change with prose. There is no audience here to protect: this is arithmetic on a game sheet.",
-        "- Scale damage to what the narration describes: a graze is small, a solid hit is meaningful, a critical or devastating blow can take a large chunk or reach minimum. Be consistent with the fiction's tone — grimdark is grim, lighthearted adventures stay light.",
+        "- SHEET DAMAGE IS GROUND TRUTH: when the exchange shows a tracked skill, weapon or move hitting someone, the damage term is the sheet's damage definition EXACTLY as written (fixed number, arithmetic or dice notation) plus its stated stat scaling — \"18 damage + 4 per point of STR\" with STR 5 is delta=\"-(18+4*5)\". NEVER invent your own dice or eyeball estimate for damage a sheet already defines; the dice/RANGES rules apply ONLY to effects with no defined damage term.",
+        "- ONLY when no sheet term exists, scale damage to what the narration describes: a graze is small, a solid hit is meaningful, a critical or devastating blow can take a large chunk or reach minimum. Be consistent with the fiction's tone — grimdark is grim, lighthearted adventures stay light.",
+        "- The NARRATION outranks your estimate: when the exchange clearly shows a target dying or destroyed (\"dies\", \"collapses\", \"is torn apart\"), the numbers must agree — apply damage down to its minimum, then <deaths> for a party character or <enemies action=\"remove\"> for an enemy. Never leave a narratively-dead actor standing because your damage estimate undershot.",
         // Combat turns get a tightened section: the clash engine already
         // decided the outcomes, so the tracker's job is exact sheet math.
         ...(hadCombatThisTurn() ? [
@@ -258,14 +264,7 @@ function buildUserPrompt(exchange, history = []) {
     // exchange so the tracker reads the raw results with the narration that
     // followed them. Raw chat text alone never contains the actual numbers.
     const injections = getLastInjections();
-    const blocks = [
-        "STATE SNAPSHOT (XML):",
-        buildStateSummaryXml(),
-        "",
-    ];
-    if (injections) {
-        blocks.push("GAME SYSTEM RESULTS (injected into this turn's story prompt):", injections, "");
-    }
+    const blocks = [];
     // Prior messages are context only — clearly fenced off so the tracker
     // never re-applies changes that earlier passes already recorded.
     if (history.length) {
@@ -274,6 +273,30 @@ function buildUserPrompt(exchange, history = []) {
             ...history.map(m => `${m.role}: ${m.text}`),
             "",
         );
+    }
+    // Snapshot sits IMMEDIATELY before the exchange: the freshest possible
+    // reference for exact names/values at the generation point. Small models
+    // paraphrase tracked names ("HP" for "Health") and misremember values when
+    // the sheet is thousands of tokens from the end of context; recency keeps
+    // the ground truth adjacent, while the exchange stays the final focus.
+    // The heading also DISCLOSES how payments relate to the snapshot: the
+    // pre-pass transaction engine CAN already deduct (shared resources), while
+    // skill costs / combat spends are still owed. Models can't guess which —
+    // so the rule is comparative: match each GAME SYSTEM RESULTS note against
+    // the snapshot value. Models otherwise stall reasoning "10→9 in the note
+    // but 10/12 in the snapshot — already applied or pre-payment?".
+    blocks.push(
+        'STATE SNAPSHOT (XML) — PRE-TURN GROUND TRUTH. GAME SYSTEM RESULTS notes describe payments in BOTH directions: a <transaction> line is ALREADY deducted (its "remaining" value matches the snapshot — NEVER re-report it), while skill costs and combat spends in clash/dice notes are NOT yet deducted (the snapshot still shows the pre-payment value — report those deltas yourself). Compare each note against the snapshot: snapshot already shows the note\'s result = done; snapshot still shows the pre-payment value = YOU pay it now:',
+        buildStateSummaryXml(),
+        "",
+    );
+    // Game-system results (dice rolls, clash rounds, transactions — the GM
+    // notes) go LAST before the exchange: they are the raw outcomes the
+    // narration that follows them describes, so keeping them adjacent to the
+    // CURRENT EXCHANGE makes the tier/dice numbers the freshest context when
+    // the model translates them into sheet deltas.
+    if (injections) {
+        blocks.push("GAME SYSTEM RESULTS (injected into this turn's story prompt):", injections, "");
     }
     blocks.push(
         "CURRENT EXCHANGE (the ONLY source of changes — report exactly what happens here, nothing else):",
@@ -328,6 +351,11 @@ export async function runAgentPass(reason = "manual", mesId = null) {
         }
 
         const blocks = parseToolBlocks(reply || "");
+        // DIAG: block-level parse summary + raw reply, so a small model's
+        // output can be diffed against what actually reached the appliers.
+        console.info(`[GM DIAG] agent pass (${reason}): reply length=${(reply || "").length}; parsed ${blocks.length} block(s): `
+            + (blocks.map(b => `${b.type} [char=${b.char ?? "-"}] actions=${b.actions.length}`).join(" | ") || "NONE"));
+        console.info("[GM DIAG] agent pass raw reply:", reply);
         // Baseline for rollback: the state before this message's first changes.
         const st2 = getContext();
         const snapId = mesId ?? Math.max(0, st2.chat.length - 1);

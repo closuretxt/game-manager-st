@@ -31,7 +31,7 @@ import { buildDeepContext } from "../util/loreContext.js";
 import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
 import { valueGuidelines } from "./valueGuidelines.js";
 
-import { recentMessages } from "../util/chatStore.js";
+import { recentMessages, sceneContextBlock } from "../util/chatStore.js";
 
 const MAX_CONTEXT_MESSAGES = 8;
 
@@ -44,7 +44,7 @@ const SYSTEM_PROMPT = [
     "WHAT YOU RECEIVE:",
     "- TRACKED STATE: the party (characters, skills, statuses, each character's own resources and attributes/stats), the party-wide SHARED resources (money, food, ammo...), active warnings, OPEN THREADS, and optionally enemies.",
     "- OPEN THREADS: untracked/unfinished things the post-pass left for itself (ongoing trips with resources spent so far, half-done actions) and secrets hidden from the player. Use them to keep continuity (e.g. a <transaction> or <note> that accounts for the fuel already burned) and to reveal a secret ONLY when the scene genuinely demands it.",
-    "- RECENT SCENE: the last few messages of the roleplay — PAST context only. Everything in it (actions, rolls, outcomes) is already-resolved history: use it for situational awareness, never as the thing you are judging.",
+    "- <scene_context>: the last few messages of the roleplay as one past-context block — everything in it (actions, rolls, outcomes) already happened and was ALREADY tracked (specific note inside the block): use it for situational awareness, never as the thing you are judging.",
     "- PLAYER ACTION: the message you must judge — the ONLY thing this turn's decisions follow from.",
     "",
     "CORE PRINCIPLES:",
@@ -156,10 +156,10 @@ async function collectContext(playerAction) {
         "TRACKED STATE (XML):",
         parts.join("\n"),
         "",
-        // The newest scene message (the AI's last reply) was already tracked:
-        // say so HERE, next to the data, not only in the system prompt.
-        "RECENT SCENE (past context — its newest message, the AI's last reply, has ALREADY been tracked: its consequences are reflected in TRACKED STATE above):",
-        ...history,
+        // The whole scene window is one <scene_context> block: past context,
+        // already tracked — the specific note INSIDE the block says so next to
+        // the data, not only in the system prompt.
+        sceneContextBlock(history),
         "",
         `PLAYER ACTION TO JUDGE: ${playerAction}`,
     ];
