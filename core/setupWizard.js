@@ -136,7 +136,7 @@ async function collectContext(scenarioText, { skipCharacters = false, improvedGr
             : [
                 `PARTY CAP: ${partyCap} full character sheets maximum.`,
                 `ENTRY FIELD SHAPES: resource {${fieldKeysFor("resource")}}, attribute {${fieldKeysFor("attribute")}}, item {${fieldKeysFor("item")}}, skill {${fieldKeysFor("skill")}}, passive {${fieldKeysFor("passive")}} (ptype: special|stat), status {${fieldKeysFor("status")}}.`,
-                "SCALING RESOURCES: a resource max may be a formula using Level or attribute names (e.g. \"100+(Level*10)\") so it grows with the character — reserve it for 1-2 core stats (Health, Mana) when growth is implied; situational resources (Ammo, Stress) stay plain numbers.",
+                "SCALING RESOURCES: every combat/effort-capable character ALWAYS carries the core resources Health and Stamina, plus Mana when magic or powers fit their role; a core resource's max may be a formula mixing Level AND attribute names (e.g. \"100+(Level*10)\", \"80+(Endurance*25)\") so it grows with the character — reserve formulas for 1-2 of those core stats when growth is implied; situational resources (Ammo, Stress) stay plain numbers.",
             ]),
         "",
         "EXISTING SETUP (names only — avoid duplicates unless asked):",
@@ -479,7 +479,7 @@ async function collectRefineContext(proposal, feedback, scenarioText, { skipChar
             : [
                 `PARTY CAP: ${partyCap} full character sheets maximum.`,
                 `ENTRY FIELD SHAPES: resource {${fieldKeysFor("resource")}}, attribute {${fieldKeysFor("attribute")}}, item {${fieldKeysFor("item")}}, skill {${fieldKeysFor("skill")}}, passive {${fieldKeysFor("passive")}} (ptype: special|stat), status {${fieldKeysFor("status")}}.`,
-                "SCALING RESOURCES: a resource max may be a formula using Level or attribute names (e.g. \"100+(Level*10)\") so it grows with the character — reserve it for 1-2 core stats (Health, Mana) when growth is implied; situational resources (Ammo, Stress) stay plain numbers.",
+                "SCALING RESOURCES: every combat/effort-capable character ALWAYS carries the core resources Health and Stamina, plus Mana when magic or powers fit their role — restore any missing core resource; a core resource's max may be a formula mixing Level AND attribute names (e.g. \"100+(Level*10)\", \"80+(Endurance*25)\") so it grows with the character — reserve formulas for 1-2 of those core stats when growth is implied; situational resources (Ammo, Stress) stay plain numbers.",
             ]),
         "",
         "RECENT CHAT (context):",
