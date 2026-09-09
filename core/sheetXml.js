@@ -6,6 +6,7 @@
 // element bodies, self-closing when empty, no indentation, never truncated.
 
 import { escAttr } from "./toolParser.js";
+import { resolveResourceMax } from "./resourceScaler.js";
 
 // Collapse whitespace so multi-line descriptions stay one compact line.
 const oneLine = v => String(v ?? "").replace(/\s+/g, " ").trim();
@@ -25,11 +26,15 @@ const body = (v, enabled) => (enabled ? escAttr(oneLine(v)) : "");
 
 // ---------- per-type renderers ----------
 
-export const resourceXml = (r, descriptions = true) => xmlEl("resource", {
-    name: r?.name,
-    value: `${r?.value ?? 0}/${r?.max ?? 0}`,
-    min: Number(r?.min) > 0 ? Number(r.min) : "",
-}, body(r?.description, descriptions));
+export const resourceXml = (r, descriptions = true, actor = null) => {
+    const max = resolveResourceMax(actor, r);
+    return xmlEl("resource", {
+        name: r?.name,
+        // Effective max — formula strings ("100+(Level*10)") resolve per actor.
+        value: `${r?.value ?? 0}/${Number.isFinite(max) ? max : 0}`,
+        min: Number(r?.min) > 0 ? Number(r.min) : "",
+    }, body(r?.description, descriptions));
+};
 
 export const attributeXml = (a, descriptions = true) => xmlEl("attribute", {
     name: a?.name,
@@ -103,7 +108,7 @@ export function sheetXml(actor, {
     }
     const children = sections.filter(s => SECTIONS[s]).map(s => {
         const entries = (actor?.[s] || []).filter(e => !filter || filter(e, s));
-        return entries.map(e => SECTIONS[s](e, descriptions)).join("");
+        return entries.map(e => SECTIONS[s](e, descriptions, actor)).join("");
     }).join("");
     const open = `<${tag} ${attrList.join(" ")}`;
     return children ? `${open}>${children}</${tag}>` : `${open}/>`;

@@ -30,6 +30,7 @@ import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connecti
 import { buildDeepContext } from "../util/loreContext.js";
 import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
 import { itemXml, sharedXml, skillXml } from "./sheetXml.js";
+import { resolveResourceMax } from "./resourceScaler.js";
 import { valueGuidelines } from "./valueGuidelines.js";
 
 import { recentMessages, sceneContextBlock } from "../util/chatStore.js";
@@ -125,7 +126,7 @@ async function collectContext(playerAction) {
         const statuses = (c.statuses || []).map(st => `${escAttr(st.name)}${st.modifiers ? ` (${escAttr(st.modifiers)})` : ""}`).join(", ");
         // Own resources (HP 12/20) and attributes (STR 3) — the router needs
         // to see them to judge when their value matters this turn.
-        const res = (c.resources || []).map(r => `${escAttr(r.name)} ${r.value}${r.max ? `/${r.max}` : ""}`).join(", ");
+        const res = (c.resources || []).map(r => { const max = resolveResourceMax(c, r); return `${escAttr(r.name)} ${r.value}${r.max ? `/${max}` : ""}`; }).join(", ");
         const attrs = (c.attributes || []).map(a => `${escAttr(a.name)} ${a.value}`).join(", ");
         // Inventory items as nested elements with full descriptions — the
         // router judges intent ("I drink the potion"), so it must know what
@@ -151,7 +152,7 @@ async function collectContext(playerAction) {
     if (s.feature_enemies && (d.enemies || []).length) {
         for (const e of d.enemies) {
             const attrs = [`name="${escAttr(e.name)}"`];
-            for (const r of e.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${r.max}"`);
+            for (const r of e.resources || []) attrs.push(`${escAttr(r.name)}="${r.value}/${resolveResourceMax(e, r)}"`);
             const skills = (e.skills || []).map(sk => `${escAttr(sk.name)}${(Number(sk.cooldown_left) || 0) > 0 ? "*" : ""}`).join(", ");
             if (skills) attrs.push(`skills="${skills}"`);
             const statuses = (e.statuses || []).map(st => `${escAttr(st.name)}${st.modifiers ? ` (${escAttr(st.modifiers)})` : ""}`).join(", ");
@@ -322,7 +323,7 @@ function sanitizePlan(parsed) {
                 const needle = String(name).toLowerCase();
                 const res = (char.resources || []).find(r => String(r.name || "").toLowerCase() === needle);
                 if (res) {
-                    relevant.push({ character: char.name, name: res.name, value: res.max ? `${res.value}/${res.max}` : String(res.value ?? "") });
+                    relevant.push({ character: char.name, name: res.name, value: res.max ? `${res.value}/${resolveResourceMax(char, res)}` : String(res.value ?? "") });
                     continue;
                 }
                 const attr = (char.attributes || []).find(a => String(a.name || "").toLowerCase() === needle);

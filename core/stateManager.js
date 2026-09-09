@@ -7,6 +7,7 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { saveSettingsDebounced } from "../../../../../script.js";
 import { extensionName, CHARACTER_STATES } from "./constants.js";
 import { CHARACTER_CONTAINERS, GM_SCHEMA, defaultEntry, genId } from "./schemas.js";
+import { resolveResourceMax } from "./resourceScaler.js";
 import { logDebug } from "./debug.js";
 
 const _listeners = new Set();
@@ -353,7 +354,7 @@ export const stateManager = {
         const entry = char[GM_SCHEMA[type].container].find(e => e.id === entryId);
         if (!entry) return;
         Object.assign(entry, patch);
-        if (type === "resource") this._clampResource(entry);
+        if (type === "resource") this._clampResource(char, entry);
         this.emitChange("update_entry");
     },
 
@@ -671,13 +672,13 @@ export const stateManager = {
     },
 
     // ---------- AI-facing mutation helpers (used by the tool-tag parser) ----------
-    _clampResource(entry) {
+    _clampResource(char, entry) {
         const min = Number.isFinite(+entry.min) ? +entry.min : 0;
-        const max = Number.isFinite(+entry.max) ? +entry.max : Number.POSITIVE_INFINITY;
+        const max = resolveResourceMax(char, entry);
         let v = Number.isFinite(+entry.value) ? +entry.value : min;
         entry.value = Math.min(max, Math.max(min, v));
         entry.min = min;
-        entry.max = Number.isFinite(+entry.max) ? +entry.max : 0;
+        // max stays verbatim (number or formula string) — resolved at read time.
     },
 
     // Change a resource/attribute by delta or to an absolute value. Matches by name (case-insensitive).
@@ -694,7 +695,7 @@ export const stateManager = {
         } else if (value !== undefined && value !== null && value !== "") {
             entry.value = Number(value) || 0;
         }
-        if (type === "resource") this._clampResource(entry);
+        if (type === "resource") this._clampResource(char, entry);
         this.emitChange("apply_delta");
         return true;
     },

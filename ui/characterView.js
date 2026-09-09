@@ -6,6 +6,7 @@ import { GM_SCHEMA } from "../core/schemas.js";
 import { logDebug } from "../core/debug.js";
 import { stateManager } from "../core/stateManager.js";
 import { progression } from "../core/progression.js";
+import { resolveResourceMax } from "../core/resourceScaler.js";
 
 export function iconBtn(icon) {
     return $("<div>").addClass("gm_icon_btn").append($("<i>").addClass(icon));
@@ -256,7 +257,9 @@ export const characterView = {
 
     _resourceRow(char, r, edit = false) {
         const min = Number(r.min) || 0;
-        const max = Number.isFinite(Number(r.max)) ? Number(r.max) : 100;
+        // Effective max — formula strings ("100+(Level*10)") resolve per char.
+        const resolved = resolveResourceMax(char, r);
+        const max = Number.isFinite(resolved) ? resolved : 100;
         const value = Number(r.value) || 0;
         const span = Math.max(1, max - min);
         const pct = Math.min(100, Math.max(0, ((value - min) / span) * 100));
@@ -266,7 +269,10 @@ export const characterView = {
         row.append($("<div>").addClass("gm_res_name").attr("title", r.name).text(r.name));
         row.append($("<div>").addClass("gm_res_track").append(
             $("<div>").addClass("gm_res_fill").css("width", pct + "%")));
-        row.append($("<div>").addClass("gm_res_text").text(`${value}/${max}`));
+        // Formula-based maxes expose the raw formula on hover.
+        const resText = $("<div>").addClass("gm_res_text").text(`${value}/${max}`);
+        if (!Number.isFinite(Number(r.max)) && String(r.max ?? "").trim() !== "") resText.attr("title", `max: ${r.max}`);
+        row.append(resText);
 
         if (edit) {
             const actions = $("<div>").addClass("gm_entry_actions");

@@ -6,7 +6,7 @@ export const defaultPresets = [
         name: "Default Preset",
         characterTemplate: {
             resources: [
-                { name: "Health", value: 100, min: 0, max: 100 },
+                { name: "Health", value: 100, min: 0, max: "100+(Level*10)" },
                 { name: "Mana", value: 50, min: 0, max: 50 },
                 { name: "Stamina", value: 30, min: 0, max: 30 },
                 { name: "Sanity", value: 80, min: 0, max: 100 },

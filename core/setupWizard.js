@@ -14,6 +14,7 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel, charLabel } from "./stateManager.js";
+import { progression } from "./progression.js";
 import { GM_SCHEMA, CHARACTER_CONTAINERS, defaultEntry } from "./schemas.js";
 import { parseAttrs } from "./toolParser.js";
 import { sendRequestViaProfile, resolveWizardProfile } from "../util/connectionService.js";
@@ -25,8 +26,8 @@ const MAX_LIST = 20;
 const RESPONSE_SHAPE = [
     '<setup name="<short scenario title>">',
     "<party> <!-- FULLY tracked characters, at most the given party cap -->",
-    '<char name="..."> <!-- give a char ONLY the containers that matter for them; omit the rest -->',
-    '<resource name="Health" value="80" min="0" max="100" description="..."/>',
+    '<char name="..." level="N"> <!-- level: progression level when a <progression> block is proposed (see rules); omit it without progression -->',
+    '<resource name="Health" value="80" min="0" max="100" description="..."/> <!-- max: plain number, OR a formula with Level / attribute names (e.g. "100+(Level*10)") for stats meant to grow with level -->',
     '<attribute name="Strength" value="5" description="..."/>',
     '<item name="Rope" qty="1" description="..."/>',
     '<skill name="Fireball" cost="10 Mana" cooldown="2" description="..."/> <!-- cooldown in messages; 0 or omitted = always ready -->',
@@ -61,7 +62,8 @@ const SYSTEM_PROMPT_HEADER = [
     "- warnings are minimalist imminent-need remarks about the PARTY AS A WHOLE (food, water, approaching danger), under 15 words. They never describe one character's personal state.",
     "- OWNERSHIP TEST — apply to EVERY shared/custom/warning entry: if it is about ONE named character (their hunger, health, mood, condition, stats), it belongs on THAT character's sheet as a resource/attribute/status — NEVER in a party-wide section. Party-wide entries must be true for the whole group and must not name a single character. 'Hunger — Cerberos is starving' is WRONG: it is a Hunger resource on Cerberos's sheet (or, only if the ENTIRE party shares the need, a nameless party-wide warning).",
     "- If the scenario implies survival pressure (food, water, enemies, territory), make it tangible through sharedResources + warnings for the group, and per-character resources/statuses for individual states. If it is purely casual, keep the setup minimal.",
-    "- PROGRESSION: include <progression> ONLY when the scenario implies growth over time (combat, leveling, long campaigns). Calibrate exp_base (EXP for the first level-up) and exp_growth (multiplier per level) to the world's pace, set skill_points per level (bonus_every: +1 extra point every N levels, 0 = off), and write plain-language EXP guidelines as the tag's text (how much EXP trivial actions, minor victories and major challenges give). Attribute points are a second currency the PLAYER spends to raise attributes: attr_points per level (0 = off), attr_cost_every (raising costs +1 extra point per N current value, 0 = flat), attr_starting_budget (the TOTAL attribute points a fresh level-1 character should have — calibrate party starting attributes to roughly this sum). Omit the tag for purely casual scenarios.",
+    "- PROGRESSION: include <progression> ONLY when the scenario implies growth over time (combat, leveling, long campaigns). Calibrate exp_base (EXP for the first level-up) and exp_growth (multiplier per level) to the world's pace, set skill_points per level (bonus_every: +1 extra point every N levels, 0 = off), and write plain-language EXP guidelines as the tag's text (how much EXP trivial actions, minor victories and major challenges give). Attribute points are a second currency the PLAYER spends to raise attributes: attr_points per level (0 = off), attr_cost_every (raising costs +1 extra point per N current value, 0 = flat), attr_starting_budget (the TOTAL attribute points a fresh level-1 character should have). Omit the tag for purely casual scenarios.",
+    "- LEVELS: when you propose a <progression> block, EVERY <char> carries a level attribute that matches their background — level 1 ONLY for genuine beginners (fresh recruits, newly awakened heroes); veterans, career soldiers, established mages and mid-campaign joiners sit higher. Infer the world's level cap from the context and lorebook when one is implied; with no cap implied, treat 99 as the maximum. Scale each character's attribute totals and core resources to their level (roughly attr_starting_budget plus attr_points per level above 1) so an experienced fighter never reads like a raw recruit.",
     "- Omit tags that do not apply (an empty <setup> is valid). Never invent entries outside the given shapes.",
 ].join("\n");
 
@@ -82,6 +84,7 @@ const REFINE_PROMPT_HEADER = [
     "- PARTY vs ROSTER: only active companions get full sheets; everyone else stays a roster one-liner. Respect the party cap.",
     "- sharedResources stay party-wide and user-managed (money, food, expendables); custom features stay AI-managed PARTY-WIDE entries — gimmicks, objectives, clocks, or hidden notes (secrets, plans, leads; visible in the Custom tab, never relationship/intimacy meters or per-character stats); warnings stay minimalist imminent-need remarks about the whole party, under 15 words.",
     "- Preserve the <progression> block exactly as given unless the feedback asks to change it.",
+    "- LEVELS: keep each <char>'s level attribute from the current proposal unless the feedback asks to change it.",
     "- OWNERSHIP TEST — apply to EVERY shared/custom/warning entry: if it is about ONE named character (their hunger, health, mood, condition, stats), MOVE it onto that character's sheet as a resource/attribute/status. Party-wide entries must be true for the whole group and must not name a single character.",
     "- Omit tags that do not apply (an empty <setup> is valid). Never invent entries outside the given shapes.",
 ].join("\n");
@@ -128,6 +131,7 @@ async function collectContext(scenarioText, { skipCharacters = false, improvedGr
             : [
                 `PARTY CAP: ${partyCap} full character sheets maximum.`,
                 `ENTRY FIELD SHAPES: resource {${fieldKeysFor("resource")}}, attribute {${fieldKeysFor("attribute")}}, item {${fieldKeysFor("item")}}, skill {${fieldKeysFor("skill")}}, passive {${fieldKeysFor("passive")}} (ptype: special|stat), status {${fieldKeysFor("status")}}.`,
+                "SCALING RESOURCES: a resource max may be a formula using Level or attribute names (e.g. \"100+(Level*10)\") so it grows with the character — reserve it for 1-2 core stats (Health, Mana) when growth is implied; situational resources (Ammo, Stress) stay plain numbers.",
             ]),
         "",
         "EXISTING SETUP (names only — avoid duplicates unless asked):",
@@ -425,7 +429,10 @@ export function characterToXml(c) {
 function proposalToPromptXml(p) {
     const lines = [`<setup name="${escAttr(p.scenarioName)}">`];
     for (const c of p.party || []) {
-        lines.push(`<char name="${escAttr(c.name)}">`);
+        // Level rides along (same as characterToXml) so refine passes see
+        // and preserve the proposed progression tiers.
+        const lvl = Math.trunc(Number(c.level));
+        lines.push(`<char name="${escAttr(c.name)}"${Number.isFinite(lvl) && lvl >= 1 ? ` level="${lvl}"` : ""}>`);
         for (const [container, tag] of Object.entries(PROMPT_CONTAINER_TAGS)) {
             for (const e of c[container] || []) {
                 const attrs = Object.entries(e)
@@ -465,6 +472,7 @@ async function collectRefineContext(proposal, feedback, scenarioText, { skipChar
             : [
                 `PARTY CAP: ${partyCap} full character sheets maximum.`,
                 `ENTRY FIELD SHAPES: resource {${fieldKeysFor("resource")}}, attribute {${fieldKeysFor("attribute")}}, item {${fieldKeysFor("item")}}, skill {${fieldKeysFor("skill")}}, passive {${fieldKeysFor("passive")}} (ptype: special|stat), status {${fieldKeysFor("status")}}.`,
+                "SCALING RESOURCES: a resource max may be a formula using Level or attribute names (e.g. \"100+(Level*10)\") so it grows with the character — reserve it for 1-2 core stats (Health, Mana) when growth is implied; situational resources (Ammo, Stress) stay plain numbers.",
             ]),
         "",
         "RECENT CHAT (context):",
@@ -532,12 +540,27 @@ export function applyProposal(proposal, mode = "replace") {
         d.activeCharacterId = null;
     }
 
+    // Per-scenario progression config FIRST: replace resets it (absent = no
+    // progression in this scenario), merge only overwrites when proposed —
+    // the level stamping below needs the config in place to see it.
+    if (mode === "replace") {
+        delete d.progression;
+    }
+    if (proposal.progression) {
+        d.progression = { ...proposal.progression };
+    }
+
     for (const raw of proposal.party || []) {
         const templateEntries = {};
         for (const container of CHARACTER_CONTAINERS) {
             templateEntries[container] = raw[container] || [];
         }
         const char = stateManager.addCharacter(String(raw.name || "Unnamed"), templateEntries);
+        // Level stamping: a proposed level rides onto the fresh progression
+        // track so wizard characters spawn at their intended tier, not level 1.
+        if (raw.level && progression.isEnabled()) {
+            char.progression = { ...progression.trackOf(char), level: Math.max(1, Math.trunc(Number(raw.level))) };
+        }
         // Allies promoted in the review modal: carry the needs-build flag
         // and the roster note (the auto build brief) onto the character.
         if (raw.needs_build) {
@@ -564,15 +587,6 @@ export function applyProposal(proposal, mode = "replace") {
     }
     for (const w of proposal.warnings || []) {
         stateManager.setWarning({ name: w.name, text: w.text });
-    }
-
-    // Per-scenario progression config: replace resets it (absent = no
-    // progression in this scenario); merge only overwrites when proposed.
-    if (mode === "replace") {
-        delete d.progression;
-    }
-    if (proposal.progression) {
-        d.progression = { ...proposal.progression };
     }
 
     stateManager.emitChange(mode === "replace" ? "wizard_replace" : "wizard_merge");

@@ -237,7 +237,8 @@ function applyEnemyInner(enemy, inner, attrs) {
     let applied = 0;
     if (attrs.hp !== undefined && attrs.hp !== "") {
         if (stateManager.applyDelta(enemy.id, "resource", "HP", { value: resolveNum(attrs.hp) })) applied++;
-        else if (stateManager.addEntry(enemy.id, "resource", { name: "HP", value: resolveNum(attrs.hp) || 0, min: 0, max: resolveNum(attrs.hp_max) || resolveNum(attrs.hp) || 100 })) applied++;
+        // max stays verbatim — formula strings ("100+(Level*10)") are allowed.
+        else if (stateManager.addEntry(enemy.id, "resource", { name: "HP", value: resolveNum(attrs.hp) || 0, min: 0, max: String(attrs.hp_max ?? "").trim() !== "" ? String(attrs.hp_max).trim() : (resolveNum(attrs.hp) || 100) })) applied++;
     }
     if (attrs.hp_delta !== undefined && attrs.hp_delta !== "") {
         if (stateManager.applyDelta(enemy.id, "resource", "HP", { delta: resolveNum(attrs.hp_delta) })) applied++;
@@ -252,7 +253,7 @@ function applyEnemyInner(enemy, inner, attrs) {
         if (!n) continue;
         if (tag === "resource") {
             if (stateManager.applyDelta(enemy.id, "resource", n, { delta: resolveNum(a.delta), value: resolveNum(a.value) })) applied++;
-            else if (stateManager.addEntry(enemy.id, "resource", { name: n, value: resolveNum(a.value) || 0, min: 0, max: resolveNum(a.max) || 100 })) applied++;
+            else if (stateManager.addEntry(enemy.id, "resource", { name: n, value: resolveNum(a.value) || 0, min: 0, max: String(a.max ?? "").trim() !== "" ? String(a.max).trim() : 100 })) applied++;
         } else if (tag === "attribute") {
             if (stateManager.applyDelta(enemy.id, "attribute", n, { delta: resolveNum(a.delta), value: resolveNum(a.value) })) applied++;
             else if (stateManager.addEntry(enemy.id, "attribute", { name: n, value: resolveNum(a.value) || 0 })) applied++;

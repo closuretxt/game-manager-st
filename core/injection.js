@@ -18,6 +18,7 @@ import { extension_settings } from "../../../../extensions.js";
 import { extensionName, CHARACTER_STATES } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
+import { resolveResourceMax } from "./resourceScaler.js";
 
 let _pendingHigh = [];
 let _pendingLow = [];
@@ -200,7 +201,7 @@ export function buildLowPriority() {
     if (s.feature_enemies && (d.enemies || []).length) {
         parts.push(`<enemies note="Active enemies in the scene; their state is ground truth.">`);
         for (const e of d.enemies) {
-            const res = (e.resources || []).map(r => `${r.name} ${r.value}/${r.max}`).join(", ");
+            const res = (e.resources || []).map(r => `${r.name} ${r.value}/${resolveResourceMax(e, r)}`).join(", ");
             const st = (e.statuses || []).map(x => x.name).join(", ");
             const state = [res, st].filter(Boolean).join("; ");
             parts.push(`<enemy name="${esc(e.name)}"${state ? ` state="${esc(state)}"` : ""}/>`);

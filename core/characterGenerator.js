@@ -21,7 +21,7 @@ const CHAR_RESPONSE_SHAPE = [
     '<setup name="<short source/title>">',
     "<party>",
     '<char name="..." level="N"> <!-- exactly ONE char; level = progression level (see rules); give only the containers that matter for them -->',
-    '<resource name="Health" value="80" min="0" max="100" description="..."/>',
+    '<resource name="Health" value="80" min="0" max="100" description="..."/> <!-- max: plain number, OR a formula with Level / attribute names (e.g. "100+(Level*10)") for stats meant to grow with level -->',
     '<attribute name="Strength" value="5" description="..."/>',
     '<item name="Rope" qty="1" description="..."/>',
     '<skill name="Fireball" cost="10 Mana" cooldown="2" description="..."/> <!-- cooldown in messages; 0 or omitted = always ready -->',
@@ -47,7 +47,8 @@ const CHAR_PROMPT_HEADER = [
     "- NO PURPLE PROSE: descriptions are plain and factual — one short sentence, concrete words, no flowery or literary language, no stacked adjectives, no metaphors or atmosphere. Write like a gear tag, not a novel: 'Veteran sergeant, bark commands' — NOT 'a scarred warrior whose weathered gaze carries the weight of a thousand fallen campaigns'.",
     "- Resources are turn-to-turn meters updated during play (Health, Stamina, Ammo, Sanity, Stress) with sensible custom ranges (Health 0-100, Ammo 0-36 = one revolver loadout). Attributes are milestone stats (Strength, Fortitude, Dexterity, Charisma) without hard caps, changed rarely.",
     "- CALIBRATE NUMBERS to the world: starting quantities and ranges must imply real scale. Anchor non-obvious scales in the description (e.g. 'a meal costs about 15').",
-    "- LEVEL: when the prompt states a level, use it; when progression is active WITHOUT a stated level, INFER it from the context (recent chat, details, reference levels) and report it in level (whole number, at least 1). Without progression, omit the attribute.",
+    "- LEVEL: when the prompt states a level, use it; when progression is active WITHOUT a stated level, INFER it from the context (recent chat, details, reference levels) and report it in level (whole number, at least 1). Level 1 is ONLY for genuine beginners (fresh recruits, newly awakened heroes) — never default to it: a veteran, career soldier, established mage or mid-campaign joiner sits clearly higher. Infer the world's level cap from the context and lorebook when one is implied; with no cap implied, treat 99 as the maximum. Without progression, omit the attribute.",
+    "- SCALING RESOURCES: when progression is active, at most 1-2 core resources (e.g. Health, Mana) may use a max formula with Level or attribute names (e.g. \"100+(Level*10)\") instead of a plain number — everything else stays a plain number. Without progression, never use formulas.",
     "- Omit tags that do not apply. Never invent entries outside the given shapes.",
     "",
     skillGuidelines(),
@@ -119,7 +120,7 @@ function progressionBlocks(targetLevel = null, isEnemy = false) {
         ? (isEnemy
             ? `THIS ENEMY is level ${explicit} (the party is around level ${partyLevel}) — calibrate its total attribute points to roughly ${budget(explicit)} and scale starting resources (Health and similar) to that threat level.`
             : `THIS CHARACTER joins the party at level ${explicit} (the party is around level ${partyLevel}) — calibrate their total attribute points to roughly ${budget(explicit)} and scale starting resources (Health and similar) to that level.`)
-        : `No level was given — INFER this character's level from the context (recent chat, details, reference levels${isEnemy ? "; a fair fight sits at the party's level, a boss above it, a minion below it" : ""}) and report it in the <char level="..."> attribute. Expected TOTAL attribute points by level: ${table}. Calibrate to the row you infer and scale starting resources (Health and similar) proportionately.`;
+        : `No level was given — INFER this character's level from the context (recent chat, details, reference levels${isEnemy ? "; a fair fight sits at the party's level, a boss above it, a minion below it" : ""}) and report it in the <char level="..."> attribute. Level 1 is ONLY for genuine beginners — never default to it: infer the world's level cap from the context and lorebook when one is implied (otherwise treat 99 as the maximum) and pick the row matching the character's actual seniority. Expected TOTAL attribute points by level: ${table}. Calibrate to the row you infer and scale starting resources (Health and similar) proportionately.`;
     return [
         "PROGRESSION ACTIVE: the party is around level " + partyLevel + ".",
         anchor,
