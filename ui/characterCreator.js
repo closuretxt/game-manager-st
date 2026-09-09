@@ -283,6 +283,8 @@ export const characterCreator = {
         this._proposal = char;
         // Auto mode: adopt the LLM-inferred level for the review display
         // and the progression stamping on Apply.
+        logDebug(`characterCreator: generated "${char.name}" — partyLevel=${progression.isEnabled() ? progression.partyLevel() : "(off)"}, ` +
+            `pickedLevel=${this._level ?? "(auto)"}, LLM-reported level=${char.level ?? "(none)"}`);
         if (progression.isEnabled() && char.level) this._level = char.level;
         this._history = [];
         this._refinements = 0;

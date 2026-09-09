@@ -108,11 +108,19 @@ async function runCharLLM(systemPrompt, userContent, name, profileOverride = "")
 // without one the LLM INFERS the level from context and reports it back
 // via the <char level> attribute, calibrating against a budget table.
 function progressionBlocks(targetLevel = null, isEnemy = false) {
-    if (!progression.isEnabled()) return [];
+    if (!progression.isEnabled()) {
+        logDebug("characterGenerator: progressionBlocks — progression DISABLED, no level anchor sent to the LLM");
+        return [];
+    }
     const partyLevel = progression.partyLevel();
     const cap = Math.max(1, Math.trunc(Number(progression.getConfig().max_level) || 99));
     const tiers = String(progression.getConfig().exp_guidelines || "").trim();
-    const explicit = Math.max(1, Math.trunc(Number(targetLevel) || 0));
+    // Null-safe: no target level (auto mode) must yield 0 so the auto-infer
+    // anchor runs — Math.max(1, ...) would otherwise turn null into an
+    // explicit "level 1" pin (bug: blank picker forced level 1).
+    const explicit = (targetLevel === null || targetLevel === undefined || targetLevel === "")
+        ? 0
+        : Math.max(1, Math.trunc(Number(targetLevel) || 0));
     const budget = lvl => progression.attrBudgetForLevel(lvl);
     // Budget table around the party level — the LLM picks the row matching
     // the level it infers; the math itself stays code-owned.
@@ -123,6 +131,7 @@ function progressionBlocks(targetLevel = null, isEnemy = false) {
             ? `THIS ENEMY is level ${explicit} (the party is around level ${partyLevel}) — calibrate its total attribute points to roughly ${budget(explicit)} and scale starting resources (Health and similar) to that threat level.`
             : `THIS CHARACTER joins the party at level ${explicit} (the party is around level ${partyLevel}) — calibrate their total attribute points to roughly ${budget(explicit)} and scale starting resources (Health and similar) to that level.`)
         : `No level was given — INFER this character's level from the context (recent chat, details, reference levels${isEnemy ? "; a fair fight sits at the party's level, a boss above it, a minion below it" : ""}) and report it in the <char level="..."> attribute. Level 1 is ONLY for genuine beginners — never default to it: use the tier anchors below (when given) or the context to judge seniority, and pick the row matching it. Expected TOTAL attribute points by level: ${table}. Calibrate to the row you infer and scale starting resources (Health and similar) proportionately.`;
+    logDebug(`characterGenerator: progressionBlocks — partyLevel=${partyLevel}, explicitTarget=${explicit || "(none — auto infer)"}, cap=${cap}, budgetTable=[${table}]`);
     return [
         "PROGRESSION ACTIVE: the party is around level " + partyLevel + ".",
         anchor,
