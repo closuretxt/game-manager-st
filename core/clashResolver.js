@@ -18,7 +18,7 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { substituteParams } from "../../../../../script.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
-import { stateManager, playerLabel } from "./stateManager.js";
+import { stateManager, playerLabel, charLabel } from "./stateManager.js";
 import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
 import { sheetXml as renderSheet } from "./sheetXml.js";
 import { valueGuidelines } from "./valueGuidelines.js";
@@ -98,7 +98,7 @@ function collectContext(playerAction, partyActions, enemyActions) {
     // Always ends at the AI's last reply (trailing user action excluded).
     // No char cap — messages stay intact; the message count bounds the size.
     const history = recentMessages(MAX_CONTEXT_MESSAGES)
-        .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "")}`);
+        .map(m => `${m.is_user ? playerLabel() : charLabel(m.name)}: ${String(m.mes ?? "")}`);
 
     const d = stateManager.getData();
 

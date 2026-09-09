@@ -16,7 +16,7 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { generateRaw, substituteParams } from "../../../../../script.js";
 import { extensionName, CHARACTER_STATES } from "./constants.js";
 import { logDebug } from "./debug.js";
-import { stateManager } from "./stateManager.js";
+import { stateManager, playerLabel, charLabel } from "./stateManager.js";
 import { progression } from "./progression.js";
 import { parseToolBlocks, applyToolBlocks, escAttr } from "./toolParser.js";
 import { sheetXml, sharedXml, customXml, xmlEl } from "./sheetXml.js";
@@ -107,7 +107,7 @@ function collectRecentMessages() {
     const chat = getContext()?.chat;
     if (!Array.isArray(chat)) return [];
     return chat.slice(-MAX_CONTEXT_MESSAGES).map(m => ({
-        role: m.is_user ? "player" : (m.name || "narrator"),
+        role: m.is_user ? playerLabel() : charLabel(m.name),
         text: String(m.mes ?? "").slice(0, 4000),
     }));
 }

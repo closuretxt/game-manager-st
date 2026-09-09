@@ -25,7 +25,7 @@ import { substituteParams } from "../../../../../script.js";
 import { extensionName } from "./constants.js";
 import { storeActionData } from "../util/chatStore.js";
 import { logDebug } from "./debug.js";
-import { stateManager, playerLabel } from "./stateManager.js";
+import { stateManager, playerLabel, charLabel } from "./stateManager.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
@@ -103,7 +103,7 @@ async function collectContext(playerAction) {
     // Always ends at the AI's last reply (trailing user action excluded).
     // No char cap — messages stay intact; the message count bounds the size.
     const history = recentMessages(MAX_CONTEXT_MESSAGES)
-        .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "")}`);
+        .map(m => `${m.is_user ? playerLabel() : charLabel(m.name)}: ${String(m.mes ?? "")}`);
 
     // Compact XML snapshot: only what the router needs to judge intent — one
     // line per actor, tracked names as attribute keys, same dialect as the

@@ -24,6 +24,15 @@ export function playerLabel() {
     return String(getContext()?.name1 || "Player");
 }
 
+// Speaker label for the AI's lines in the engines' prompt contexts —
+// the user's custom label when set, otherwise the message's own character
+// name (group chats keep their per-message names).
+export function charLabel(mesName = "") {
+    const custom = String(settings()?.char_label || "").trim();
+    if (custom) return custom;
+    return String(mesName || getContext()?.name2 || "Narrator");
+}
+
 // Normalizes a character's progression track (level/exp/skill points). Present
 // on every sheet; only meaningful when the progression feature is on.
 function _normalizeProgression(c) {

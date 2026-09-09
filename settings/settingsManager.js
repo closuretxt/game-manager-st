@@ -67,6 +67,10 @@ export const defaultSettings = {
     // Empty = the current persona name.
     player_label: "",
 
+    // Speaker label for the AI's lines in the engines' prompt contexts.
+    // Empty = the message's own character name.
+    char_label: "Narrator",
+
     presets: structuredClone(defaultPresets),
     active_preset: "Default Preset",
 
@@ -150,6 +154,7 @@ export async function loadSettings() {
     $("#gm_setting_roll_duration").val(Number.isFinite(+s.roll_duration) ? +s.roll_duration : 1600);
     $("#gm_roll_duration_value").text(`${((Number(s.roll_duration) || 1600) / 1000).toFixed(1)}s`);
     $("#gm_setting_player_label").val(String(s.player_label || ""));
+    $("#gm_setting_char_label").val(String(s.char_label || ""));
     $("#gm_setting_feat_death").prop("checked", !!s.feature_death);
     $("#gm_setting_bg_opacity").val(Number.isFinite(+s.window_opacity) ? +s.window_opacity : 95);
     $("#gm_bg_opacity_value").text(`${s.window_opacity}%`);
@@ -202,6 +207,7 @@ export function saveSettings() {
     s.roll_attachment = $("#gm_setting_roll_attachment").prop("checked");
     s.roll_duration = Number($("#gm_setting_roll_duration").val()) || 1600;
     s.player_label = String($("#gm_setting_player_label").val() || "").trim();
+    s.char_label = String($("#gm_setting_char_label").val() || "").trim();
     s.feature_death = $("#gm_setting_feat_death").prop("checked");
     s.notify_enabled = $("#gm_setting_notify").prop("checked");
     s.notify_stats = $("#gm_setting_notify_stats").prop("checked");
@@ -243,6 +249,11 @@ export function initSettingsListeners() {
     // Player label: persist on input (used by every engine's prompt context).
     $("#gm_setting_player_label").off("input.gm").on("input.gm", () => {
         extension_settings[extensionName].player_label = String($("#gm_setting_player_label").val() || "");
+        saveSettingsDebounced();
+    });
+    // Character label: persist on input (used by every engine's prompt context).
+    $("#gm_setting_char_label").off("input.gm").on("input.gm", () => {
+        extension_settings[extensionName].char_label = String($("#gm_setting_char_label").val() || "");
         saveSettingsDebounced();
     });
 }

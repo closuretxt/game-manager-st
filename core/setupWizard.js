@@ -13,7 +13,7 @@
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
-import { stateManager, playerLabel } from "./stateManager.js";
+import { stateManager, playerLabel, charLabel } from "./stateManager.js";
 import { GM_SCHEMA, CHARACTER_CONTAINERS, defaultEntry } from "./schemas.js";
 import { parseAttrs } from "./toolParser.js";
 import { sendRequestViaProfile, resolveWizardProfile } from "../util/connectionService.js";
@@ -98,7 +98,7 @@ export function recentChatLines(count) {
     if (!n) return [];
     const chat = Array.isArray(getContext()?.chat) ? getContext().chat : [];
     return chat.slice(-n)
-        .map(m => `${m.is_user ? playerLabel() : (m.name || "Narrator")}: ${String(m.mes ?? "").slice(0, 800)}`);
+        .map(m => `${m.is_user ? playerLabel() : charLabel(m.name)}: ${String(m.mes ?? "").slice(0, 800)}`);
 }
 
 async function collectContext(scenarioText, { skipCharacters = false, improvedGrounds = false } = {}) {
