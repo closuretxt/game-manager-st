@@ -38,7 +38,7 @@ const RESPONSE_SHAPE = [
     '<ally name="..." note="<one line: who they are, why they matter>"/>',
     '<shared name="Dinheiro" qty="150" description="..." always_inject="false"/>',
     '<custom name="Seeds" value="Pouch" description="..."/> <!-- gimmick, objective, clock or note -->',
-    '<progression enabled="true" exp_base="100" exp_growth="1.25" skill_points="1" bonus_every="5" attr_points="0" attr_cost_every="10" attr_starting_budget="20">EXP guidelines: how much EXP trivial actions, minor victories and major challenges give</progression>',
+    '<progression enabled="true" exp_base="100" exp_growth="1.10" max_level="90" skill_points="1" bonus_every="5" attr_points="0" attr_cost_every="10" attr_starting_budget="20">EXP guidelines: dynamic grants + level tiers (see rules)</progression>',
     '<warning name="Food" text="<under 15 words, imminent need>"/>',
     "</setup>",
 ].join("\n");
@@ -62,8 +62,9 @@ const SYSTEM_PROMPT_HEADER = [
     "- warnings are minimalist imminent-need remarks about the PARTY AS A WHOLE (food, water, approaching danger), under 15 words. They never describe one character's personal state.",
     "- OWNERSHIP TEST — apply to EVERY shared/custom/warning entry: if it is about ONE named character (their hunger, health, mood, condition, stats), it belongs on THAT character's sheet as a resource/attribute/status — NEVER in a party-wide section. Party-wide entries must be true for the whole group and must not name a single character. 'Hunger — Cerberos is starving' is WRONG: it is a Hunger resource on Cerberos's sheet (or, only if the ENTIRE party shares the need, a nameless party-wide warning).",
     "- If the scenario implies survival pressure (food, water, enemies, territory), make it tangible through sharedResources + warnings for the group, and per-character resources/statuses for individual states. If it is purely casual, keep the setup minimal.",
-    "- PROGRESSION: include <progression> ONLY when the scenario implies growth over time (combat, leveling, long campaigns). Calibrate exp_base (EXP for the first level-up) and exp_growth (multiplier per level) to the world's pace, set skill_points per level (bonus_every: +1 extra point every N levels, 0 = off), and write plain-language EXP guidelines as the tag's text (how much EXP trivial actions, minor victories and major challenges give). Attribute points are a second currency the PLAYER spends to raise attributes: attr_points per level (0 = off), attr_cost_every (raising costs +1 extra point per N current value, 0 = flat), attr_starting_budget (the TOTAL attribute points a fresh level-1 character should have). Omit the tag for purely casual scenarios.",
-    "- LEVELS: when you propose a <progression> block, EVERY <char> carries a level attribute that matches their background — level 1 ONLY for genuine beginners (fresh recruits, newly awakened heroes); veterans, career soldiers, established mages and mid-campaign joiners sit higher. Infer the world's level cap from the context and lorebook when one is implied; with no cap implied, treat 99 as the maximum. Scale each character's attribute totals and core resources to their level (roughly attr_starting_budget plus attr_points per level above 1) so an experienced fighter never reads like a raw recruit.",
+    "- PROGRESSION: include <progression> ONLY when the scenario implies growth over time (combat, leveling, long campaigns). Set max_level to the world's level cap (infer from context/lorebook; otherwise 99). Keep exp_growth LOW — compounding is brutal: 1.10 or less for caps of 30+, 1.05 or less for caps of 50+, never above 1.25 — and calibrate exp_base (EXP for the first level-up) so the PACE is right, not the growth. Set skill_points per level (bonus_every: +1 extra point every N levels, 0 = off). Attribute points are a second currency the PLAYER spends to raise attributes: attr_points per level (0 = off), attr_cost_every (raising costs +1 extra point per N current value, 0 = flat), attr_starting_budget (the TOTAL attribute points a fresh level-1 character should have). Omit the tag for purely casual scenarios.",
+    "- EXP GUIDELINES (the tag's text) must be DYNAMIC, never a static table — grants scale with level so late levels stay reachable. Template: a per-level grant formula ('standard victory over a level-L foe = L*10 EXP' — pick the factor so 3 standard victories roughly cover the next level-up at mid levels), difficulty multipliers (minion = half or less, elite = x2, boss = x3-4), EXP buffs (clever solutions, quests, great play = +25-50%), and 3-4 named TIER anchors matching the world's seniority ladder ('fresh recruit = 1, seasoned soldier = 20, veteran knight = 45, legendary hero = max_level'). Example: 'Standard victory = level*10 EXP; minion half, elite x2, boss x3; quests +50%. Tiers: recruit=1, soldier=20, knight=45, legendary hero=90.'",
+    "- LEVELS: when you propose a <progression> block, EVERY <char> carries a level attribute that matches their background — level 1 ONLY for genuine beginners (fresh recruits, newly awakened heroes); veterans, career soldiers, established mages and mid-campaign joiners sit higher, using the tier anchors from the EXP guidelines. max_level is the hard cap — no character sits above it. Scale each character's attribute totals and core resources to their level (roughly attr_starting_budget plus attr_points per level above 1) so an experienced fighter never reads like a raw recruit.",
     "- Omit tags that do not apply (an empty <setup> is valid). Never invent entries outside the given shapes.",
 ].join("\n");
 
@@ -238,6 +239,7 @@ export function sanitizeProposal(parsed) {
             enabled: raw.enabled !== false,
             exp_base: num(raw.exp_base, 100, 1),
             exp_growth: num(raw.exp_growth, 1.25, 1),
+            max_level: num(raw.max_level, 99, 1),
             skill_points_per_level: num(raw.skill_points ?? raw.skill_points_per_level, 1, 0),
             bonus_every: num(raw.bonus_every, 5, 0),
             attr_points_per_level: num(raw.attr_points ?? raw.attr_points_per_level, 0, 0),
@@ -314,6 +316,7 @@ export function parseSetupXml(text) {
             enabled: pa.enabled !== undefined ? String(pa.enabled).toLowerCase() === "true" : true,
             exp_base: pa.exp_base,
             exp_growth: pa.exp_growth,
+            max_level: pa.max_level,
             skill_points: pa.skill_points ?? pa.skill_points_per_level,
             bonus_every: pa.bonus_every,
             attr_points: pa.attr_points ?? pa.attr_points_per_level,
@@ -450,7 +453,7 @@ function proposalToPromptXml(p) {
     for (const w of p.warnings || []) lines.push(`<warning name="${escAttr(w.name)}" text="${escAttr(w.text)}"/>`);
     if (p.progression) {
         const g = p.progression;
-        lines.push(`<progression enabled="${g.enabled !== false ? "true" : "false"}" exp_base="${escAttr(g.exp_base)}" exp_growth="${escAttr(g.exp_growth)}" skill_points="${escAttr(g.skill_points_per_level)}" bonus_every="${escAttr(g.bonus_every)}" attr_points="${escAttr(g.attr_points_per_level)}" attr_cost_every="${escAttr(g.attr_cost_every)}" attr_starting_budget="${escAttr(g.attr_starting_budget)}">${escAttr(g.exp_guidelines || "")}</progression>`);
+        lines.push(`<progression enabled="${g.enabled !== false ? "true" : "false"}" exp_base="${escAttr(g.exp_base)}" exp_growth="${escAttr(g.exp_growth)}" max_level="${escAttr(g.max_level ?? 99)}" skill_points="${escAttr(g.skill_points_per_level)}" bonus_every="${escAttr(g.bonus_every)}" attr_points="${escAttr(g.attr_points_per_level)}" attr_cost_every="${escAttr(g.attr_cost_every)}" attr_starting_budget="${escAttr(g.attr_starting_budget)}">${escAttr(g.exp_guidelines || "")}</progression>`);
     }
     lines.push("</setup>");
     return lines.join("\n");

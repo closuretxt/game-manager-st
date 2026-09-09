@@ -21,6 +21,7 @@ export const DEFAULT_PROGRESSION = {
     enabled: true,
     exp_base: 100,   // EXP needed for the first level-up
     exp_growth: 1.25, // multiplier per level (exp_base * growth^(level-1))
+    max_level: 99, // hard cap for level-ups (further EXP grants freeze)
     skill_points_per_level: 1,
     bonus_every: 5,  // +1 extra point every N levels (0 = off)
     attr_points_per_level: 0, // attribute points per level (0 = system off)
@@ -88,7 +89,8 @@ export const progression = {
         let attrPoints = track.attr_points;
         let levels = 0;
 
-        while (exp >= this.expToNext(level)) {
+        const cap = Math.trunc(Number(cfg.max_level) || 0);
+        while (exp >= this.expToNext(level) && (!cap || level < cap)) {
             exp -= this.expToNext(level);
             level++;
             levels++;
@@ -97,8 +99,9 @@ export const progression = {
             const bonusEvery = Math.trunc(Number(cfg.bonus_every) || 0);
             if (bonusEvery > 0 && level % bonusEvery === 0) points += 1;
         }
-        // A negative grant never de-levels or leaves negative EXP.
-        if (exp < 0) exp = 0;
+        // A negative grant never de-levels or leaves negative EXP; at the cap
+        // leftover EXP has nowhere to go — freeze at 0 instead of piling up.
+        if (exp < 0 || (cap > 0 && level >= cap)) exp = 0;
 
         char.progression = { level, exp, skill_points: points, attr_points: attrPoints };
         if (levels > 0) logDebug(`progression: ${char.name} reached level ${level} (+${amt} EXP, +${levels} level(s))`);

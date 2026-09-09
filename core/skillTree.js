@@ -106,7 +106,7 @@ export const skillTree = {
             "- PRIORITIZE UPGRADES: the tree's backbone deepens what the character already does. Introduce a brand-new active skill ONLY when the character has few (2 or fewer) — new actives are rare milestones, never filler.",
             "- BUILDS MUST MATTER: give each branch a clear identity (burst vs sustain, offense vs defense, mobility vs control...), offer competing paths inside a tier so two players pick differently, and prefer trade-offs and signature moments over generic small bonuses.",
             "- FORK, DON'T CHAIN: open 2-4 distinct branch roots in the segment's first tier and fork branches again deeper down (a node may have several descendants) — the tree must WIDEN as it deepens, never run as single-file chains.",
-            "- LEVEL BALANCE: the sheet header states the character's level — a tier N node is roughly for a level N+2 character. Calibrate power to that: at level 1 (base Health 100, attributes around 5) skills typically deal 5-15 damage or an equivalent effect, scaling up gradually with level and tier. A node should feel meaningful where it unlocks, never game-breaking.",
+            "- LEVEL BALANCE: the sheet header states the character's level — a tier N node is roughly for a level N+2 character. Calibrate power to that: at level 1 (base Health 100, attributes around 5) skills typically deal 5-15 damage or an equivalent effect, scaling up gradually with level and tier. A node should feel meaningful where it unlocks, never game-breaking. Respect the world's max_level (stated in EXP CURVE): calibrate the deepest tiers toward the cap's tier anchors, never past the cap's implied power.",
             "- tier: integers continuing from the frontier given below. Produce exactly 6 tiers, 3-5 nodes per tier.",
             "- cost: skill points, integer >= 1, set by the node's POWER (not its position): incremental or utility effects cost 1-2, solid build-defining effects 3-4, powerful signature effects 5-6, and only truly transformative capstones go higher.",
             "- requires: space-separated node ids that must be unlocked first (frontier nodes and/or same-segment nodes). Segment-entry nodes should chain from the frontier when it makes sense; every deeper node must depend on at least one earlier node, and no single node may be the sole gateway to an entire tier.",
@@ -125,7 +125,10 @@ export const skillTree = {
             if (deep) userParts.push("<deep_context>", deep, "</deep_context>");
         }
         userParts.push(`CHARACTER SHEET:\n${charSummary(char)}`);
-        userParts.push(`EXP CURVE: exp_base=${cfg.exp_base}, exp_growth=${cfg.exp_growth}, skill_points_per_level=${cfg.skill_points_per_level}, bonus_every=${cfg.bonus_every}`);
+        const cap = Math.max(1, Math.trunc(Number(cfg.max_level) || 99));
+        const tierAnchors = String(cfg.exp_guidelines || "").trim();
+        userParts.push(`EXP CURVE: exp_base=${cfg.exp_base}, exp_growth=${cfg.exp_growth}, max_level=${cap}, skill_points_per_level=${cfg.skill_points_per_level}, bonus_every=${cfg.bonus_every}`);
+        if (tierAnchors) userParts.push(`TIER ANCHORS (world seniority ladder): ${tierAnchors}`);
         userParts.push(tree.generated_tiers > 0
             ? `FRONTIER (last generated tier ${tree.generated_tiers}); new tiers are ${tree.generated_tiers + 1}-${tree.generated_tiers + SEGMENT_TIERS}:\n${frontier.map(n => `<node id="${escAttr(n.id)}" tier="${n.tier}" type="${escAttr(n.type)}" name="${escAttr(n.name)}" unlocked="${!!n.unlocked}">${escAttr(n.description)}</node>`).join("\n")}`
             : `This is the FIRST segment: tiers 1-${SEGMENT_TIERS}. Tier 1 nodes have no requirements.`);

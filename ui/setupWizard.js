@@ -397,7 +397,7 @@ export const setupWizard = {
             const addProg = $("<div>").addClass("menu_button gm_small_btn").append(
                 $("<i>").addClass("fa-solid fa-arrow-trend-up"), $("<span>").text(" Add progression"));
             addProg.on("click", () => {
-                p.progression = { enabled: true, exp_base: 100, exp_growth: 1.25, skill_points_per_level: 1, bonus_every: 5, attr_points_per_level: 0, attr_cost_every: 10, attr_starting_budget: 20, exp_guidelines: "" };
+                p.progression = { enabled: true, exp_base: 100, exp_growth: 1.10, max_level: 99, skill_points_per_level: 1, bonus_every: 5, attr_points_per_level: 0, attr_cost_every: 10, attr_starting_budget: 20, exp_guidelines: "" };
                 this._renderReview();
             });
             progWrap.append($("<div>").addClass("gm_empty").text("No progression proposed."), addProg);
@@ -424,7 +424,8 @@ export const setupWizard = {
             });
             row.append($("<label>").append(enabled, $("<span>").text(" On")));
             row.append(num("exp_base", "EXP base (first level-up)", 1, 1));
-            row.append(num("exp_growth", "EXP growth per level (multiplier)", 1, 0.01));
+            row.append(num("exp_growth", "EXP growth per level (multiplier — keep low, it compounds)", 1, 0.01));
+            row.append(num("max_level", "Level cap (hard maximum)", 1, 1));
             row.append(num("skill_points_per_level", "Skill points per level", 0, 1));
             row.append(num("bonus_every", "Bonus point every N levels (0 = off)", 0, 1));
             row.append(num("attr_points_per_level", "Attribute points per level (0 = off)", 0, 1));
@@ -439,7 +440,7 @@ export const setupWizard = {
             progWrap.append(row);
 
             const guidelines = $("<textarea>").addClass("gm_input gm_wizard_scenario")
-                .attr("placeholder", "EXP guidelines for the post-pass LLM: how much EXP trivial actions, minor victories and major challenges give...")
+                .attr("placeholder", "Dynamic EXP guidelines for the post-pass LLM — grants scale with level, e.g. 'Standard victory = level*10 EXP; minion half, elite x2, boss x3; quests +50%. Tiers: recruit=1, soldier=20, knight=45, legendary hero=90'...")
                 .val(prog.exp_guidelines || "");
             guidelines.on("input", () => {
                 prog.exp_guidelines = String(guidelines.val() || "");

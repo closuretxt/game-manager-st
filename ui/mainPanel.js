@@ -827,13 +827,14 @@ class MainPanel {
         const enabled = $("<input>").attr("type", "checkbox").prop("checked", !!cfg.enabled);
         const expBase = numInput(cfg.exp_base, 1, 1);
         const expGrowth = numInput(cfg.exp_growth, 1, 0.01);
+        const maxLevel = numInput(cfg.max_level, 1, 1);
         const spPerLevel = numInput(cfg.skill_points_per_level, 0, 1);
         const bonusEvery = numInput(cfg.bonus_every, 0, 1);
         const attrPerLevel = numInput(cfg.attr_points_per_level, 0, 1);
         const attrCostEvery = numInput(cfg.attr_cost_every, 0, 1);
         const attrStartBudget = numInput(cfg.attr_starting_budget, 0, 1);
         const guidelines = $("<textarea>").addClass("gm_modal_textarea").val(cfg.exp_guidelines || "")
-            .attr("placeholder", "e.g. Trivial task ~5 EXP, minor victory ~25 EXP, boss ~120 EXP...");
+            .attr("placeholder", "Dynamic grants — e.g. 'Standard victory = level*10 EXP; minion half, elite x2, boss x3; quests +50%. Tiers: recruit=1, soldier=20, knight=45, legendary hero=90'...");
 
         const close = () => fadeOutRemove(overlay);
         const save = () => {
@@ -841,6 +842,7 @@ class MainPanel {
                 enabled: enabled.prop("checked"),
                 exp_base: Math.max(1, Math.trunc(Number(expBase.val()) || 100)),
                 exp_growth: Math.max(1, Number(expGrowth.val()) || 1.25),
+                max_level: Math.max(1, Math.trunc(Number(maxLevel.val()) || 99)),
                 skill_points_per_level: Math.max(0, Math.trunc(Number(spPerLevel.val()) || 0)),
                 bonus_every: Math.max(0, Math.trunc(Number(bonusEvery.val()) || 0)),
                 attr_points_per_level: Math.max(0, Math.trunc(Number(attrPerLevel.val()) || 0)),
@@ -858,8 +860,10 @@ class MainPanel {
             $("<label>").append(enabled, $("<span>").text(" Enabled for this scenario")),
             $("<label>").text("EXP base (first level-up)"),
             expBase,
-            $("<label>").text("EXP growth per level (multiplier)"),
+            $("<label>").text("EXP growth per level (multiplier — keep low, it compounds)"),
             expGrowth,
+            $("<label>").text("Level cap (hard maximum)"),
+            maxLevel,
             $("<label>").text("Skill points per level"),
             spPerLevel,
             $("<label>").text("Bonus point every N levels (0 = off)"),
