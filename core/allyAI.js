@@ -7,6 +7,7 @@
 // "allies hold position".
 
 import { extension_settings, getContext } from "../../../../extensions.js";
+import { substituteParams } from "../../../../../script.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel, charLabel } from "./stateManager.js";
@@ -145,6 +146,22 @@ export async function runAllyAI({ playerAction = "" } = {}) {
         if (s.deep_context_engines) {
             const deep = await buildDeepContext(String(playerAction || ""));
             if (deep) systemContent += `\n\n<deep_context>\n${deep}\n</deep_context>`;
+        }
+
+        // User's standing instructions for the pre-master engines — at the END
+        // of the system message, after the deep context (same layout as the
+        // dice roller/clash resolver). Injected whenever non-empty, regardless
+        // of the deep context toggle. Full ST macro parsing via substituteParams.
+        const custom = String(s.custom_instructions?.pre || "").trim();
+        if (custom) {
+            let rendered = custom;
+            try {
+                const charName = st.characters?.[st.characterId]?.name;
+                rendered = substituteParams(rendered, { name2Override: charName });
+            } catch (e) {
+                console.warn("[Game Manager] custom instruction macro substitution failed:", e);
+            }
+            systemContent += `\n\n<custom>\n${rendered}\n</custom>`;
         }
         const messages = [
             { role: "system", content: systemContent },
