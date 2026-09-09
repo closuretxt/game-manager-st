@@ -122,16 +122,21 @@ function progressionBlocks(targetLevel = null, isEnemy = false) {
         ? 0
         : Math.max(1, Math.trunc(Number(targetLevel) || 0));
     const budget = lvl => progression.attrBudgetForLevel(lvl);
-    // Budget table around the party level — the LLM picks the row matching
-    // the level it infers; the math itself stays code-owned.
-    const lo = Math.max(1, partyLevel - 3);
-    const table = Array.from({ length: 9 }, (_, i) => `L${lo + i}=${budget(lo + i)}`).join(", ");
+    // Budget RULE instead of a fixed row table — the inferred level can be
+    // ANY level 1..cap (a newbie is level 5 if the world says so), and the
+    // LLM plugs its level into a code-owned formula rather than the party's.
+    const cfgP = progression.getConfig();
+    const per = Math.max(0, Math.trunc(Number(cfgP.attr_points_per_level) || 0));
+    const start = Math.max(0, Math.trunc(Number(cfgP.attr_starting_budget) || 0));
+    const budgetRule = per > 0
+        ? `TOTAL attribute points at level L = ${start} + (L-1)*${per}`
+        : `TOTAL attribute points at any level = ${start}`;
     const anchor = explicit
         ? (isEnemy
             ? `THIS ENEMY is level ${explicit} (the party is around level ${partyLevel}) — calibrate its total attribute points to roughly ${budget(explicit)} and scale starting resources (Health and similar) to that threat level.`
             : `THIS CHARACTER joins the party at level ${explicit} (the party is around level ${partyLevel}) — calibrate their total attribute points to roughly ${budget(explicit)} and scale starting resources (Health and similar) to that level.`)
-        : `No level was given — INFER this character's level from the context (recent chat, details, reference levels${isEnemy ? "; a fair fight sits at the party's level, a boss above it, a minion below it" : ""}) and report it in the <char level="..."> attribute. Level 1 is ONLY for genuine beginners — never default to it: use the tier anchors below (when given) or the context to judge seniority, and pick the row matching it. Expected TOTAL attribute points by level: ${table}. Calibrate to the row you infer and scale starting resources (Health and similar) proportionately.`;
-    logDebug(`characterGenerator: progressionBlocks — partyLevel=${partyLevel}, explicitTarget=${explicit || "(none — auto infer)"}, cap=${cap}, budgetTable=[${table}]`);
+        : `No level was given — judge this character's level from THEIR OWN background (details, recent chat, reference levels${isEnemy ? "; fair fight = the party's level, a boss above it, a minion below it" : "; it can be anything from 1 to the cap — do NOT copy the party's level"}) and report it in <char level="...">. Level 1 only for genuine beginners. ${budgetRule}. Scale starting resources (Health and similar) to that level.`;
+    logDebug(`characterGenerator: progressionBlocks — partyLevel=${partyLevel}, explicitTarget=${explicit || "(none — auto infer)"}, cap=${cap}, budgetRule="${budgetRule}"`);
     return [
         "PROGRESSION ACTIVE: the party is around level " + partyLevel + ".",
         anchor,
