@@ -74,7 +74,7 @@ function buildStateSummaryXml() {
         return sheetXml(c, { tag, attrs });
     };
 
-    const parts = ['<state note="one-line elements carrying their FULL descriptions (resources value/max, skills marked * are on cooldown, statuses with modifiers + effect); values are the PRE-TURN snapshot — <transaction> payments are ALREADY deducted; skill costs and combat spends are OWED (report each exactly once)">'];
+    const parts = ['<state note="one-line elements: SECTION wrappers hold name-keyed entries, e.g. <resources><HP=30/30>Vitality</HP><Mana=12/12>Arcane energy</Mana></resources>, <skills><Fireball*=cost: 5 MP, cd: 3>2d6 fire</Fireball></skills>, <statuses><Dazed=Aim -2>Vision blurred</Dazed></statuses>; skills marked * are on cooldown; values are the PRE-TURN snapshot — but tool-tag REPORTS keep the name=... syntax; <transaction> payments are ALREADY deducted; skill costs and combat spends are OWED (report each exactly once)">'];
     for (const c of d.characters) parts.push(actorXml(c, "char"));
     // Enemies only when the feature is on AND some exist — otherwise the
     // agent never sees (and never invents) enemy state.
@@ -182,6 +182,8 @@ async function buildSystemPrompt(exchange = []) {
         "- Non-combat depletion is bookkeeping too: a meal, a night's rest interrupted by watch duty, a long trek, a crafting session, a bought round of drinks. If the narration shows the resource being spent, the sheet must move — even when no number is stated. Estimate the amount from the setting's scale (a meal is a meal, not half the larder).",
         "- Recovery counts as well: rest, healing, meals, refills and purchases restore or raise tracked resources — report those with <change_values> too (positive delta or absolute value).",
         "- An exchange with real action almost always moves SOMETHING on the sheets. An empty report is for genuinely static scenes (pure conversation, no stakes, no exertion) — not the default.",
+        "",
+        "DYNAMIC STAT MODIFIERS — snapshot attribute/resource values are BASE values: when a transformation/stance/passive/item bonus becomes active THIS exchange, report its modifiers as <change_values> deltas (plus <set_statuses> when trackable); reverse them when it ends; never re-apply a boost already active in the snapshot.",
         "",
         "SHARED RESOURCES — the party-wide <shared> entries (money, food, supplies):",
         "- The pre-pass transaction engine pays for what the PLAYER'S ACTION implied BEFORE the story ran; its payments appear in GAME SYSTEM RESULTS as <transaction> lines and are ALREADY applied — NEVER re-report them.",
