@@ -63,6 +63,18 @@ export const defaultSettings = {
     // contexts (summaries, clock times, chronograms, house rules...).
     custom_instructions: { pre: "", post: "" },
 
+    // Deep context outlet filter (outlets only — plain WI text is untouched).
+    // "blacklist" injects every outlet except the listed ones (empty list =
+    // all), "whitelist" injects only the listed ones, "off" skips lorebook /
+    // outlet parsing in deep context entirely.
+    deep_context_outlet_mode: "whitelist",
+    deep_context_outlet_list: "", // Comma-separated outlet names for the filter above.
+
+    // Show all to Wizard — wizard-family calls (scenario creation, character /
+    // enemy generation) bypass the outlet filter and receive the full
+    // activated World Info.
+    deep_context_wizard_show_all: false,
+
     // Speaker label for the player's lines in the engines' prompt contexts.
     // Empty = the current persona name.
     player_label: "",

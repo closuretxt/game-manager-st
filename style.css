@@ -1414,6 +1414,31 @@ textarea.gm_input {
     color: var(--SmartThemeBodyColor, #ccc);
 }
 
+/* Inline controls (outlet filter) inside the custom instructions modal. */
+.gm_modal select,
+.gm_modal input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    font-size: 12px;
+    border-radius: var(--gm-radius, 8px);
+    border: 1px solid color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 30%, transparent);
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, #1a1a1a) 60%, transparent);
+    color: var(--SmartThemeBodyColor, #ccc);
+}
+
+/* Checkbox row (Show all to Wizard) inside the custom instructions modal. */
+.gm_modal_toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.gm_modal_toggle input {
+    margin: 0;
+}
+
 .gm_modal_actions {
     display: flex;
     justify-content: flex-end;

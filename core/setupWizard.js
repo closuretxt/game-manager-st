@@ -155,7 +155,7 @@ async function collectContext(scenarioText, { skipCharacters = false, improvedGr
     // activated World Info — so lorebook-defined casts and settings are known.
     logDebug(`setupWizard: deep_context setting = ${s.deep_context}`);
     if (s.deep_context) {
-        const deep = await buildDeepContext(String(scenarioText || ""));
+        const deep = await buildDeepContext(String(scenarioText || ""), { showAll: true });
         logDebug(`setupWizard: deep context block ${deep ? `built (${deep.length} chars)` : "EMPTY — skipped"}`);
         if (deep) blocks.push("", "<deep_context>", deep, "</deep_context>");
     }
@@ -497,7 +497,7 @@ async function collectRefineContext(proposal, feedback, scenarioText, { skipChar
 
     // Deep context (setting-gated), same as the initial generation.
     if (s.deep_context) {
-        const deep = await buildDeepContext(String(scenarioText || ""));
+        const deep = await buildDeepContext(String(scenarioText || ""), { showAll: true });
         if (deep) blocks.push("", "<deep_context>", deep, "</deep_context>");
     }
 

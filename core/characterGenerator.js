@@ -201,11 +201,12 @@ function briefBlocks({ name, details, references, level = null, kind = "party" }
 }
 
 // Deep context (setting-gated): character card, persona, author's note and
-// activated World Info — same gate as the scenario wizard.
+// activated World Info — same gate as the scenario wizard (showAll applies
+// when "Show all to Wizard" is on — the outlet filter is bypassed).
 async function deepContextBlocks(details) {
     const s = extension_settings[extensionName];
     if (!s.deep_context) return [];
-    const deep = await buildDeepContext(String(details || ""));
+    const deep = await buildDeepContext(String(details || ""), { showAll: true });
     return deep ? ["", "<deep_context>", deep, "</deep_context>"] : [];
 }
 

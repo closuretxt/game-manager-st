@@ -118,10 +118,31 @@ export const settingsUI = {
         const postArea = $("<textarea>").addClass("gm_modal_textarea").val(s.custom_instructions.post || "")
             .attr("placeholder", "Standing instructions for the POST-PASS tracker (applies state changes)...");
 
+        // Lorebook control — outlet filter for the deep context injection.
+        s.deep_context_outlet_mode = s.deep_context_outlet_mode || "blacklist";
+        s.deep_context_outlet_list = s.deep_context_outlet_list || "";
+        const outletMode = $("<select>").append(
+            $("<option>").val("blacklist").text("Blacklist (inject all except listed)"),
+            $("<option>").val("whitelist").text("Whitelist (inject only listed)"),
+            $("<option>").val("off").text("Off (no lorebooks / outlets)"),
+        ).val(s.deep_context_outlet_mode);
+        const outletList = $("<input>").attr("type", "text")
+            .attr("placeholder", "e.g. shops, quests, npcs — comma-separated outlet names")
+            .val(s.deep_context_outlet_list);
+        // Show all to Wizard — wizard calls bypass the outlet filter entirely.
+        s.deep_context_wizard_show_all = !!s.deep_context_wizard_show_all;
+        const wizardAll = $("<label>").addClass("gm_modal_toggle").append(
+            $("<input>").attr("type", "checkbox").prop("checked", !!s.deep_context_wizard_show_all),
+            $("<span>").text("Show all to Wizard (scenario / character / enemy generation skips the outlet filter)"),
+        );
+
         const close = () => fadeOutRemove(overlay);
         const save = () => {
             s.custom_instructions.pre = String(preArea.val() || "");
             s.custom_instructions.post = String(postArea.val() || "");
+            s.deep_context_outlet_mode = String(outletMode.val() || "blacklist");
+            s.deep_context_outlet_list = String(outletList.val() || "").trim();
+            s.deep_context_wizard_show_all = wizardAll.find("input").prop("checked");
             saveSettingsDebounced();
             gmNotify("Custom instructions saved.", "success");
             close();
@@ -134,6 +155,11 @@ export const settingsUI = {
             preArea,
             $("<label>").text("Post-pass (tracker)"),
             postArea,
+            $("<label>").text("Deep context outlets"),
+            outletMode,
+            outletList,
+            $("<div>").addClass("gm_modal_hint").text("Filters World Info outlets injected into deep context. Blacklist = inject every outlet except the listed ones (empty list = all); Whitelist = inject only the listed ones; Off = skip lorebook/outlet parsing entirely."),
+            wizardAll,
             $("<div>").addClass("gm_modal_actions").append(
                 $("<div>").addClass("menu_button").text("Cancel").on("click", close),
                 $("<div>").addClass("menu_button gm_modal_save").text("Save").on("click", save),
