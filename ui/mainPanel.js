@@ -12,6 +12,7 @@ import { gmNotify, logDebug } from "../core/debug.js";
 import { stateManager } from "../core/stateManager.js";
 import { progression } from "../core/progression.js";
 import { CHARACTER_CONTAINERS } from "../core/schemas.js";
+import { resolveResourceMax } from "../core/resourceScaler.js";
 import { generateCharacterProposal } from "../core/characterGenerator.js";
 import { skillTree } from "../core/skillTree.js";
 import { skillTreeView } from "./skillTree.js";
@@ -579,7 +580,7 @@ class MainPanel {
                     .append($("<i>").addClass("fa-solid fa-wand-magic-sparkles")));
             }
             for (const r of c.resources.slice(0, 4)) {
-                chips.append($("<span>").addClass("gm_party_chip").text(`${r.name} ${r.value}/${r.max}`));
+                chips.append($("<span>").addClass("gm_party_chip").text(`${r.name} ${r.value}/${resolveResourceMax(c, r)}`));
             }
             // Progression: level badge + unspent skill-points chip.
             if (progression.isEnabled()) {
@@ -721,7 +722,7 @@ class MainPanel {
         if (edit) {
             const chips = $("<div>").addClass("gm_party_summary");
             for (const r of (e.resources || []).slice(0, 4)) {
-                chips.append($("<span>").addClass("gm_party_chip").text(`${r.name} ${r.value}/${r.max}`));
+                chips.append($("<span>").addClass("gm_party_chip").text(`${r.name} ${r.value}/${resolveResourceMax(e, r)}`));
             }
             top.append(chips);
         } else {
