@@ -27,7 +27,7 @@ import { sendRequestViaProfile, resolveConnectionProfile, getProfileNameById } f
 import { swapProfile } from "../util/profileSwapper.js";
 import { buildDeepContext } from "../util/loreContext.js";
 
-const MAX_CONTEXT_MESSAGES = 6;
+const MAX_CONTEXT_MESSAGES = 4;
 // The tracker only reports changes from the LAST exchange (player action +
 // AI reply); older messages are context only, so changes already applied in
 // previous turns are never re-applied.

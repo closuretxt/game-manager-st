@@ -35,7 +35,7 @@ import { valueGuidelines } from "./valueGuidelines.js";
 
 import { recentMessages, sceneContextBlock } from "../util/chatStore.js";
 
-const MAX_CONTEXT_MESSAGES = 8;
+const MAX_CONTEXT_MESSAGES = 6;
 
 const SYSTEM_PROMPT = [
     "You are the PRE-PASS ROUTER of a tabletop-style roleplay game system that runs alongside a story engine LLM.",

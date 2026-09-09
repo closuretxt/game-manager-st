@@ -29,7 +29,7 @@ import { buildDeepContext } from "../util/loreContext.js";
 import { diceBubble, attachRollToMessage } from "../ui/diceBubble.js";
 import { playRoll, playTierResult } from "./soundFx.js";
 
-const MAX_CONTEXT_MESSAGES = 8;
+const MAX_CONTEXT_MESSAGES = 4;
 
 const SYSTEM_PROMPT = [
     "You are the DICE ENGINE of a tabletop-style roleplay game system: you judge whether the player's action is uncertain enough to need a random roll and, if so, build a fair 4-tier chance set. REALISM FIRST: chances are EARNED from the actor's sheet and the scene, never generous by default. Every tier must be justifiable by a stat, skill, passive, status or an established scene fact — if nothing supports a chance, lower it.",
