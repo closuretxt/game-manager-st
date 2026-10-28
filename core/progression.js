@@ -15,6 +15,7 @@ import { extension_settings } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
+import { gmSettings } from "./features.js";
 
 // Defaults used whenever the scenario does not override them.
 export const DEFAULT_PROGRESSION = {
@@ -31,7 +32,7 @@ export const DEFAULT_PROGRESSION = {
 };
 
 function settings() {
-    return extension_settings[extensionName];
+    return gmSettings();
 }
 
 export const progression = {

@@ -15,6 +15,7 @@
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { generateRaw, substituteParams } from "../../../../../script.js";
 import { extensionName, CHARACTER_STATES } from "./constants.js";
+import { gmSettings, containerEnabled } from "./features.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel, charLabel } from "./stateManager.js";
 import { progression } from "./progression.js";
@@ -49,7 +50,7 @@ function setPanelBusy(on) {
 // exact names in its tool tags). Legends live once in the header note.
 function buildStateSummaryXml() {
     const d = stateManager.getData();
-    const s = extension_settings[extensionName];
+    const s = gmSettings();
     // Progression tracks are only exposed when the feature is on — otherwise
     // the agent never sees (and never grants) EXP.
     const prog = progression.isEnabled();
@@ -89,10 +90,10 @@ function buildStateSummaryXml() {
     }
     // Shared party resources: visible to the tracker so it can account
     // consumption the pre-pass transaction engine did not already handle.
-    if ((d.sharedResources || []).length) {
+    if ((d.sharedResources || []).length && containerEnabled("sharedResources")) {
         parts.push(`<shared>${d.sharedResources.map(r => sharedXml(r)).join("")}</shared>`);
     }
-    if ((d.custom || []).length) {
+    if ((d.custom || []).length && containerEnabled("custom")) {
         parts.push(`<custom>${d.custom.map(c => customXml(c)).join("")}</custom>`);
     }
     // Open threads: untracked/unfinished things + secrets the agent left
@@ -119,11 +120,20 @@ function collectRecentMessages() {
 // The latest exchange text participates in WI activation, like the player
 // action does in the pre-pass.
 async function buildSystemPrompt(exchange = []) {
-    const s = extension_settings[extensionName];
+    const s = gmSettings();
     const prog = progression.isEnabled();
     // Spawn review: new characters/enemies are reported as briefs for the
     // generate + review flow instead of minimal auto-created sheets.
     const spawnReview = !!(s.feature_character_creator && s.feature_spawn_review);
+    // Containers hidden by the chat's tab toggles: their tags and rules are
+    // left out entirely (the parser would drop them anyway).
+    const on = {
+        items: containerEnabled("inventory"),
+        skills: containerEnabled("skills"),
+        statuses: containerEnabled("statuses"),
+        shared: containerEnabled("sharedResources"),
+        custom: containerEnabled("custom"),
+    };
     let deep = "";
     if (s.deep_context) {
         const extraText = exchange.length ? exchange[exchange.length - 1].text : "";
@@ -186,22 +196,28 @@ async function buildSystemPrompt(exchange = []) {
         "",
         "DYNAMIC STAT MODIFIERS — snapshot attribute/resource values are BASE values: when a transformation/stance/passive/item bonus becomes active THIS exchange, report its modifiers as <change_values> deltas (plus <set_statuses> when trackable); reverse them when it ends; never re-apply a boost already active in the snapshot.",
         "",
-        "SHARED RESOURCES — the party-wide <shared> entries (money, food, supplies):",
-        "- The pre-pass transaction engine pays for what the PLAYER'S ACTION implied BEFORE the story ran; its payments appear in GAME SYSTEM RESULTS as <transaction> lines and are ALREADY applied — NEVER re-report them.",
-        "- For consumption or gains the exchange shows that the game system did NOT process (the story engine narrated a purchase, a toll, a meal from party supplies, loot split into the party purse), report it with <change_values><shared name=\"...\" delta=\"...\"/></change_values>. Estimate the amount from the setting's scale; spending is capped at the current value automatically.",
-        "",
+        ...(on.shared ? [
+            "SHARED RESOURCES — the party-wide <shared> entries (money, food, supplies):",
+            "- The pre-pass transaction engine pays for what the PLAYER'S ACTION implied BEFORE the story ran; its payments appear in GAME SYSTEM RESULTS as <transaction> lines and are ALREADY applied — NEVER re-report them.",
+            "- For consumption or gains the exchange shows that the game system did NOT process (the story engine narrated a purchase, a toll, a meal from party supplies, loot split into the party purse), report it with <change_values><shared name=\"...\" delta=\"...\"/></change_values>. Estimate the amount from the setting's scale; spending is capped at the current value automatically.",
+            "",
+        ] : []),
         "Available blocks:",
         '<change_values><char>Name</char><resource name="HP" delta="-12"|value="45"/><attribute name="STR" delta="1"/></change_values>',
-        '<change_values><shared name="Dinheiro" delta="-6"/></change_values>',
+        ...(on.shared ? ['<change_values><shared name="Dinheiro" delta="-6"/></change_values>'] : []),
         '<set_attributes><char>Name</char><attribute name="STR" value="14"/></set_attributes>',
         '<set_traits><char>Name</char><trait name="Clothing" value="Soaked travel cloak over a torn shirt"/></set_traits>',
-        '<add_items><char>Name</char><item name="Rope" qty="1" description="..."/></add_items>',
-        '<remove_items><char>Name</char><item name="Ammo" qty="3"/></remove_items>',
-        '<update_custom><entry name="Seeds" value="Sprouting" description="..."/></update_custom>',
-        '<set_statuses><char>Name</char><status name="Dazed" modifiers="Aim -2" effect="..."/></set_statuses>',
-        '<clear_statuses><char>Name</char><status name="Dazed"/></clear_statuses>',
-        '<use_skills><char>Name</char><skill name="Fireball"/><skill name="Dash"/></use_skills>',
-        '<warnings><warning name="Food" text="You have about two days of food left."/><warning_clear name="Food"/></warnings>',
+        ...(on.items ? [
+            '<add_items><char>Name</char><item name="Rope" qty="1" description="..."/></add_items>',
+            '<remove_items><char>Name</char><item name="Ammo" qty="3"/></remove_items>',
+        ] : []),
+        ...(on.custom ? ['<update_custom><entry name="Seeds" value="Sprouting" description="..."/></update_custom>'] : []),
+        ...(on.statuses ? [
+            '<set_statuses><char>Name</char><status name="Dazed" modifiers="Aim -2" effect="..."/></set_statuses>',
+            '<clear_statuses><char>Name</char><status name="Dazed"/></clear_statuses>',
+        ] : []),
+        ...(on.skills ? ['<use_skills><char>Name</char><skill name="Fireball"/><skill name="Dash"/></use_skills>'] : []),
+        ...(s.feature_warnings ? ['<warnings><warning name="Food" text="You have about two days of food left."/><warning_clear name="Food"/></warnings>'] : []),
         '<threads><thread name="Fuel trip" text="Left town with 40L fuel; ~120 km driven so far" ref="started when leaving town"/><thread_clear name="Fuel trip"/></threads>',
         '<enemies><enemy action="add" name="Goblin"><resource name="HP" value="30" max="30"/><passive name="Brutal" description="+2 damage below half HP"/></enemy><enemy action="update" name="Goblin"><resource name="HP" delta="-7"/><status name="Wounded" modifiers="Aim -2"/></enemy><enemy action="remove" name="Goblin" reason="defeated"/></enemies>',
         '<transfer><move name="Kael" to="enemy" reason="betrayed the party"/><move name="Goblin Scout" to="party" reason="swore loyalty after being spared"/></transfer>',
@@ -215,7 +231,7 @@ async function buildSystemPrompt(exchange = []) {
         // exactly and rolls true-RNG dice (core/valueResolver.js), so the LLM
         // can report auditable terms and delegate randomness to the engine.
         valueGuidelines(),
-        "Use <warnings> ONLY for imminent, concrete needs the player should prepare for (supplies running out, deadlines, approaching dangers). Keep warning text under 15 words. Clear a warning when its cause is resolved. Do not re-emit unchanged warnings every turn.",
+        ...(s.feature_warnings ? ["Use <warnings> ONLY for imminent, concrete needs the player should prepare for (supplies running out, deadlines, approaching dangers). Keep warning text under 15 words. Clear a warning when its cause is resolved. Do not re-emit unchanged warnings every turn."] : []),
         "Use <threads> to leave notes to yourself about UNTRACKED or UNFINISHED things the formal containers cannot hold: ongoing trips (fuel/money spent so far), half-done actions, unresolved behavior, or secrets that must stay hidden from the player. ALWAYS record where/when it started (ref) so you can compare progress later (\"started when leaving town\", \"day 2 of the siege\"). Update the thread as things progress; clear it (thread_clear) as soon as it is finished or irrelevant. Threads are invisible to the player and never injected into the story prompt — the pre-pass decides what the story needs to know.",
         "Use <enemies> when enemies or threats appear in the scene: action=\"add\" to introduce one (with its HP resource and notable passives/skills), nested <resource>/<status> tags or hp_delta to update it, and action=\"remove\" AS SOON AS an enemy stops being relevant (defeated, fled, scene moved on) — removed enemies are archived and automatically restored with their last state if they return. An enemy at 0 HP or clearly destroyed/slain in the exchange MUST be removed in this same reply — never leave a dead enemy tracked. CLEANUP RULE: if the SNAPSHOT ITSELF already shows an enemy at 0 HP on its lethal resource, remove it with reason=\"cleanup — already at 0 HP\" — report no damage for it and grant no EXP: it died in a previous turn and only the removal was missed. You may also damage enemies with <change_values><char>EnemyName</char>.",
         "Use <transfer> ONLY when a tracked actor CHANGES SIDES OR TRACKING STATUS in the exchange: <move name=\"...\" to=\"enemy|party|roster\"/> moves them with their full sheet (party member defects to the enemy side, enemy is recruited or spared and joins the party, active character benched to the roster, roster ally joins the party). One <move> per change, with a short reason. Never use it for deaths (<deaths>) or temporary knockouts (<knockouts>) — and only for names already in the snapshot.",
@@ -224,13 +240,15 @@ async function buildSystemPrompt(exchange = []) {
             "Use <new_characters> when a NEW named character or enemy clearly enters the scene and matters beyond this exchange: one <char> per newcomer with kind=\"party\" (a potential companion or recurring NPC) or kind=\"enemy\" (a hostile threat), a short details brief (role, appearance, combat style, what makes them different) and their level when progression is active. Never re-emit names already in the state snapshot. When you report a new enemy here, skip the <enemies> add — the player reviews and builds the full sheet from your brief; keep <enemies> for updates and removals.",
         ] : []),
         "Use <set_traits> when the exchange CHANGES one of a character's tracked <traits> (free-text details such as Clothing, Appearance, Mood, Location): write the full NEW text, short and concrete, replacing the old one. Only names already in that character's <traits>; never re-emit unchanged text.",
-        "Use <set_statuses> for TEMPORARY per-character conditions (Dazed, Drunk, Inspired...). When a status lands, also apply its listed stat modifiers through <change_values>; when the condition ends, remove the modifiers with a matching <change_values> and clear the status with <clear_statuses>. Do not use statuses for permanent traits (passives) or party-wide gimmicks (custom).",
+        ...(on.statuses ? ["Use <set_statuses> for TEMPORARY per-character conditions (Dazed, Drunk, Inspired...). When a status lands, also apply its listed stat modifiers through <change_values>; when the condition ends, remove the modifiers with a matching <change_values> and clear the status with <clear_statuses>. Do not use statuses for permanent traits (passives) or party-wide gimmicks (custom)."] : []),
         "Use <knockouts> when a character is clearly unconscious or incapacitated but NOT dead — non-lethal defeat, blunt trauma to the head, choking, blood loss, drugging, electrocution, exhaustion, a spell that drops them. Do NOT hesitate to knock out human characters, allies or the player character when the fiction calls for it: being beaten unconscious is a normal game outcome, not something to shield anyone from. <ko char=\"Name\" reason=\"...\"/> knocks them out, <ko_clear char=\"Name\"/> when they regain consciousness (rest, recovery, a timeskip). Write the reason bluntly and concretely (\"choked out in a headlock\", \"cracked skull on the pavement\", \"drugged wine\") — never a vague euphemism. A character with state=\"ko\" cannot act until cleared — do not report actions, skill use or EXP for them.",
         ...(s.feature_death !== false ? [
             "LETHALITY — be realistic about damage and health. Do NOT soften outcomes to protect characters: wounds have consequences, and a resource reaching its minimum (or a clearly unsurvivable blow shown in the exchange) means DEATH — for the player character, allies, human NPCs and bystanders just as much as for monsters. Nobody is plot-armored: a knife to the throat kills a king, a fall kills a child NPC, an ambush kills an ally. When a character or ally dies, report it with <deaths><death char=\"Name\" reason=\"short cause\"/></deaths>. Write the cause concretely and without euphemism — \"run through by the bandit's spear\", \"throat slit\", \"burned alive in the collapsing house\", \"bled out from a gut wound\" — graphic accuracy is correct bookkeeping, not gratuitousness. A character survives a lethal hit ONLY if one of their listed skills or passives (not on cooldown) explicitly says otherwise (a revive, an undying passive). Never invent a rescue the scene and sheets do not support, never fudge a death into a 'critical injury' to spare the player, and never ask permission before reporting a death. Enemies die via <enemies action=\"remove\" reason=\"slain\">. A character marked dead in the snapshot stays dead — never report actions, healing or EXP for them.",
         ] : []),
-        "Use <use_skills> whenever a character ACTIVELY used one of their listed skills during the exchange: one <skill name=\"...\"/> per skill used, scoped with <char>. This includes ENEMIES — report an enemy's skill use exactly the same way (<use_skills><char>EnemyName</char><skill name=\"...\"/></use_skills>). The system starts cooldowns automatically — NEVER report or compute cooldowns yourself, and NEVER report a skill marked on_cooldown (it could not have been used). Passives are always active: never report them.",
-        "SKILL COSTS — a skill's (cost: ...) shown in the snapshot is the price of using it, and it is ALWAYS paid when the skill is used, even when the narration does not dwell on it. Whenever you report a skill use, also report its payment with the matching blocks: resource or attribute costs via <change_values>, temporary conditions via <set_statuses> (with their stat modifiers), consumed items via <remove_items>. Costs may be narrative (a memory, a favor, a lingering wound) — translate them into the closest tracked block, or a <thread> when nothing tracked fits. Pay each cost exactly once: the snapshot's current values are pre-payment, so the spend belongs to THIS report. When GAME SYSTEM RESULTS commits a concrete spend for that skill (a clash outcome line like \"Sidearm Rounds -2\"), the committed number REPLACES the sheet-generic (cost: ...) — never pay both.",
+        ...(on.skills ? [
+            "Use <use_skills> whenever a character ACTIVELY used one of their listed skills during the exchange: one <skill name=\"...\"/> per skill used, scoped with <char>. This includes ENEMIES — report an enemy's skill use exactly the same way (<use_skills><char>EnemyName</char><skill name=\"...\"/></use_skills>). The system starts cooldowns automatically — NEVER report or compute cooldowns yourself, and NEVER report a skill marked on_cooldown (it could not have been used). Passives are always active: never report them.",
+            "SKILL COSTS — a skill's (cost: ...) shown in the snapshot is the price of using it, and it is ALWAYS paid when the skill is used, even when the narration does not dwell on it. Whenever you report a skill use, also report its payment with the matching blocks: resource or attribute costs via <change_values>, temporary conditions via <set_statuses> (with their stat modifiers), consumed items via <remove_items>. Costs may be narrative (a memory, a favor, a lingering wound) — translate them into the closest tracked block, or a <thread> when nothing tracked fits. Pay each cost exactly once: the snapshot's current values are pre-payment, so the spend belongs to THIS report. When GAME SYSTEM RESULTS commits a concrete spend for that skill (a clash outcome line like \"Sidearm Rounds -2\"), the committed number REPLACES the sheet-generic (cost: ...) — never pay both.",
+        ] : []),
         ...(prog ? [
             "Use <grant_exp> when a character clearly EARNED experience during the exchange (overcoming a challenge, a victory, a meaningful accomplishment) — one <exp amount=\"...\"/> per character, scoped with <char>. The system computes level-ups and skill points automatically — NEVER report or compute levels yourself. Grant EXP by your own accord, at a pace calibrated by the EXP GUIDELINES below; skip the block when nothing noteworthy happened.",
             "ATTRIBUTE MILESTONES are RARE narrative beats (a permanent injury, a breakthrough, divine favor) — most attribute growth comes from the PLAYER spending attribute points. Never raise attributes routinely or as a substitute for level-ups.",
@@ -318,7 +336,7 @@ function buildUserPrompt(exchange, history = []) {
 // Runs one agentic analysis pass for the message `mesId`. Returns the number
 // of applied changes.
 export async function runAgentPass(reason = "manual", mesId = null) {
-    const s = extension_settings[extensionName];
+    const s = gmSettings();
     if (!s.enabled || !s.auto_update) return 0;
     if (_running) {
         logDebug("agent pass skipped — already running");

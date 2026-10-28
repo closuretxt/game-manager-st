@@ -31,6 +31,7 @@
 
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
+import { gmSettings } from "./features.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { rollDice, requeueRollResult } from "./diceRoller.js";
@@ -141,7 +142,7 @@ function planFromTriggers(hits) {
 // predates the persistence or the store failed) does the router re-judge the
 // ORIGINAL player action. Returns { plan, action, reused } or null.
 async function recoverSwipePlan(targetMsgId) {
-    const s = extension_settings[extensionName];
+    const s = gmSettings();
     const st = getContext();
     const userMsgId = targetMsgId - 1; // the action the AI reply answers to
     const prev = st.chat?.[userMsgId];
@@ -194,7 +195,7 @@ async function recoverSwipePlan(targetMsgId) {
 // Called from the awaited GENERATION_AFTER_COMMANDS handler before prompt
 // assembly. `type` is the generation type ("normal", "swipe", ...).
 export async function handlePreTurn(type = "normal") {
-    const s = extension_settings[extensionName];
+    const s = gmSettings();
     if (!s.enabled) return;
     // Fresh per-turn injection record: whatever the macros consume during
     // THIS prompt assembly is what the post-pass tracker will see.

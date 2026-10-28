@@ -12,6 +12,8 @@ import { gmNotify, logDebug } from "../core/debug.js";
 import { stateManager } from "../core/stateManager.js";
 import { progression } from "../core/progression.js";
 import { CHARACTER_CONTAINERS } from "../core/schemas.js";
+import { gmSettings, tabEnabled } from "../core/features.js";
+import { openChatModeDialog } from "./chatModeDialog.js";
 import { resolveResourceMax } from "../core/resourceScaler.js";
 import { generateCharacterProposal } from "../core/characterGenerator.js";
 import { skillTree } from "../core/skillTree.js";
@@ -30,21 +32,25 @@ import { characterCreator } from "./characterCreator.js";
 import { iconBtn } from "./characterView.js";
 import { popoverMenu } from "./popoverMenu.js";
 
+// `toggle` = the per-chat tab toggle (core/features.js) that hides the tab.
 const TABS = [
     { id: "party", label: "Party", icon: "fa-solid fa-users" },
     { id: "enemies", label: "Enemies", icon: "fa-solid fa-skull" },
-    { id: "shared", label: "Resource Manager", icon: "fa-solid fa-coins" },
-    { id: "custom", label: "Custom", icon: "fa-solid fa-seedling" },
+    { id: "shared", label: "Resource Manager", icon: "fa-solid fa-coins", toggle: "tab_shared" },
+    { id: "custom", label: "Custom", icon: "fa-solid fa-seedling", toggle: "tab_custom" },
 ];
 
 // Sub-tabs inside a character sheet (they can hold a lot of entries).
 const CHAR_TABS = [
     { id: "stats", label: "Basic Stats", icon: "fa-solid fa-heart-pulse" },
-    { id: "inventory", label: "Inventory", icon: "fa-solid fa-box-open" },
-    { id: "skills", label: "Skills", icon: "fa-solid fa-bolt" },
-    { id: "passives", label: "Passives", icon: "fa-solid fa-shield-halved" },
-    { id: "statuses", label: "Statuses", icon: "fa-solid fa-face-dizzy" },
+    { id: "inventory", label: "Inventory", icon: "fa-solid fa-box-open", toggle: "tab_inventory" },
+    { id: "skills", label: "Skills", icon: "fa-solid fa-bolt", toggle: "tab_skills" },
+    { id: "passives", label: "Passives", icon: "fa-solid fa-shield-halved", toggle: "tab_passives" },
+    { id: "statuses", label: "Statuses", icon: "fa-solid fa-face-dizzy", toggle: "tab_statuses" },
 ];
+
+const tabVisible = tab => !tab.toggle || tabEnabled(tab.toggle);
+const visibleCharTabs = () => CHAR_TABS.filter(tabVisible);
 
 class MainPanel {
     constructor() {
@@ -89,6 +95,7 @@ class MainPanel {
         $("#gm_btn_close").on("click", () => this.close());
         $("#gm_btn_edit").on("click", () => this.toggleEditMode());
         $("#gm_btn_power").on("click", () => this.toggleEnabled());
+        $("#gm_btn_mode").on("click", () => openChatModeDialog());
         $("#gm_btn_rerun").on("click", async () => {
             gmNotify("Running agent pass...", "info");
             const applied = await manualRun();
@@ -311,11 +318,16 @@ class MainPanel {
         if (!this.root) return;
         // Enemies tab only exists when the feature is on AND there is something
         // to show (active enemies, or edit mode to add/archive them).
-        const s = extension_settings[extensionName];
+        const s = gmSettings();
         const enemyCount = (stateManager.getData().enemies || []).length;
         if (this.activeTab === "enemies" && !(s.feature_enemies && (enemyCount || this.editMode))) {
             this.activeTab = "party";
         }
+        // A tab hidden by the chat's toggles falls back to its home tab.
+        if (!tabVisible(TABS.find(t => t.id === this.activeTab) || TABS[0])) this.activeTab = "party";
+        const charTabs = visibleCharTabs();
+        if (!charTabs.some(t => t.id === this.activeCharTab) && this.activeCharTab !== "skilltree") this.activeCharTab = "stats";
+        if (!charTabs.some(t => t.id === this.activeEnemyTab)) this.activeEnemyTab = "stats";
         this._refreshEditButton();
         this._refreshPowerButton();
         this._renderWarnings();
@@ -357,11 +369,12 @@ class MainPanel {
         // .empty() collapses the scroll width, which resets scrollLeft to 0.
         const prevScroll = bar[0] ? bar[0].scrollLeft : 0;
         bar.empty();
-        const s = extension_settings[extensionName];
+        const s = gmSettings();
         const enemyCount = (stateManager.getData().enemies || []).length;
         for (const tab of TABS) {
             // Enemies tab hidden entirely when unused — no trace in the UI.
             if (tab.id === "enemies" && !(s.feature_enemies && (enemyCount || this.editMode))) continue;
+            if (!tabVisible(tab)) continue;
             const btn = $("<div>")
                 .addClass("gm_tab")
                 .toggleClass("active", tab.id === this.activeTab)
@@ -477,7 +490,7 @@ class MainPanel {
     }
 
     _renderPartyList(content, edit) {
-        const s = extension_settings[extensionName];
+        const s = gmSettings();
         const wrap = $("<div>").addClass("gm_list");
         const header = $("<div>").addClass("gm_section_header").append(
             $("<b>").text("Party"),
@@ -1040,7 +1053,7 @@ class MainPanel {
         content.append(backRow);
 
         const bar = $("<div>").addClass("gm_tab_bar gm_char_tab_bar");
-        for (const tab of CHAR_TABS) {
+        for (const tab of visibleCharTabs()) {
             // Enemies never grow skill trees (they never spend points).
             if (tab.id === "skilltree") continue;
             const btn = $("<div>")
@@ -1213,7 +1226,7 @@ class MainPanel {
         if (this.activeCharTab === "skilltree") this.activeCharTab = "skills";
 
         const bar = $("<div>").addClass("gm_tab_bar gm_char_tab_bar");
-        for (const tab of CHAR_TABS) {
+        for (const tab of visibleCharTabs()) {
             const btn = $("<div>")
                 .addClass("gm_tab")
                 .toggleClass("active", tab.id === this.activeCharTab)

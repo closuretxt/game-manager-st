@@ -43,6 +43,7 @@
 
 import { extension_settings } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
+import { gmSettings, containerEnabled } from "./features.js";
 import { stateManager } from "./stateManager.js";
 import { progression } from "./progression.js";
 import { logDebug } from "./debug.js";
@@ -331,7 +332,7 @@ function applyEnemiesBlock(raw) {
 // recruitment, demotions.
 function applyTransferBlock(raw) {
     if (!raw) return 0;
-    const s = extension_settings[extensionName];
+    const s = gmSettings();
     let applied = 0;
     MOVE_RE.lastIndex = 0;
     let m;
@@ -400,6 +401,16 @@ function applyRenameBlock(raw) {
     return applied;
 }
 
+// Tool blocks that only touch one tab-toggleable container (core/features.js).
+const BLOCK_CONTAINERS = {
+    add_items: "inventory",
+    remove_items: "inventory",
+    use_skills: "skills",
+    set_statuses: "statuses",
+    clear_statuses: "statuses",
+    update_custom: "custom",
+};
+
 // Applies parsed blocks to the state. Returns the number of applied actions.
 export function applyToolBlocks(blocks, { autoCreateChars = false } = {}) {
     let applied = 0;
@@ -432,6 +443,7 @@ export function applyToolBlocks(blocks, { autoCreateChars = false } = {}) {
         }
         // Warnings are party-level — no character scoping.
         if (block.type === "warnings") {
+            if (gmSettings().feature_warnings === false) continue;
             for (const action of block.actions) {
                 if (applyAction(block.type, null, action)) applied++;
             }
@@ -449,7 +461,7 @@ export function applyToolBlocks(blocks, { autoCreateChars = false } = {}) {
         // enemy instead (archived, restored automatically if it returns).
         // Feature-gated: with permadeath off the block is ignored entirely.
         if (block.type === "deaths") {
-            if (extension_settings[extensionName]?.feature_death === false) continue;
+            if (gmSettings().feature_death === false) continue;
             for (const action of block.actions) {
                 const target = stateManager.getCharacter(action.attrs.char || "");
                 if (target) {
@@ -483,11 +495,19 @@ export function applyToolBlocks(blocks, { autoCreateChars = false } = {}) {
             }
             continue;
         }
+        // Containers hidden by the chat's tab toggles are not tracked: their
+        // tags are dropped so hidden data never changes out of sight.
+        const gated = BLOCK_CONTAINERS[block.type];
+        if (gated && !containerEnabled(gated)) {
+            logDebug(`toolParser: skipping <${block.type}> — ${gated} disabled for this chat`);
+            continue;
+        }
         // <shared> actions inside <change_values> are party-level: applied by
         // name against the shared resources, no character scoping.
         if (block.type === "change_values" && block.actions.some(a => a.tag === "shared")) {
+            const sharedOn = containerEnabled("sharedResources");
             for (const action of block.actions) {
-                if (action.tag !== "shared") continue;
+                if (action.tag !== "shared" || !sharedOn) continue;
                 const name = action.attrs.name ?? action.content ?? "";
                 if (stateManager.applySharedDelta(name, { delta: resolveNum(action.attrs.delta), value: resolveNum(action.attrs.value) })) applied++;
             }

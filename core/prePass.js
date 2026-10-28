@@ -23,6 +23,7 @@
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { substituteParams } from "../../../../../script.js";
 import { extensionName } from "./constants.js";
+import { gmSettings } from "./features.js";
 import { storeActionData } from "../util/chatStore.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel, charLabel } from "./stateManager.js";
@@ -111,7 +112,7 @@ async function collectContext(playerAction) {
     // line per actor, tracked names as attribute keys, same dialect as the
     // post-pass snapshot.
     const d = stateManager.getData();
-    const s = extension_settings[extensionName];
+    const s = gmSettings();
     const parts = ['<state note="statuses as Name (modifiers); skills and inventory items carry their full descriptions; * = skill on cooldown">'];
 
     for (const c of d.characters || []) {
@@ -377,7 +378,7 @@ function sanitizePlan(parsed) {
 // Info — so the router knows who and where the scene is before judging
 // anything in the user message.
 async function buildSystemContent(playerAction) {
-    const s = extension_settings[extensionName];
+    const s = gmSettings();
     let content = SYSTEM_PROMPT;
     // Scenario brief: stable, so it sits before the per-turn deep context.
     const brief = scenarioBriefBlock();
@@ -408,7 +409,7 @@ async function buildSystemContent(playerAction) {
 // Runs the pre-pass router for a player action. Returns a sanitized plan, or
 // null when disabled/failed (caller falls back to keyword triggers).
 export async function runPrePass(playerAction) {
-    const s = extension_settings[extensionName];
+    const s = gmSettings();
     if (!s.enabled || !s.pre_pass) {
         console.info(`[GM DIAG] runPrePass skipped: enabled=${!!s.enabled} pre_pass=${!!s.pre_pass}`);
         return null;

@@ -9,11 +9,15 @@ import { extension_settings } from "../../../../extensions.js";
 import { extensionName } from "../core/constants.js";
 import { stateManager } from "../core/stateManager.js";
 import { logDebug } from "../core/debug.js";
+import { containerEnabled } from "../core/features.js";
 
+// `container` = the tab-toggleable sheet container (core/features.js); a pill
+// whose container is hidden for this chat disappears with it.
 const HOTBAR_TABS = [
-    { id: "skills", label: "Skills", icon: "fa-solid fa-bolt" },
-    { id: "items", label: "Items", icon: "fa-solid fa-box-open" },
+    { id: "skills", label: "Skills", icon: "fa-solid fa-bolt", container: "skills" },
+    { id: "items", label: "Items", icon: "fa-solid fa-box-open", container: "inventory" },
 ];
+const visibleTabs = () => HOTBAR_TABS.filter(t => containerEnabled(t.container));
 
 class Hotbar {
     constructor() {
@@ -59,7 +63,11 @@ class Hotbar {
         if (sf) this._resizeObserver.observe(sf);
 
         // Re-render on any tracked-state change (skills granted, cooldowns ticked, party swaps).
-        stateManager.onChange(() => { if (this._open) this._renderPanel(); });
+        // Feature/chat changes may hide pills, so the pill row refreshes too.
+        stateManager.onChange((reason) => {
+            if (reason === "features" || reason === "chat_loaded") this.refresh();
+            else if (this._open) this._renderPanel();
+        });
 
         // Settings checkboxes: live enable/disable.
         $("#gm_setting_hotbar, #gm_setting_enabled").off("change.gmhotbar").on("change.gmhotbar", () => this.refresh());
@@ -71,9 +79,17 @@ class Hotbar {
 
     // Shows/hides the pills; keeps the open panel in sync with settings.
     refresh() {
-        const on = this.enabled;
+        const tabs = visibleTabs();
+        const on = this.enabled && tabs.length > 0;
         this.root.toggle(on);
         if (!on) return this.close();
+        this.root.children().each((_, el) => {
+            $(el).toggle(tabs.some(t => t.id === $(el).attr("data-tab")));
+        });
+        if (!tabs.some(t => t.id === this.activeTab)) {
+            this.activeTab = tabs[0].id;
+            if (this._open) return this.close();
+        }
         // Highlight only the open tab — no pill stays lit while the panel is closed.
         this.root.children().each((_, el) => {
             $(el).toggleClass("active", this._open && $(el).attr("data-tab") === this.activeTab);

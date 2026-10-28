@@ -15,6 +15,7 @@
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { substituteParams } from "../../../../../script.js";
 import { extensionName } from "./constants.js";
+import { gmSettings } from "./features.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel, charLabel } from "./stateManager.js";
 import { captureSnapshot } from "./snapshots.js";
@@ -178,7 +179,7 @@ export function requeueRollResult(title, tier) {
 // needed, so a needsRoll=false reply from the dice LLM is overridden (the
 // dice LLM still provides the tiers). Returns true if a roll was made.
 export async function rollDice(playerAction, mesId, { title = null } = {}) {
-    const s = extension_settings[extensionName];
+    const s = gmSettings();
     if (!s.enabled || !s.feature_dice) return false;
 
     // When the pre-pass already decided a roll is needed, surface its title

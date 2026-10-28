@@ -16,6 +16,7 @@
 
 import { extension_settings } from "../../../../extensions.js";
 import { extensionName, CHARACTER_STATES } from "./constants.js";
+import { gmSettings, containerEnabled } from "./features.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { resolveResourceMax } from "./resourceScaler.js";
@@ -43,7 +44,7 @@ let _prevHigh = "";
 let _prevLow = "";
 
 function enabled() {
-    const s = extension_settings[extensionName];
+    const s = gmSettings();
     return !!(s.enabled && s.feature_injection);
 }
 
@@ -170,7 +171,7 @@ function cacheFirst() {
 // Drains the one-shot queue (recorded for the post-pass as _lastLow).
 function buildTurnContext() {
     const d = stateManager.getData();
-    const s = extension_settings[extensionName];
+    const s = gmSettings();
     const parts = [];
     // Context-based enemies: compact state summary, only when the feature is
     // on AND enemies exist — zero tokens otherwise.
@@ -245,14 +246,17 @@ export function buildLowPriority() {
     const brief = scenarioBriefInjection();
     if (brief) parts.push(brief);
 
-    for (const w of [...(d.warnings || [])].sort(byName)) {
+    const s = gmSettings();
+    for (const w of s.feature_warnings ? [...(d.warnings || [])].sort(byName) : []) {
         parts.push(`<warning name="${esc(w.name)}">${esc(w.text || "")}</warning>`);
     }
 
-    for (const r of (d.sharedResources || []).filter(x => x.always_inject).sort(byName)) {
+    const shared = containerEnabled("sharedResources") ? d.sharedResources || [] : [];
+    for (const r of shared.filter(x => x.always_inject).sort(byName)) {
         parts.push(`<resource name="${esc(r.name)}" value="${esc(r.qty)}"/>`);
     }
-    for (const c of (d.custom || []).filter(x => x.always_inject).sort(byName)) {
+    const custom = containerEnabled("custom") ? d.custom || [] : [];
+    for (const c of custom.filter(x => x.always_inject).sort(byName)) {
         parts.push(`<custom name="${esc(c.name)}" value="${esc(c.value)}"/>`);
     }
 
@@ -266,7 +270,7 @@ export function buildLowPriority() {
             if (mode.status === "dead") continue;
         }
         // Per-entry "always inject" flags (clothing, a signature stat...).
-        if (CHARACTER_CONTAINERS.some(k => (c[k] || []).some(e => e.always_inject))) {
+        if (CHARACTER_CONTAINERS.some(k => containerEnabled(k) && (c[k] || []).some(e => e.always_inject))) {
             parts.push(sheetXml(c, { tag: "char", descriptions: false, filter: e => !!e.always_inject }));
         }
     }

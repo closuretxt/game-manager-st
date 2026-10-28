@@ -9,6 +9,7 @@
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { substituteParams } from "../../../../../script.js";
 import { extensionName } from "./constants.js";
+import { gmSettings } from "./features.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel, charLabel } from "./stateManager.js";
 import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
@@ -133,7 +134,7 @@ export function parseAllyActions(text) {
 // ({ char, speed, title, text }) — possibly empty — or null when disabled or
 // failed (the caller then treats allies as holding position).
 export async function runAllyAI({ playerAction = "" } = {}) {
-    const s = extension_settings[extensionName];
+    const s = gmSettings();
     if (!s.enabled || !s.feature_combat || !s.feature_ally_ai) return null;
 
     const d = stateManager.getData();

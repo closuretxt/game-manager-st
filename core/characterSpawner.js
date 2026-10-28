@@ -15,6 +15,7 @@
 
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
+import { gmSettings } from "./features.js";
 import { logDebug, gmNotify } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { progression } from "./progression.js";
@@ -24,7 +25,7 @@ import { resolveEnemyCreationProfile } from "../util/connectionService.js";
 const MAX_QUEUE = 8; // sanity cap — oldest briefs are dropped first
 
 function settings() {
-    return extension_settings[extensionName];
+    return gmSettings();
 }
 
 // Master gate: the whole pipeline must be on for queued briefs to make sense.

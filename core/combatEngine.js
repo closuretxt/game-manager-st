@@ -17,6 +17,7 @@
 
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
+import { gmSettings } from "./features.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { weightedRoll } from "./diceRoller.js";
@@ -180,7 +181,7 @@ export function requeueCombatRound(stored) {
 // from the pre-pass: { engaged: true, speed }. Returns true if a round was
 // resolved.
 export async function runCombatTurn(action, plan, mesId) {
-    const s = extension_settings[extensionName];
+    const s = gmSettings();
     if (!s.enabled || !s.feature_combat) return false;
 
     const d = stateManager.getData();

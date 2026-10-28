@@ -11,6 +11,7 @@
 
 import { extension_settings } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
+import { gmSettings } from "./features.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel, charLabel } from "./stateManager.js";
 import { captureSnapshot } from "./snapshots.js";
@@ -71,7 +72,7 @@ function parseReply(text) {
 // it carries a non-zero delta the router already judged the transaction and
 // the specialist LLM call is skipped. Returns true if a transaction was applied.
 export async function runTransaction(resource, playerAction, mesId = null, plan = null) {
-    const s = extension_settings[extensionName];
+    const s = gmSettings();
     if (!s.enabled || !s.feature_transactions) return false;
     if (!resource) return false;
 

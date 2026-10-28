@@ -19,6 +19,7 @@
 
 import { escAttr } from "./toolParser.js";
 import { resolveResourceMax } from "./resourceScaler.js";
+import { containerEnabled } from "./features.js";
 
 // Collapse whitespace so multi-line descriptions stay one compact line.
 const oneLine = v => String(v ?? "").replace(/\s+/g, " ").trim();
@@ -128,7 +129,8 @@ export function sheetXml(actor, {
         if (v !== undefined && v !== null && v !== "") attrList.push(`${k}="${escAttr(v)}"`);
     }
     // Each present section is ONE wrapper element; empty sections vanish.
-    const children = sections.filter(s => SECTIONS[s]).map(s => {
+    // Sections hidden by the chat's tab toggles are untracked — no LLM sees them.
+    const children = sections.filter(s => SECTIONS[s] && containerEnabled(s)).map(s => {
         const entries = (actor?.[s] || []).filter(e => !filter || filter(e, s));
         if (!entries.length) return "";
         return `<${s}>${entries.map(e => SECTIONS[s](e, descriptions, actor)).join("")}</${s}>`;

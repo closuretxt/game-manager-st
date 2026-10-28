@@ -3,6 +3,58 @@ import { saveSettingsDebounced } from "../../../../../script.js";
 import { defaultPresets } from "./defaultPresets.js";
 import { extensionName } from "../core/constants.js";
 import { stateManager } from "../core/stateManager.js";
+import { OVERRIDABLE_KEYS, FEATURE_MODES } from "../core/features.js";
+
+// Checkbox wiring: setting key -> element id in index.html. Load, save and
+// listeners all iterate this table, so a new toggle is one line here.
+const CHECKBOXES = {
+    enabled: "gm_setting_enabled",
+    auto_update: "gm_setting_auto_update",
+    debug_mode: "gm_setting_debug_mode",
+    open_panel_on_start: "gm_setting_open_panel",
+    feature_bubble_button: "gm_setting_bubble_btn",
+    feature_hotbar: "gm_setting_hotbar",
+    legacy_api: "gm_setting_legacy",
+    pre_pass: "gm_setting_pre_pass",
+    feature_setup_wizard: "gm_setting_feat_wizard",
+    feature_character_creator: "gm_setting_feat_char_creator",
+    feature_spawn_review: "gm_setting_spawn_review",
+    dynamic_enemy_creation: "gm_setting_dyn_enemies",
+    deep_context: "gm_setting_deep_context",
+    deep_context_engines: "gm_setting_deep_context_engines",
+    feature_warnings: "gm_setting_feat_warnings",
+    feature_dice: "gm_setting_feat_dice",
+    feature_transactions: "gm_setting_feat_transactions",
+    feature_injection: "gm_setting_feat_injection",
+    cache_first: "gm_setting_cache_first",
+    feature_enemies: "gm_setting_feat_enemies",
+    feature_rewrite: "gm_setting_feat_rewrite",
+    feature_skill_suggest: "gm_setting_feat_skill_suggest",
+    feature_progression: "gm_setting_feat_progression",
+    feature_skill_tree: "gm_setting_feat_skill_tree",
+    feature_combat: "gm_setting_feat_combat",
+    feature_ally_ai: "gm_setting_feat_ally_ai",
+    feature_death: "gm_setting_feat_death",
+    tab_inventory: "gm_setting_tab_inventory",
+    tab_skills: "gm_setting_tab_skills",
+    tab_passives: "gm_setting_tab_passives",
+    tab_statuses: "gm_setting_tab_statuses",
+    tab_shared: "gm_setting_tab_shared",
+    tab_custom: "gm_setting_tab_custom",
+    combat_rich_clash_ui: "gm_setting_rich_clash",
+    deterministic_clashes: "gm_setting_deterministic_clashes",
+    roll_attachment: "gm_setting_roll_attachment",
+    value_guidelines: "gm_setting_value_guidelines",
+    notify_enabled: "gm_setting_notify",
+    notify_stats: "gm_setting_notify_stats",
+    notify_items: "gm_setting_notify_items",
+    notify_skills: "gm_setting_notify_skills",
+    notify_progression: "gm_setting_notify_progression",
+    notify_states: "gm_setting_notify_states",
+    notify_dice: "gm_setting_notify_dice",
+    notify_enemies: "gm_setting_notify_enemies",
+    sound_enabled: "gm_setting_sound",
+};
 
 export const defaultSettings = {
     enabled: true,
@@ -59,6 +111,17 @@ export const defaultSettings = {
     roll_attachment: true,        // Roll/combat results render as file-style chips under the player's message.
     roll_duration: 1600,          // Dice roll animation length in ms (a random ±200ms variation is added per roll).
     feature_death: true,          // Permadeath: the post-pass may kill characters (<deaths> tag); only the user revives.
+
+    // Per-chat feature modes (core/features.js). The feature_* flags above and
+    // the tab toggles below are the GLOBAL defaults ("Custom" mode); each chat
+    // may pick a mode preset and override single toggles.
+    default_mode: "custom",
+    tab_inventory: true,
+    tab_skills: true,
+    tab_passives: true,
+    tab_statuses: true,
+    tab_shared: true,     // Resource Manager tab (shared party resources).
+    tab_custom: true,
 
     // Standing instructions injected verbatim into the specialists' prompt
     // contexts (summaries, clock times, chronograms, house rules...).
@@ -136,117 +199,65 @@ export async function loadSettings() {
         s.presets.unshift(structuredClone(defaultPresets[0]));
     }
 
-    $("#gm_setting_enabled").prop("checked", !!s.enabled);
-    $("#gm_setting_auto_update").prop("checked", !!s.auto_update);
-    $("#gm_setting_debug_mode").prop("checked", !!s.debug_mode);
-    $("#gm_setting_open_panel").prop("checked", !!s.open_panel_on_start);
-    $("#gm_setting_bubble_btn").prop("checked", !!s.feature_bubble_button);
-    $("#gm_setting_hotbar").prop("checked", !!s.feature_hotbar);
-    $("#gm_setting_legacy").prop("checked", !!s.legacy_api);
-    $("#gm_setting_pre_pass").prop("checked", !!s.pre_pass);
-    $("#gm_setting_feat_wizard").prop("checked", !!s.feature_setup_wizard);
-    $("#gm_setting_feat_char_creator").prop("checked", !!s.feature_character_creator);
-    $("#gm_setting_spawn_review").prop("checked", !!s.feature_spawn_review);
-    $("#gm_setting_dyn_enemies").prop("checked", !!s.dynamic_enemy_creation);
-    $("#gm_setting_deep_context").prop("checked", !!s.deep_context);
-    $("#gm_setting_deep_context_engines").prop("checked", !!s.deep_context_engines);
-    $("#gm_setting_feat_warnings").prop("checked", !!s.feature_warnings);
-    $("#gm_setting_feat_dice").prop("checked", !!s.feature_dice);
-    $("#gm_setting_feat_transactions").prop("checked", !!s.feature_transactions);
-    $("#gm_setting_feat_injection").prop("checked", !!s.feature_injection);
-    $("#gm_setting_cache_first").prop("checked", !!s.cache_first);
-    $("#gm_setting_feat_enemies").prop("checked", !!s.feature_enemies);
-    $("#gm_setting_feat_rewrite").prop("checked", !!s.feature_rewrite);
-    $("#gm_setting_feat_skill_suggest").prop("checked", !!s.feature_skill_suggest);
-    $("#gm_setting_feat_progression").prop("checked", !!s.feature_progression);
-    $("#gm_setting_feat_skill_tree").prop("checked", !!s.feature_skill_tree);
-    $("#gm_setting_feat_combat").prop("checked", !!s.feature_combat);
-    $("#gm_setting_feat_ally_ai").prop("checked", !!s.feature_ally_ai);
-    $("#gm_setting_rich_clash").prop("checked", !!s.combat_rich_clash_ui);
-    $("#gm_setting_deterministic_clashes").prop("checked", !!s.deterministic_clashes);
-    $("#gm_setting_roll_attachment").prop("checked", !!s.roll_attachment);
+    for (const [key, id] of Object.entries(CHECKBOXES)) {
+        $(`#${id}`).prop("checked", !!s[key]);
+    }
     $("#gm_setting_roll_duration").val(Number.isFinite(+s.roll_duration) ? +s.roll_duration : 1600);
     $("#gm_roll_duration_value").text(`${((Number(s.roll_duration) || 1600) / 1000).toFixed(1)}s`);
     $("#gm_setting_player_label").val(String(s.player_label || ""));
     $("#gm_setting_char_label").val(String(s.char_label || ""));
-    $("#gm_setting_feat_death").prop("checked", !!s.feature_death);
     $("#gm_setting_bg_opacity").val(Number.isFinite(+s.window_opacity) ? +s.window_opacity : 95);
     $("#gm_bg_opacity_value").text(`${s.window_opacity}%`);
-    $("#gm_setting_notify").prop("checked", !!s.notify_enabled);
-    $("#gm_setting_notify_stats").prop("checked", !!s.notify_stats);
-    $("#gm_setting_notify_items").prop("checked", !!s.notify_items);
-    $("#gm_setting_notify_skills").prop("checked", !!s.notify_skills);
-    $("#gm_setting_notify_progression").prop("checked", !!s.notify_progression);
-    $("#gm_setting_notify_states").prop("checked", !!s.notify_states);
-    $("#gm_setting_notify_dice").prop("checked", !!s.notify_dice);
-    $("#gm_setting_notify_enemies").prop("checked", !!s.notify_enemies);
-    $("#gm_setting_value_guidelines").prop("checked", !!s.value_guidelines);
-    $("#gm_setting_sound").prop("checked", !!s.sound_enabled);
     $("#gm_setting_sound_volume").val(Number.isFinite(+s.sound_volume) ? +s.sound_volume : 60);
     $("#gm_sound_volume_value").text(`${s.sound_volume}%`);
 
     // Initialize the game-state store (characters, shared resources, ids).
     stateManager.init();
+    refreshFeatureUI();
 }
 
+// Writes one checkbox back to the GLOBAL settings. Per-chat changes live in
+// the window's Chat Mode dialog (ui/chatModeDialog.js); for overridable keys
+// the drawer edits the defaults the "Custom" mode resolves to.
+function onCheckbox(key, id) {
+    extension_settings[extensionName][key] = $(`#${id}`).prop("checked");
+    saveSettingsDebounced();
+    // The open chat may follow these defaults — let the panel re-render.
+    if (OVERRIDABLE_KEYS.includes(key)) stateManager.emitChange("features");
+}
+
+// Kept for index.js's re-export: re-reads every checkbox.
 export function saveSettings() {
-    const s = extension_settings[extensionName];
-    s.enabled = $("#gm_setting_enabled").prop("checked");
-    s.auto_update = $("#gm_setting_auto_update").prop("checked");
-    s.debug_mode = $("#gm_setting_debug_mode").prop("checked");
-    s.open_panel_on_start = $("#gm_setting_open_panel").prop("checked");
-    s.feature_bubble_button = $("#gm_setting_bubble_btn").prop("checked");
-    s.feature_hotbar = $("#gm_setting_hotbar").prop("checked");
-    s.legacy_api = $("#gm_setting_legacy").prop("checked");
-    s.pre_pass = $("#gm_setting_pre_pass").prop("checked");
-    s.feature_setup_wizard = $("#gm_setting_feat_wizard").prop("checked");
-    s.feature_character_creator = $("#gm_setting_feat_char_creator").prop("checked");
-    s.feature_spawn_review = $("#gm_setting_spawn_review").prop("checked");
-    s.dynamic_enemy_creation = $("#gm_setting_dyn_enemies").prop("checked");
-    s.deep_context = $("#gm_setting_deep_context").prop("checked");
-    s.deep_context_engines = $("#gm_setting_deep_context_engines").prop("checked");
-    s.feature_warnings = $("#gm_setting_feat_warnings").prop("checked");
-    s.feature_dice = $("#gm_setting_feat_dice").prop("checked");
-    s.feature_transactions = $("#gm_setting_feat_transactions").prop("checked");
-    s.feature_injection = $("#gm_setting_feat_injection").prop("checked");
-    s.cache_first = $("#gm_setting_cache_first").prop("checked");
-    s.feature_enemies = $("#gm_setting_feat_enemies").prop("checked");
-    s.feature_rewrite = $("#gm_setting_feat_rewrite").prop("checked");
-    s.feature_skill_suggest = $("#gm_setting_feat_skill_suggest").prop("checked");
-    s.feature_progression = $("#gm_setting_feat_progression").prop("checked");
-    s.feature_skill_tree = $("#gm_setting_feat_skill_tree").prop("checked");
-    s.feature_combat = $("#gm_setting_feat_combat").prop("checked");
-    s.feature_ally_ai = $("#gm_setting_feat_ally_ai").prop("checked");
-    s.combat_rich_clash_ui = $("#gm_setting_rich_clash").prop("checked");
-    s.deterministic_clashes = $("#gm_setting_deterministic_clashes").prop("checked");
-    s.roll_attachment = $("#gm_setting_roll_attachment").prop("checked");
-    s.roll_duration = Number($("#gm_setting_roll_duration").val()) || 1600;
-    s.player_label = String($("#gm_setting_player_label").val() || "").trim();
-    s.char_label = String($("#gm_setting_char_label").val() || "").trim();
-    s.feature_death = $("#gm_setting_feat_death").prop("checked");
-    s.notify_enabled = $("#gm_setting_notify").prop("checked");
-    s.notify_stats = $("#gm_setting_notify_stats").prop("checked");
-    s.notify_items = $("#gm_setting_notify_items").prop("checked");
-    s.notify_skills = $("#gm_setting_notify_skills").prop("checked");
-    s.notify_progression = $("#gm_setting_notify_progression").prop("checked");
-    s.notify_states = $("#gm_setting_notify_states").prop("checked");
-    s.notify_dice = $("#gm_setting_notify_dice").prop("checked");
-    s.notify_enemies = $("#gm_setting_notify_enemies").prop("checked");
-    s.value_guidelines = $("#gm_setting_value_guidelines").prop("checked");
-    s.sound_enabled = $("#gm_setting_sound").prop("checked");
-    s.sound_volume = Number($("#gm_setting_sound_volume").val()) || 60;
+    for (const [key, id] of Object.entries(CHECKBOXES)) {
+        extension_settings[extensionName][key] = $(`#${id}`).prop("checked");
+    }
     saveSettingsDebounced();
 }
 
+// Re-syncs the drawer's feature section with the global settings (after the
+// window's "Save as defaults" rewrote them).
+export function refreshFeatureUI() {
+    const s = extension_settings[extensionName];
+    const sel = $("#gm_setting_default_mode").empty();
+    for (const [id, mode] of Object.entries(FEATURE_MODES)) {
+        sel.append($("<option>").val(id).text(mode.label));
+    }
+    sel.val(FEATURE_MODES[s.default_mode] ? s.default_mode : "custom");
+    for (const key of OVERRIDABLE_KEYS) {
+        const id = CHECKBOXES[key];
+        if (id) $(`#${id}`).prop("checked", s[key] !== false);
+    }
+}
+
 export function initSettingsListeners() {
-    $("#gm_setting_enabled, #gm_setting_auto_update, #gm_setting_debug_mode, #gm_setting_open_panel, #gm_setting_bubble_btn, #gm_setting_hotbar, #gm_setting_legacy, #gm_setting_pre_pass, " +
-      "#gm_setting_feat_wizard, #gm_setting_feat_char_creator, #gm_setting_spawn_review, #gm_setting_dyn_enemies, #gm_setting_deep_context, #gm_setting_deep_context_engines, " +
-      "#gm_setting_feat_warnings, #gm_setting_feat_dice, #gm_setting_feat_transactions, #gm_setting_feat_injection, #gm_setting_cache_first, " +
-      "#gm_setting_feat_enemies, #gm_setting_feat_rewrite, #gm_setting_feat_skill_suggest, #gm_setting_feat_progression, #gm_setting_feat_skill_tree, " +
-      "#gm_setting_feat_combat, #gm_setting_feat_ally_ai, #gm_setting_rich_clash, #gm_setting_deterministic_clashes, #gm_setting_roll_attachment, #gm_setting_feat_death, " +
-      "#gm_setting_notify, #gm_setting_notify_stats, #gm_setting_notify_items, #gm_setting_notify_skills, " +
-      "#gm_setting_notify_progression, #gm_setting_notify_states, #gm_setting_notify_dice, #gm_setting_notify_enemies, #gm_setting_sound, " +
-      "#gm_setting_value_guidelines").on("change", saveSettings);
+    for (const [key, id] of Object.entries(CHECKBOXES)) {
+        $(`#${id}`).off("change.gmset").on("change.gmset", () => onCheckbox(key, id));
+    }
+    $("#gm_setting_default_mode").off("change.gm").on("change.gm", () => {
+        extension_settings[extensionName].default_mode = $("#gm_setting_default_mode").val() || "custom";
+        saveSettingsDebounced();
+        stateManager.emitChange("features");
+    });
     // Volume slider: live label + persist on input (same feel as the opacity slider).
     $("#gm_setting_sound_volume").off("input.gm").on("input.gm", () => {
         const val = Number($("#gm_setting_sound_volume").val()) || 60;

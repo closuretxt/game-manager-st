@@ -11,6 +11,7 @@
 
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
+import { gmSettings } from "./features.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { progression } from "./progression.js";
@@ -26,7 +27,7 @@ const SEGMENT_TIERS = 6;
 const NODE_TYPES = ["active", "passive", "stat", "upgrade"];
 
 function settings() {
-    return extension_settings[extensionName];
+    return gmSettings();
 }
 
 function escAttr(v) {

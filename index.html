@@ -14,6 +14,8 @@
             <div id="gm_btn_rerun" class="gm_window_btn" style="display:none;" title="Rerun agent pass"><i class="fa-solid fa-rotate-right"></i></div>
         </div>
         <div id="gm_window_actions">
+            <!-- Per-chat mode + feature/tab toggles (ui/chatModeDialog.js). -->
+            <div id="gm_btn_mode" class="gm_window_btn" title="Chat mode — features and tabs for this chat"><i class="fa-solid fa-sliders"></i></div>
             <!-- Master on/off switch (mirrors the Enabled checkbox in settings). -->
             <div id="gm_btn_power" class="gm_window_btn" title="Extension on/off"><i class="fa-solid fa-power-off"></i></div>
             <div id="gm_btn_edit" class="gm_window_btn" title="Edit mode"><i class="fa-solid fa-pen"></i></div>
@@ -135,6 +137,12 @@
                     <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
                 </div>
                 <div class="inline-drawer-content" style="display:none;">
+                    <div class="gm_field gm_field_inline gm_mode_row">
+                        <label for="gm_setting_default_mode" title="Mode every chat starts with until you pick one for it in the window (sliders button). 'Custom' uses the toggles below.">Default mode</label>
+                        <select id="gm_setting_default_mode" class="text_pole"></select>
+                    </div>
+                    <small class="gm_feat_hint">Global defaults. Each chat picks its own mode and toggles from the window's <i class="fa-solid fa-sliders"></i> button.</small>
+                    <div class="gm_settings_subhead">Game features</div>
                     <div class="gm_settings_grid">
                         <label class="checkbox_label" for="gm_setting_feat_warnings" title="AI notes on imminent needs (e.g. food running out) — panel strip + low-priority injection">
                             <input id="gm_setting_feat_warnings" type="checkbox" />
@@ -147,14 +155,6 @@
                         <label class="checkbox_label" for="gm_setting_feat_transactions" title="Fair-use checks when spending shared resources (money, food...)">
                             <input id="gm_setting_feat_transactions" type="checkbox" />
                             <span>Transactions</span>
-                        </label>
-                        <label class="checkbox_label" for="gm_setting_feat_injection" title="Inject state via {{gamemaster-low-priority}} / {{gamemaster-high-priority}}">
-                            <input id="gm_setting_feat_injection" type="checkbox" />
-                            <span>Injection</span>
-                        </label>
-                        <label class="checkbox_label" for="gm_setting_cache_first" title="Cache-first: {{gamemaster-low-priority}} only carries persistent state (warnings, always-inject entries, brief) so the prompt prefix stays cached. Per-turn readouts and enemy state move into {{gamemaster-high-priority}} — place that macro too.">
-                            <input id="gm_setting_cache_first" type="checkbox" />
-                            <span>Cache-first injection</span>
                         </label>
                         <label class="checkbox_label" for="gm_setting_feat_enemies" title="Context-based enemies: AI-tracked sheets, archived when irrelevant, restored on return. Hidden entirely when unused.">
                             <input id="gm_setting_feat_enemies" type="checkbox" />
@@ -184,6 +184,30 @@
                             <input id="gm_setting_feat_ally_ai" type="checkbox" />
                             <span>Ally AI</span>
                         </label>
+                        <label class="checkbox_label" for="gm_setting_feat_death" title="Permadeath: the post-pass is directed to be realistic about lethal damage and may kill characters via <deaths>. Dead characters stop acting and can only be revived manually (edit mode).">
+                            <input id="gm_setting_feat_death" type="checkbox" />
+                            <span>Permadeath</span>
+                        </label>
+                    </div>
+                    <div class="gm_settings_subhead" title="A hidden tab is not tracked: the AI no longer sees or changes that part of the sheets for this chat (the data is kept).">Tabs</div>
+                    <div class="gm_settings_grid">
+                        <label class="checkbox_label" for="gm_setting_tab_inventory"><input id="gm_setting_tab_inventory" type="checkbox" /><span>Inventory</span></label>
+                        <label class="checkbox_label" for="gm_setting_tab_skills"><input id="gm_setting_tab_skills" type="checkbox" /><span>Skills</span></label>
+                        <label class="checkbox_label" for="gm_setting_tab_passives"><input id="gm_setting_tab_passives" type="checkbox" /><span>Passives</span></label>
+                        <label class="checkbox_label" for="gm_setting_tab_statuses"><input id="gm_setting_tab_statuses" type="checkbox" /><span>Statuses</span></label>
+                        <label class="checkbox_label" for="gm_setting_tab_shared"><input id="gm_setting_tab_shared" type="checkbox" /><span>Resource Manager</span></label>
+                        <label class="checkbox_label" for="gm_setting_tab_custom"><input id="gm_setting_tab_custom" type="checkbox" /><span>Custom</span></label>
+                    </div>
+                    <div class="gm_settings_subhead" title="These apply to every chat.">Engine (all chats)</div>
+                    <div class="gm_settings_grid">
+                        <label class="checkbox_label" for="gm_setting_feat_injection" title="Inject state via {{gamemaster-low-priority}} / {{gamemaster-high-priority}}">
+                            <input id="gm_setting_feat_injection" type="checkbox" />
+                            <span>Injection</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_cache_first" title="Cache-first: {{gamemaster-low-priority}} only carries persistent state (warnings, always-inject entries, brief) so the prompt prefix stays cached. Per-turn readouts and enemy state move into {{gamemaster-high-priority}} — place that macro too.">
+                            <input id="gm_setting_cache_first" type="checkbox" />
+                            <span>Cache-first injection</span>
+                        </label>
                         <label class="checkbox_label" for="gm_setting_rich_clash" title="Rich clash UI: face-off titles with a VS pill, party/enemy role chips and a VS badge between opposing sides in the combat bubble. Off = simple layout.">
                             <input id="gm_setting_rich_clash" type="checkbox" />
                             <span>Rich Clash UI</span>
@@ -199,10 +223,6 @@
                         <label class="checkbox_label" for="gm_setting_value_guidelines" title="Inject the shared NUMERIC VALUE GUIDELINES into the engine prompts (tracker, combat engines, pre-pass): arithmetic values (15-9+2) and true-RNG dice (1d20, 8/1d2 chance triggers). Off = engines keep their own instructions; parsing still works.">
                             <input id="gm_setting_value_guidelines" type="checkbox" />
                             <span>Advanced Calculations</span>
-                        </label>
-                        <label class="checkbox_label" for="gm_setting_feat_death" title="Permadeath: the post-pass is directed to be realistic about lethal damage and may kill characters via <deaths>. Dead characters stop acting and can only be revived manually (edit mode).">
-                            <input id="gm_setting_feat_death" type="checkbox" />
-                            <span>Permadeath</span>
                         </label>
                     </div>
                 </div>

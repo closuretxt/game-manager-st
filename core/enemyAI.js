@@ -11,6 +11,7 @@
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { substituteParams } from "../../../../../script.js";
 import { extensionName } from "./constants.js";
+import { gmSettings } from "./features.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel, charLabel } from "./stateManager.js";
 import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
@@ -163,7 +164,7 @@ export function parseEnemyActions(text) {
 // round, or null when disabled/failed — only null makes the caller degrade to
 // generic per-enemy attacks.
 export async function runEnemyAI({ maxActions = 6, playerAction = null } = {}) {
-    const s = extension_settings[extensionName];
+    const s = gmSettings();
     if (!s.enabled || !s.feature_combat) return null;
 
     const d = stateManager.getData();

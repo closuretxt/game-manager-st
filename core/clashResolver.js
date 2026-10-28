@@ -17,6 +17,7 @@
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { substituteParams } from "../../../../../script.js";
 import { extensionName } from "./constants.js";
+import { gmSettings } from "./features.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel, charLabel } from "./stateManager.js";
 import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
@@ -204,7 +205,7 @@ function sanitizeGroups(groups) {
 // groups, or null when disabled/failed — the caller then falls back to
 // independent single-sided rolls.
 export async function resolveClashes({ playerAction = "", partyActions = [], enemyActions = [], onStream = null } = {}) {
-    const s = extension_settings[extensionName];
+    const s = gmSettings();
     if (!s.enabled || !s.feature_combat) return null;
     if (!partyActions.length && !enemyActions.length) return null;
 
