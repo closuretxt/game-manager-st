@@ -14,13 +14,15 @@
 //
 // Everything here is gated by the feature_injection setting in the macros.
 
-import { extension_settings } from "../../../../extensions.js";
+import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName, CHARACTER_STATES } from "./constants.js";
 import { gmSettings, containerEnabled } from "./features.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerNames } from "./stateManager.js";
 import { resolveResourceMax } from "./resourceScaler.js";
-import { bondConfig, bondInjectionLine, isPlayerSheet } from "./bonds.js";
+import { bondConfig, bondInjectionLine, bondShiftLine, isPlayerSheet } from "./bonds.js";
+import { isMentioned } from "./rosterRotation.js";
+import { clockInjectionText, scheduleInjectionLines, objectiveInjectionLines } from "./chrono.js";
 import { CHARACTER_CONTAINERS } from "./schemas.js";
 import { sheetXml } from "./sheetXml.js";
 import { scenarioBriefInjection } from "./scenarioBrief.js";
@@ -168,12 +170,43 @@ function cacheFirst() {
     return extension_settings[extensionName]?.cache_first !== false;
 }
 
-// Per-turn context: live enemy state + the pre-pass's one-shot readouts.
-// Drains the one-shot queue (recorded for the post-pass as _lastLow).
+// Bonds of the characters in the scene: the party, plus benched sheets named
+// in the last few messages. Per-turn on purpose: in the cached low block a
+// change surfaced late (only on a band crossing) and every change broke the
+// prefix anyway. A <bond_shift> line tells what moved in the latest pass.
+function bondLines(d, s) {
+    const cfg = s.feature_bonds ? bondConfig(d) : null;
+    if (!cfg?.inject || !cfg.defs.length) return [];
+    const chat = getContext()?.chat || [];
+    const last = chat.length - 1;
+    const recent = chat.slice(-3).map(m => `${m?.name ?? ""}\n${m?.mes ?? ""}`).join("\n");
+    const players = playerNames();
+    const benched = (d.roster || []).map(r => r.sheet).filter(c => c && isMentioned(recent, c.name));
+    const holders = [...(d.characters || []), ...benched]
+        .filter(c => c.bond && c.state?.mode !== "dead" && !isPlayerSheet(c, players))
+        .sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? "")));
+    const lines = [];
+    for (const c of holders) {
+        const line = bondInjectionLine(d, c, esc);
+        if (line) lines.push(line);
+        const shift = bondShiftLine(d, c, last, esc);
+        if (shift) lines.push(shift);
+    }
+    if (!lines.length) return [];
+    return [`<bonds note="How each character feels toward the player right now; a bond_shift is what changed last turn. Let it color their behavior; never mention the numbers.">`, ...lines, `</bonds>`];
+}
+
+// Per-turn context: world clock, live enemy state, bonds + the pre-pass's
+// one-shot readouts. Drains the one-shot queue (recorded for the post-pass as _lastLow).
 function buildTurnContext() {
     const d = stateManager.getData();
     const s = gmSettings();
     const parts = [];
+    // Time moves every turn, so the clock (and now/next) is per-turn context.
+    if (s.feature_chrono) {
+        const clock = clockInjectionText(d, esc);
+        if (clock) parts.push(clock);
+    }
     // Context-based enemies: compact state summary, only when the feature is
     // on AND enemies exist — zero tokens otherwise.
     if (s.feature_enemies && (d.enemies || []).length) {
@@ -186,6 +219,7 @@ function buildTurnContext() {
         }
         parts.push(`</enemies>`);
     }
+    parts.push(...bondLines(d, s));
     // One-shot lines queued by the pre-pass for THIS turn only.
     if (_pendingLow.length) {
         const oneShot = _pendingLow.splice(0, _pendingLow.length);
@@ -235,8 +269,8 @@ export function discardPending() {
 
 // ---------- low priority (persistent context) ----------
 
-// Builds the persistent context block: warnings, always-inject entries and
-// character states. Ordered deterministically (no insertion-order churn), so
+// Builds the persistent context block: warnings, always-inject entries,
+// character states and objectives (bonds ride in the turn context). Ordered deterministically (no insertion-order churn), so
 // the block only changes when the underlying state does.
 export function buildLowPriority() {
     if (!enabled()) return "";
@@ -276,18 +310,12 @@ export function buildLowPriority() {
         }
     }
 
-    // Bonds: banded words, never raw numbers — the line only changes when a
-    // bar crosses a band or a feeling starts/ends, so the cached prefix holds.
-    const bondCfg = s.feature_bonds ? bondConfig(d) : null;
-    if (bondCfg?.inject && bondCfg.defs.length) {
-        const players = playerNames();
-        const holders = (d.characters || [])
-            .filter(c => c.bond && c.state?.mode !== "dead" && !isPlayerSheet(c, players))
-            .sort(byName);
-        for (const c of holders) {
-            const line = bondInjectionLine(d, c, esc);
-            if (line) parts.push(line);
-        }
+    // Time: the day's schedules (change once a day) and active objectives —
+    // the clock itself is volatile and rides in the turn context so this
+    // block keeps its cached prefix.
+    if (s.feature_chrono) {
+        parts.push(...scheduleInjectionLines(d, stateManager.chronoOwners(playerNames()), esc));
+        parts.push(...objectiveInjectionLines(d, esc, o => stateManager.objectiveOwnerName(o)));
     }
 
     // Legacy layout: per-turn context shares this block (cache-first off).

@@ -37,6 +37,7 @@ const CHECKBOXES = {
     feature_death: "gm_setting_feat_death",
     feature_roster_rotation: "gm_setting_feat_roster_rotation",
     feature_bonds: "gm_setting_feat_bonds",
+    feature_chrono: "gm_setting_feat_chrono",
     tab_inventory: "gm_setting_tab_inventory",
     tab_skills: "gm_setting_tab_skills",
     tab_passives: "gm_setting_tab_passives",
@@ -57,6 +58,7 @@ const CHECKBOXES = {
     notify_enemies: "gm_setting_notify_enemies",
     notify_bonds: "gm_setting_notify_bonds",
     notify_attach: "gm_setting_notify_attach",
+    notify_chrono: "gm_setting_notify_chrono",
     sound_enabled: "gm_setting_sound",
 };
 
@@ -117,6 +119,7 @@ export const defaultSettings = {
     feature_death: true,          // Permadeath: the post-pass may kill characters (<deaths> tag); only the user revives.
     feature_roster_rotation: false, // Post-pass benches party characters unnamed for 20 messages and recalls benched ones who reappear (up to the party cap).
     feature_bonds: false,         // Bonds: NPC feelings toward the player (scenario-defined bars moved only by bond statuses). On in the Romance / Slice of life modes.
+    feature_chrono: false,        // Time: world clock (deltas after the anchor), daily schedules of the present cast, long-term objectives — kept by the post-pass. On in every mode preset.
 
     // Per-chat feature modes (core/features.js). The feature_* flags above and
     // the tab toggles below are the GLOBAL defaults ("Custom" mode); each chat
@@ -179,6 +182,7 @@ export const defaultSettings = {
     notify_enemies: false,    // Also notify for enemy sheets (HP changes, skill use...).
     notify_bonds: true,       // Bond changes (feelings gained/ended/settled, label rewrites).
     notify_attach: true,      // Also log the post-pass notifications under the AI message that caused them.
+    notify_chrono: true,      // Time: new days, time skips of an hour or more, objectives added/updated/done.
 
     // Prompt guidance — shared NUMERIC VALUE GUIDELINES (core/valueGuidelines.js)
     // injected into the engine prompts (tracker, combat engines, pre-pass).

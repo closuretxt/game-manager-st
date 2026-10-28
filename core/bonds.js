@@ -118,7 +118,29 @@ export function ensureBond(c, d, create = true) {
         }
     }
     if (!Array.isArray(b.history)) b.history = [];
+    if (b.recent && (typeof b.recent !== "object" || !Array.isArray(b.recent.events))) delete b.recent;
+    for (const ev of b.recent?.events || []) {
+        if (!ev.shifts || typeof ev.shifts !== "object") ev.shifts = {};
+        for (const k of Object.keys(ev.shifts)) if (!ids.has(k)) delete ev.shifts[k];
+    }
     return b;
+}
+
+// What the latest pass changed, one pass deep (the story prompt's shift note).
+// A different `now` starts a fresh list, so old changes never pile up; the
+// same feeling touched twice in one pass merges into one event.
+function noteRecent(bond, now, kind, name, shifts) {
+    if (!bond.recent || bond.recent.at !== now) bond.recent = { at: now, events: [] };
+    const ev = bond.recent.events.find(e => e.name === name);
+    if (!ev) {
+        bond.recent.events.push({ kind, name, shifts: { ...shifts } });
+        return;
+    }
+    if (kind === "end") ev.kind = "end";
+    for (const [k, n] of Object.entries(shifts)) {
+        ev.shifts[k] = (ev.shifts[k] || 0) + n;
+        if (!ev.shifts[k]) delete ev.shifts[k];
+    }
 }
 
 // "Trust +6, Tension -2" -> { defId: 6, defId2: -2 }, each capped to ±step.
@@ -205,6 +227,8 @@ export function setBondStatus(d, c, { name, effect, ends, note } = {}, now = 0) 
     const changed = action === "new" || JSON.stringify([status.effects, status.ends, status.note]) !== before;
     if (!changed) return null;
     status.since = now;
+    // A reworded note alone is no shift worth telling the story engine.
+    if (action === "new" || Object.keys(shifts).length) noteRecent(bond, now, action, status.name, shifts);
     return { action, status, shifts };
 }
 
@@ -226,6 +250,7 @@ export function endBondStatus(d, c, name, now = 0) {
     }
     bond.statuses = bond.statuses.filter(s => s !== status);
     archive(bond, status, "ended", now);
+    noteRecent(bond, now, "end", status.name, shifts);
     return { status, shifts };
 }
 
@@ -258,8 +283,9 @@ export function setBondDefs(d, next) {
 
 // ---------- injection ----------
 
-// Words instead of numbers: the low-priority block only changes when a bar
-// crosses a band, which keeps the story prompt's cached prefix stable.
+// Bonds ride in the per-turn (high-priority) context, which is rebuilt every
+// turn anyway: exact values cost no cache, and the band word tells the story
+// engine how to read the number.
 export function bondBand(v) {
     const n = Number(v) || 0;
     if (n < 15) return "very low";
@@ -274,8 +300,34 @@ export function bondBand(v) {
 export function bondInjectionLine(d, c, esc) {
     const defs = bondDefs(d);
     if (!defs.length || !c.bond) return "";
-    const bars = defs.map(x => `${x.name}: ${bondBand(c.bond.values?.[x.id])}`).join(", ");
+    const bars = defs.map(x => {
+        const v = Number(c.bond.values?.[x.id]) || 0;
+        return `${x.name}: ${bondBand(v)} (${v}/${BOND_MAX})`;
+    }).join(", ");
     const feelings = [...c.bond.statuses].sort((a, b) => String(a.name).localeCompare(String(b.name)))
         .map(s => `<feeling name="${esc(s.name)}"${s.note ? ` why="${esc(s.note)}"` : ""}/>`).join("");
     return `<bond char="${esc(c.name)}"${c.bond.label ? ` label="${esc(c.bond.label)}"` : ""} toward="player">${esc(bars)}${feelings}</bond>`;
+}
+
+// Whether the latest pass's changes still describe "last turn" at chat index
+// `last` (the newest message when the prompt is built). The pass that wrote
+// them accounted AI message N: the next prompt is built at N+1 (the user's
+// reply), a swipe of the following reply at N+2 (rollback restored this
+// record). Older than that = a pass was skipped since, so it is stale.
+export function bondShiftFresh(c, last) {
+    const at = c?.bond?.recent?.at;
+    return Number.isFinite(at) && last >= at && last - at <= 2;
+}
+
+// One-turn note of what moved: "started feeling X (Trust +6); ended Y".
+export function bondShiftLine(d, c, last, esc) {
+    if (!bondShiftFresh(c, last)) return "";
+    const defs = bondDefs(d);
+    const verb = { new: "started feeling", edit: "changed feeling", end: "stopped feeling" };
+    const parts = c.bond.recent.events.map(ev => {
+        const fx = formatEffects(ev.shifts, defs);
+        return `${verb[ev.kind] || verb.edit} ${ev.name}${fx ? ` (${fx})` : ""}`;
+    });
+    if (!parts.length) return "";
+    return `<bond_shift char="${esc(c.name)}">${esc(parts.join("; "))}</bond_shift>`;
 }

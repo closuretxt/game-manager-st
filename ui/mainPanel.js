@@ -34,13 +34,17 @@ import { characterCreator } from "./characterCreator.js";
 import { iconBtn } from "./characterView.js";
 import { popoverMenu } from "./popoverMenu.js";
 import { renderBondSection, openBondsDialog, bondsVisible } from "./bondsView.js";
+import { renderTimeTab } from "./timeTab.js";
+import { chronoHasData } from "../core/chrono.js";
 
 // `toggle` = the per-chat tab toggle (core/features.js) that hides the tab.
+// `hasData` = the tab is hidden outside edit mode while it has nothing to show.
 const TABS = [
     { id: "party", label: "Party", icon: "fa-solid fa-users" },
-    { id: "enemies", label: "Enemies", icon: "fa-solid fa-skull" },
+    { id: "enemies", label: "Enemies", icon: "fa-solid fa-skull", feature: "feature_enemies", hasData: d => (d.enemies || []).length > 0 },
+    { id: "time", label: "Time", icon: "fa-solid fa-clock", feature: "feature_chrono", hasData: d => chronoHasData(d) },
     { id: "shared", label: "Resource Manager", icon: "fa-solid fa-coins", toggle: "tab_shared" },
-    { id: "custom", label: "Custom", icon: "fa-solid fa-seedling", toggle: "tab_custom" },
+    { id: "custom", label: "Custom", icon: "fa-solid fa-seedling", toggle: "tab_custom", hasData: d => (d.custom || []).length > 0 },
 ];
 
 // Sub-tabs inside a character sheet (they can hold a lot of entries).
@@ -53,6 +57,11 @@ const CHAR_TABS = [
 ];
 
 const tabVisible = tab => !tab.toggle || tabEnabled(tab.toggle);
+// Top-level tabs also vanish when their feature is off, or when they are empty
+// outside edit mode (edit mode keeps them so things can be added).
+const topTabShown = (tab, edit) => tabVisible(tab)
+    && (!tab.feature || !!gmSettings()[tab.feature])
+    && (!tab.hasData || edit || tab.hasData(stateManager.getData()));
 const visibleCharTabs = () => CHAR_TABS.filter(tabVisible);
 
 class MainPanel {
@@ -319,15 +328,9 @@ class MainPanel {
     // ---------- rendering ----------
     render() {
         if (!this.root) return;
-        // Enemies tab only exists when the feature is on AND there is something
-        // to show (active enemies, or edit mode to add/archive them).
-        const s = gmSettings();
-        const enemyCount = (stateManager.getData().enemies || []).length;
-        if (this.activeTab === "enemies" && !(s.feature_enemies && (enemyCount || this.editMode))) {
-            this.activeTab = "party";
-        }
-        // A tab hidden by the chat's toggles falls back to its home tab.
-        if (!tabVisible(TABS.find(t => t.id === this.activeTab) || TABS[0])) this.activeTab = "party";
+        // A hidden tab (feature off, chat toggle, or empty outside edit mode)
+        // falls back to the home tab.
+        if (!topTabShown(TABS.find(t => t.id === this.activeTab) || TABS[0], this.editMode)) this.activeTab = "party";
         const charTabs = visibleCharTabs();
         if (!charTabs.some(t => t.id === this.activeCharTab) && this.activeCharTab !== "skilltree") this.activeCharTab = "stats";
         if (!charTabs.some(t => t.id === this.activeEnemyTab)) this.activeEnemyTab = "stats";
@@ -372,12 +375,9 @@ class MainPanel {
         // .empty() collapses the scroll width, which resets scrollLeft to 0.
         const prevScroll = bar[0] ? bar[0].scrollLeft : 0;
         bar.empty();
-        const s = gmSettings();
-        const enemyCount = (stateManager.getData().enemies || []).length;
         for (const tab of TABS) {
-            // Enemies tab hidden entirely when unused — no trace in the UI.
-            if (tab.id === "enemies" && !(s.feature_enemies && (enemyCount || this.editMode))) continue;
-            if (!tabVisible(tab)) continue;
+            // Unused tabs leave no trace in the UI.
+            if (!topTabShown(tab, this.editMode)) continue;
             const btn = $("<div>")
                 .addClass("gm_tab")
                 .toggleClass("active", tab.id === this.activeTab)
@@ -413,6 +413,9 @@ class MainPanel {
                 break;
             case "custom":
                 customTab.render(content, edit);
+                break;
+            case "time":
+                renderTimeTab(content, edit);
                 break;
             case "enemies": {
                 const enemy = this.selectedEnemyId ? stateManager.getEnemy(this.selectedEnemyId) : null;

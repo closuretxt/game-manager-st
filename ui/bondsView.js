@@ -147,7 +147,7 @@ export function openBondsDialog() {
         $("<div>").addClass("gm_modal_hint").text("How each NPC feels about the player. The bars only move through feelings the post-pass reports; a feeling left alone settles into the bars for good, an ended one is taken back."),
         list,
         presets,
-        $("<label>").addClass("checkbox_label").append(injectBox, $("<span>").text("Inject bonds into the story prompt (as words: low / high, never numbers)")),
+        $("<label>").addClass("checkbox_label").append(injectBox, $("<span>").text("Inject bonds of the characters in the scene into the story prompt (each turn, with what changed last turn)")),
         $("<label>").addClass("gm_cap_wrap").attr("title", "Messages a feeling must stay unchanged before it settles").append($("<span>").text("Settle after (messages)"), settle),
         $("<label>").addClass("gm_cap_wrap").attr("title", "Largest change one feeling may make to one bar").append($("<span>").text("Max change per feeling"), step),
     );

@@ -3744,3 +3744,167 @@ body > #gm_spawn_chip {
     color: var(--SmartThemeEmColor, #aaa);
     padding: 1px 0;
 }
+
+/* ---------- Time tab (clock, schedules, objectives) ---------- */
+#gm_tab_content > .gm_list + .gm_list {
+    border-top: 1px solid var(--gm-line);
+    margin-top: 12px;
+    padding-top: 10px;
+}
+
+.gm_time_now {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+    padding: 4px 2px 8px;
+}
+
+.gm_time_day {
+    font-weight: bold;
+    color: var(--gm-accent);
+}
+
+.gm_time_hm {
+    font-size: 1.6em;
+    font-variant-numeric: tabular-nums;
+    margin-left: auto;
+}
+
+.gm_time_lock {
+    opacity: var(--gm-muted);
+}
+
+.gm_time_set_row,
+.gm_time_nudges {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 0;
+}
+
+.gm_time_set_row .gm_time_date_in {
+    flex: 1 1 110px;
+    min-width: 0;
+}
+
+.gm_time_set_row .gm_time_hm_in {
+    flex: 0 0 auto;
+    width: auto;
+}
+
+.gm_time_opts {
+    margin-top: 8px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.12);
+}
+
+.gm_time_opts > summary {
+    cursor: pointer;
+    padding: 5px 8px;
+    opacity: 0.85;
+    user-select: none;
+}
+
+.gm_time_opts[open] > summary {
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+}
+
+.gm_time_opt_body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 6px 8px 8px;
+}
+
+.gm_time_opt_group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.gm_time_opt_title {
+    font-size: 0.8em;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.6;
+}
+
+.gm_time_opts .gm_time_opt {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 2px 0;
+    font-size: 0.92em;
+}
+
+.gm_time_opts .gm_time_opt input {
+    flex: 0 0 auto;
+    margin: 0;
+}
+
+.gm_time_opt_off {
+    opacity: 0.45;
+}
+
+.gm_time_slots {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 4px;
+}
+
+.gm_time_slot {
+    display: flex;
+    gap: 8px;
+    font-size: 0.92em;
+    padding: 1px 4px;
+    border-radius: 4px;
+}
+
+.gm_time_slot_t {
+    flex: 0 0 auto;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.75;
+}
+
+.gm_time_slot_past {
+    opacity: 0.45;
+}
+
+.gm_time_slot_now {
+    background: color-mix(in srgb, var(--gm-accent) 18%, transparent);
+    font-weight: bold;
+}
+
+.gm_time_obj_edit > .gm_input {
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 4px;
+}
+
+.gm_time_obj_edit .gm_entry_main {
+    min-width: 0;
+}
+
+.gm_time_obj_edit .gm_entry_main .gm_input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.gm_time_obj_sub {
+    opacity: 0.8;
+}
+
+.gm_time_past_obj {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.gm_time_past_obj > span {
+    flex: 1;
+}

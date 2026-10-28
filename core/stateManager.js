@@ -10,6 +10,7 @@ import { CHARACTER_CONTAINERS, GM_SCHEMA, defaultEntry, genId } from "./schemas.
 import { resolveResourceMax } from "./resourceScaler.js";
 import { getTemplate, conformSheet, followsCard } from "./cardTemplates.js";
 import { bondConfig, bondSheets, ensureBond, isPlayerSheet, setBondStatus, endBondStatus, settleBondStatuses, setBondDefs } from "./bonds.js";
+import { PLAYER_OWNER, chronoConfig, setClock as chronoSetClock, advanceClock as chronoAdvance, setSchedule as chronoSetSchedule, addObjective as chronoAddObjective, updateObjective as chronoUpdateObjective, setObjectiveStatus as chronoSetObjectiveStatus } from "./chrono.js";
 import { logDebug } from "./debug.js";
 
 const _listeners = new Set();
@@ -239,6 +240,8 @@ export const stateManager = {
         // Bonds (core/bonds.js): bar definitions + each existing bond.
         bondConfig(d);
         for (const c of bondSheets(d)) if (c.bond) ensureBond(c, d, false);
+        // Chronogram (core/chrono.js): clock, schedules, objectives.
+        chronoConfig(d);
         if (!d.characters.some(c => c.id === d.activeCharacterId)) {
             d.activeCharacterId = d.characters[0]?.id ?? null;
         }
@@ -614,6 +617,117 @@ export const stateManager = {
         if (!(defId in bond.values)) return;
         bond.values[defId] = Math.min(100, Math.max(0, Math.round(Number(value) || 0)));
         this.emitChange("bond_value");
+    },
+
+    // ---------- chronogram (core/chrono.js) ----------
+    // Schedule owners = the present cast: the player first, then living party
+    // characters (benched ones are off-screen; their days wait until they
+    // return) plus `extra` sheets (benched characters present in the exchange).
+    // Player only unless the chat opted into party schedules.
+    chronoOwners(playerNames = [], extra = []) {
+        const owners = [{ key: PLAYER_OWNER, name: playerLabel() }];
+        if (!chronoConfig(this.getData()).schedules_party) return owners;
+        for (const c of [...(this.getData().characters || []), ...extra]) {
+            if (!c || c.state?.mode === "dead" || isPlayerSheet(c, playerNames)) continue;
+            if (owners.some(o => o.key === c.id)) continue;
+            owners.push({ key: c.id, name: c.name });
+        }
+        return owners;
+    },
+
+    // LLM owner name -> "player" | party/roster sheet id | null (untracked).
+    resolveChronoOwner(name, playerNames = []) {
+        const n = String(name ?? "").trim();
+        if (!n || /^(?:\{\{user\}\}|user|you|player)$/i.test(n)) return PLAYER_OWNER;
+        if (playerNames.some(p => String(p).toLowerCase() === n.toLowerCase())) return PLAYER_OWNER;
+        const sheet = this.getCharacter(n) || this._findRoster(n)?.sheet;
+        if (!sheet) return null;
+        return isPlayerSheet(sheet, playerNames) ? PLAYER_OWNER : sheet.id;
+    },
+
+    // Display name of an objective's owner (sheet renames follow).
+    objectiveOwnerName(o) {
+        if (o?.owner === PLAYER_OWNER) return playerLabel();
+        return (o?.owner && this.getSheet(o.owner)?.name) || o?.ownerName || "";
+    },
+
+    setChronoOptions(patch = {}) {
+        const c = chronoConfig(this.getData());
+        for (const k of ["locked", "schedules_on", "schedules_party", "objectives_on", "inject_clock", "inject_schedules", "inject_objectives"]) {
+            if (patch[k] !== undefined) c[k] = !!patch[k];
+        }
+        this.emitChange("chrono_options");
+    },
+
+    // Absolute set (anchor or manual). opts.silent = the user's own edit.
+    setClock(date, time, opts = {}) {
+        const res = chronoSetClock(this.getData(), date, time);
+        if (res) this.emitChange("chrono_clock");
+        return res;
+    },
+
+    // Elapsed time (tracker deltas, manual nudges). Ignored while locked.
+    advanceClock(minutes, opts = {}) {
+        const d = this.getData();
+        if (chronoConfig(d).locked && !opts.force) return null;
+        const res = chronoAdvance(d, minutes);
+        if (res) this.emitChange("chrono_clock");
+        return res;
+    },
+
+    setSchedule(owner, date, entries) {
+        const res = chronoSetSchedule(this.getData(), owner, date, entries);
+        if (res) this.emitChange("chrono_schedule");
+        return res;
+    },
+
+    clearSchedule(owner, date) {
+        const days = chronoConfig(this.getData()).schedules[owner];
+        if (!days?.[date]) return;
+        delete days[date];
+        if (!Object.keys(days).length) delete chronoConfig(this.getData()).schedules[owner];
+        this.emitChange("chrono_schedule");
+    },
+
+    // Returns { objective, created } or null.
+    addObjective(fields, opts = {}) {
+        const res = chronoAddObjective(this.getData(), fields);
+        if (res?.created) this.emitChange("chrono_objective");
+        return res;
+    },
+
+    updateObjective(title, fields, opts = {}) {
+        const res = chronoUpdateObjective(this.getData(), title, fields);
+        if (res) this.emitChange("chrono_objective");
+        return res;
+    },
+
+    setObjectiveStatus(titleOrId, status, opts = {}) {
+        const res = chronoSetObjectiveStatus(this.getData(), titleOrId, status);
+        if (res) this.emitChange("chrono_objective");
+        return res;
+    },
+
+    // Manual edit (Time tab, edit mode).
+    editObjective(id, patch = {}) {
+        const o = chronoConfig(this.getData()).objectives.find(x => x.id === id);
+        if (!o) return;
+        for (const k of ["title", "description", "deadline", "steps", "progress"]) {
+            if (patch[k] !== undefined) o[k] = String(patch[k]).trim();
+        }
+        if (patch.owner !== undefined) {
+            o.owner = this.resolveChronoOwner(patch.owner, playerNames()) || "";
+            o.ownerName = String(patch.owner).trim();
+        }
+        if (!o.title) o.title = "Untitled";
+        this.emitChange("chrono_objective");
+    },
+
+    removeObjective(id) {
+        const c = chronoConfig(this.getData());
+        const before = c.objectives.length;
+        c.objectives = c.objectives.filter(o => o.id !== id);
+        if (c.objectives.length !== before) this.emitChange("chrono_objective");
     },
 
     // Roster entry by entry id, its sheet's id, or name.

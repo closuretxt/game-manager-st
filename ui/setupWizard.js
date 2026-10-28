@@ -24,6 +24,7 @@ import { sheetEditor } from "./sheetEditor.js";
 import { stateManager } from "../core/stateManager.js";
 import { hasTemplate, TEMPLATE_CONTAINERS } from "../core/cardTemplates.js";
 import { bondDefs } from "../core/bonds.js";
+import { chronoConfig } from "../core/chrono.js";
 
 const CONTAINER_LABELS = {
     resources: "res",
@@ -351,6 +352,43 @@ export const setupWizard = {
             });
             bondsWrap.append(list);
             body.append(bondsWrap);
+        }
+
+        // Time — starting clock (only when the chat has none) + objectives.
+        const showClock = !!p.clock && !chronoConfig(stateManager.getData()).clock;
+        if (showClock || p.objectives?.length) {
+            const timeWrap = $("<div>").addClass("gm_list");
+            timeWrap.append($("<div>").addClass("gm_section_header").append(
+                $("<b>").text("Time"),
+                $("<span>").addClass("gm_section_hint").text("Where the story starts and the long-term goals. After this the post-pass only adds elapsed time."),
+            ));
+            const list = $("<div>").addClass("gm_entry_list");
+            if (showClock) {
+                const date = $("<input>").addClass("gm_input").attr({ placeholder: "MM/DD/YYYY", title: "Date" }).val(p.clock.date)
+                    .on("input", () => { p.clock.date = date.val(); this._sessionQueue(); });
+                const time = $("<input>").addClass("gm_input").attr({ type: "time", title: "Time" }).val(p.clock.time)
+                    .on("change", () => { p.clock.time = time.val(); this._sessionQueue(); });
+                const del = iconBtn("fa-solid fa-trash").attr("title", "Don't set the clock").on("click", () => { p.clock = null; this._renderReview(); });
+                list.append($("<div>").addClass("gm_entry_row").append($("<div>").addClass("gm_entry_top").append(
+                    $("<div>").addClass("gm_entry_main").append($("<b>").text("Clock"), date, time),
+                    $("<div>").addClass("gm_entry_actions").append(del),
+                )));
+            }
+            (p.objectives || []).forEach((o, i) => {
+                const title = $("<input>").addClass("gm_input").attr("title", "Objective").val(o.title).on("input", () => { o.title = title.val(); this._sessionQueue(); });
+                const owner = $("<input>").addClass("gm_input").attr({ placeholder: "Owner", title: "Owner (character or player)" }).val(o.owner).on("input", () => { o.owner = owner.val(); this._sessionQueue(); });
+                const desc = $("<input>").addClass("gm_input").attr("placeholder", "What and why").val(o.description).on("input", () => { o.description = desc.val(); this._sessionQueue(); });
+                const del = iconBtn("fa-solid fa-trash").on("click", () => { p.objectives.splice(i, 1); this._renderReview(); });
+                list.append($("<div>").addClass("gm_entry_row").append(
+                    $("<div>").addClass("gm_entry_top").append(
+                        $("<div>").addClass("gm_entry_main").append(title, owner),
+                        $("<div>").addClass("gm_entry_actions").append(del),
+                    ),
+                    desc,
+                ));
+            });
+            timeWrap.append(list);
+            body.append(timeWrap);
         }
 
         // Party — full sheets, capped.

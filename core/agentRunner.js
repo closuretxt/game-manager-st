@@ -20,6 +20,7 @@ import { logDebug } from "./debug.js";
 import { ROTATION_LOOKBACK, planRotation, presentRoster } from "./rosterRotation.js";
 import { stateManager, playerLabel, charLabel, playerNames } from "./stateManager.js";
 import { bondDefs, isPlayerSheet, formatEffects } from "./bonds.js";
+import { chronoConfig, chronoStateXml } from "./chrono.js";
 import { beginMessageLog, commitMessageLog } from "../ui/messageLog.js";
 import { progression } from "./progression.js";
 import { parseToolBlocks, applyToolBlocks, escAttr } from "./toolParser.js";
@@ -51,6 +52,11 @@ function setPanelBusy(on) {
 // Bonds are live for this chat: the feature is on AND the chat defines bars.
 function bondsOn() {
     return !!gmSettings().feature_bonds && bondDefs(stateManager.getData()).length > 0;
+}
+
+// Time (Chronogram fold-in): clock, schedules of the present cast, objectives.
+function chronoOn() {
+    return !!gmSettings().feature_chrono;
 }
 
 // The bonds section of the snapshot: the chat's bars once, then one line per
@@ -125,6 +131,13 @@ function buildStateSummaryXml(present = []) {
             .filter(c => c && !isPlayerSheet(c, players));
         if (holders.length) parts.push(bondsXml(holders));
     }
+    // Time: the clock (or clock="unset" until anchored), each present
+    // owner's now/next or missing="true", active objectives. Per-turn data,
+    // so it lives here and never in the system prompt.
+    if (chronoOn()) {
+        const owners = stateManager.chronoOwners(playerNames(), present.map(r => stateManager.getSheet(r.id)));
+        parts.push(chronoStateXml(d, owners, escAttr, o => stateManager.objectiveOwnerName(o)));
+    }
     // Shared party resources: visible to the tracker so it can account
     // consumption the pre-pass transaction engine did not already handle.
     if ((d.sharedResources || []).length && containerEnabled("sharedResources")) {
@@ -173,6 +186,8 @@ async function buildSystemPrompt(exchange = []) {
     };
     // Rules only (static per chat) — the bars themselves ride in the snapshot.
     const bonds = bondsOn();
+    // Time modules are per-chat options that rarely change, like the flags.
+    const chrono = chronoOn() ? chronoConfig(stateManager.getData()) : null;
     let deep = "";
     if (s.deep_context) {
         const extraText = exchange.length ? exchange[exchange.length - 1].text : "";
@@ -266,6 +281,12 @@ async function buildSystemPrompt(exchange = []) {
         '<knockouts><ko char="Name" reason="short cause"/><ko_clear char="Name"/></knockouts>',
         ...(bonds ? ['<bonds><bond_label char="Name">Wary ally, slowly warming up</bond_label><bond_status char="Name" name="Shared secret" effect="Trust +6, Affection +2" ends="if the secret gets out">She told the player about her past</bond_status><bond_end char="Name" name="Broken promise"/></bonds>'] : []),
         ...(prog ?['<grant_exp><char>Name</char><exp amount="25"/></grant_exp>'] : []),
+        ...(chrono ? [
+            "<chrono><clock_update days=\"0\" hours=\"0\" minutes=\"3\"/>"
+            + (chrono.schedules_on ? "<new_schedule owner=\"Name\" date=\"MM/DD/YYYY\">\n07:00 wakes up in the loft above the forge\n07:30 breakfast with Mara at the inn\n</new_schedule>" : "")
+            + (chrono.objectives_on ? "<objective_new owner=\"Name\" title=\"Recover the family sword\" deadline=\"MM/DD/YYYY\" steps=\"Find the thief -> Reach the fort -> Duel\">What must be done and why it matters</objective_new><objective_update title=\"Exact title\" progress=\"What concretely changed\"/><objective_done title=\"Exact title\"/><objective_drop title=\"Exact title\"/>" : "")
+            + "</chrono>",
+        ] : []),
         "",
         // Numeric values: shared guidelines — the parser resolves pure math
         // exactly and rolls true-RNG dice (core/valueResolver.js), so the LLM
@@ -288,6 +309,18 @@ async function buildSystemPrompt(exchange = []) {
             "- Report a feeling only when the exchange gives a CONCRETE reason (a kindness, a betrayal, a promise, flirting that lands or falls flat, being pushed or given space) — quiet scenes change nothing. To deepen or soften an existing feeling, re-emit it with the SAME name and the new total effect; never stack near-duplicates.",
             "- <bond_end> ONLY when the feeling is genuinely resolved in the exchange (an apology accepted, a misunderstanding cleared): its effect is taken back. Lasting feelings settle into the bars on their own after a while — never end a feeling just to tidy the list.",
             "- <bond_label>: a short (under 12 words) description of the relationship as it stands; rewrite it only when the relationship meaningfully shifts.",
+        ] : []),
+        ...(chrono ? [
+            "TIME — the snapshot's <chrono> holds the world clock" + (chrono.schedules_on ? (chrono.schedules_party ? ", the day's schedule of everyone present" : ", the player's schedule for the day") : "") + (chrono.objectives_on ? " and the long-term objectives" : "") + ". EVERY report contains one <chrono> block with exactly one <clock_update>, even when nothing else changed.",
+            "- When <chrono clock=\"unset\">, set the clock ONCE with absolute values inferred from the story: <clock_update date=\"MM/DD/YYYY\" time=\"HH:MM\"/> (a real year, 24h time; default 12:00). Otherwise NEVER write date/time: report only the time that PASSED during the CURRENT EXCHANGE as days/hours/minutes (0 is valid).",
+            "- MINUTES ARE THE DEFAULT: an exchange of dialogue and small actions takes 1-5 minutes. Hours only when the text explicitly skips time (travel, training, waiting, a scene break); days only for an explicit day change (sleeping, \"the next morning\"). An eventful scene is not a time skip.",
+            ...(chrono.schedules_on ? [
+                "- <new_schedule> for every <schedule missing=\"true\"> owner, and for every listed owner when your clock_update crosses into a new calendar date: date = the date AFTER the advance, 8-15 lines \"HH:MM activity\" from waking to sleep, each concrete (task, place, company, purpose) and rooted in the character's role, habits and objectives — never filler like \"busy all day\". Never write schedules for characters not listed.",
+                "- An existing day is STABLE: revise it ONLY when the exchange makes the plan clearly impossible or obsolete (a trip, an injury, an arrest, an appointment made or cancelled, a night spent elsewhere). A revision is a full <new_schedule> for the same date that replaces the whole day: keep the past slots and every slot that still holds word for word, change only what the story broke. Never revise to rephrase, reorder, add detail or reflect small deviations — the character is simply running late or improvising.",
+            ] : []),
+            ...(chrono.objectives_on ? [
+                "- Objectives are SUBSTANTIAL long-term goals only — real stakes, spanning several scenes or days (quests, debts, rivalries, secrets, careers). None is better than filler; never errands or anything resolved within the scene. owner = a listed character or the player. Update an existing one (<objective_update> with what concretely changed) instead of recreating it; <objective_done> when achieved, <objective_drop> when abandoned or impossible. Titles must match the snapshot EXACTLY.",
+            ] : []),
         ] : []),
         ...(s.feature_death !== false ? [
             "LETHALITY — be realistic about damage and health. Do NOT soften outcomes to protect characters: wounds have consequences, and a resource reaching its minimum (or a clearly unsurvivable blow shown in the exchange) means DEATH — for the player character, allies, human NPCs and bystanders just as much as for monsters. Nobody is plot-armored: a knife to the throat kills a king, a fall kills a child NPC, an ambush kills an ally. When a character or ally dies, report it with <deaths><death char=\"Name\" reason=\"short cause\"/></deaths>. Write the cause concretely and without euphemism — \"run through by the bandit's spear\", \"throat slit\", \"burned alive in the collapsing house\", \"bled out from a gut wound\" — graphic accuracy is correct bookkeeping, not gratuitousness. A character survives a lethal hit ONLY if one of their listed skills or passives (not on cooldown) explicitly says otherwise (a revive, an undying passive). Never invent a rescue the scene and sheets do not support, never fudge a death into a 'critical injury' to spare the player, and never ask permission before reporting a death. Enemies die via <enemies action=\"remove\" reason=\"slain\">. A character marked dead in the snapshot stays dead — never report actions, healing or EXP for them.",

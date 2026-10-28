@@ -17,7 +17,8 @@ import { stateManager, playerLabel, charLabel, playerNames } from "./stateManage
 import { bondDefs, ensureBond, isPlayerSheet, matchDef } from "./bonds.js";
 import { progression } from "./progression.js";
 import { GM_SCHEMA, CHARACTER_CONTAINERS, CONTAINER_TYPES, defaultEntry } from "./schemas.js";
-import { parseAttrs } from "./toolParser.js";
+import { parseAttrs, decodeEntities } from "./toolParser.js";
+import { chronoConfig, repairDate, parseTimeHM, pad2 } from "./chrono.js";
 import { sendRequestViaProfile, resolveWizardProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 import { scenarioBriefBlock, getScenarioBriefText, setScenarioBrief } from "./scenarioBrief.js";
@@ -36,6 +37,8 @@ export function wireTagEnabled(tag) {
     if (tag === "warning") return !!gmSettings().feature_warnings;
     if (tag === "progression") return !!gmSettings().feature_progression;
     if (tag === "bonds" || tag === "bond") return !!gmSettings().feature_bonds;
+    if (tag === "clock") return !!gmSettings().feature_chrono;
+    if (tag === "objective") return !!gmSettings().feature_chrono && chronoConfig(stateManager.getData()).objectives_on;
     const container = TAG_CONTAINERS[tag];
     return container ? containerEnabled(container) : true;
 }
@@ -73,6 +76,8 @@ const RESPONSE_SHAPE_LINES = [
     '<progression enabled="true" exp_base="100" exp_growth="1.10" max_level="90" skill_points="1" bonus_every="5" attr_points="0" attr_cost_every="10" attr_starting_budget="20">EXP guidelines: dynamic grants + level tiers (see rules)</progression>',
     '<warning name="Food" text="<under 15 words, imminent need>"/>',
     '<bonds><bar name="Trust" start="20" description="..."/><bar name="Affection" start="15" description="..."/></bonds> <!-- the chat\'s relationship bars, 0-100; omit when the input lists BOND BARS -->',
+    '<clock date="MM/DD/YYYY" time="HH:MM"/> <!-- the in-fiction date and 24h time where the story stands; omit when the input says CLOCK: SET -->',
+    '<objective owner="<character or player>" title="..." deadline="MM/DD/YYYY" steps="A -> B -> C">what must be done and why it matters</objective> <!-- substantial long-term goals only; deadline/steps optional -->',
     "<brief>2-6 plain sentences: premise, tone, how the world works, what the stakes are</brief>",
     "</setup>",
 ];
@@ -198,6 +203,7 @@ async function collectContext(scenarioText, { skipCharacters = false, improvedGr
                 ...bondsContextLines(skipCharacters),
                 "SCALING RESOURCES: every combat/effort-capable character ALWAYS carries the core resources Health and Stamina, plus Mana when magic or powers fit their role; a core resource's max may be a formula mixing Level AND attribute names (e.g. \"100+(Level*10)\", \"80+(Endurance*25)\") so it grows with the character — reserve formulas for 1-2 of those core stats when growth is implied; situational resources (Ammo, Stress) stay plain numbers.",
             ]),
+        ...chronoContextLines(),
         "",
         "EXISTING SETUP (names only — avoid duplicates unless asked):",
         "<existing>",
@@ -336,9 +342,33 @@ export function sanitizeProposal(parsed) {
         .filter(Boolean)
         .slice(0, 8);
 
+    // Starting clock (null when absent, unusable or Time is off).
+    let clock = null;
+    if (wireTagEnabled("clock") && parsed.clock && typeof parsed.clock === "object") {
+        const date = repairDate(parsed.clock.date);
+        const t = parseTimeHM(parsed.clock.time ?? "12:00");
+        if (date && t !== null) clock = { date, time: `${pad2(Math.floor(t / 60))}:${pad2(t % 60)}` };
+    }
+    const objectives = (wireTagEnabled("objective") && Array.isArray(parsed.objectives) ? parsed.objectives : [])
+        .map(o => {
+            const title = String(o?.title || "").trim().slice(0, 120);
+            if (!title) return null;
+            return {
+                title,
+                owner: String(o.owner || "").trim().slice(0, 60),
+                description: String(o.description || "").trim().slice(0, 400),
+                deadline: String(o.deadline || "").replace(/^MM\/DD\/YYYY$/i, "").trim().slice(0, 60),
+                steps: String(o.steps || "").trim().slice(0, 300),
+            };
+        })
+        .filter(Boolean)
+        .slice(0, 6);
+
     return {
         scenarioName: String(parsed.scenario_name || "Scenario").slice(0, 80),
         bonds,
+        clock,
+        objectives,
         party,
         roster,
         sharedResources,
@@ -441,6 +471,15 @@ export function parseSetupXml(text) {
     const briefMatch = /<brief>([\s\S]*?)<\/brief>/i.exec(stripped);
     if (briefMatch) parsed.brief = briefMatch[1].trim();
 
+    // Time: the starting clock and long-term objectives.
+    const clockMatch = /<clock\b([^>]*?)\/?>/i.exec(stripped);
+    if (clockMatch) parsed.clock = parseAttrs(clockMatch[1]);
+    parsed.objectives = [];
+    const objRe = /<objective\b([^>]*?)(?:\/>|>([\s\S]*?)<\/objective>)/gi;
+    while ((m = objRe.exec(stripped)) !== null) {
+        parsed.objectives.push({ ...parseAttrs(m[1]), description: parseAttrs(m[1]).description ?? decodeEntities((m[2] ?? "").trim()) });
+    }
+
     return parsed;
 }
 
@@ -487,6 +526,30 @@ const BONDS_RULE = [
     "  - Every party <char> other than the player's own character gets one <bond>: a short label (under 12 words) for the relationship as it stands, and values for EVERY bar reflecting their shared history (strangers sit near the start values; old friends, rivals and lovers do not).",
 ].join("\n");
 
+// Time rule: flag only (cache-stable, like BONDS_RULE); whether the clock is
+// already set and which objectives exist go in the user message.
+const CHRONO_RULE = [
+    "",
+    "- TIME is active: the game keeps a world clock and long-term objectives itself.",
+    "  - <clock>: the in-fiction date (MM/DD/YYYY, a real 4-digit year that fits the setting) and 24h time where the story stands now, inferred from the scenario and chat (default 12:00). Skip it when the input says CLOCK: SET.",
+    "  - <objective>: 0-3 SUBSTANTIAL long-term goals with real stakes that span several scenes or days (a quest, a debt, a rivalry, a career, a secret to uncover), owned by a party character or the player. None is better than filler; never errands. Skip titles the input lists as EXISTING OBJECTIVES.",
+    "  - Clocks, deadlines and objectives go in these tags — NEVER as <custom> entries.",
+].join("\n");
+
+function chronoWizard() {
+    return !!gmSettings().feature_chrono;
+}
+
+function chronoContextLines() {
+    if (!chronoWizard()) return [];
+    const cfg = chronoConfig(stateManager.getData());
+    const lines = [];
+    if (cfg.clock) lines.push(`CLOCK: SET (${cfg.clock.date} ${cfg.clock.time}) — do NOT propose <clock>.`);
+    const active = cfg.objectives.filter(o => o.status === "active");
+    if (cfg.objectives_on && active.length) lines.push(`EXISTING OBJECTIVES (do not repeat): ${active.map(o => o.title).join("; ")}`);
+    return lines;
+}
+
 function bondsWizard(skipCharacters) {
     return !skipCharacters && !!gmSettings().feature_bonds;
 }
@@ -512,6 +575,7 @@ export async function generateProposal(scenarioText, { skipCharacters = false, i
         const card = !skipCharacters && !hasTemplate(stateManager.getData());
         const systemPrompt = systemPromptHeader(card)
             + (bondsWizard(skipCharacters) ? BONDS_RULE : "")
+            + (chronoWizard() ? CHRONO_RULE : "")
             + (skipCharacters ? SKIP_CHARACTERS_RULE : "")
             + (improvedGrounds ? IMPROVED_GROUNDS_RULE : "");
         const proposal = await runSetupLLM(systemPrompt, await collectContext(scenarioText, { skipCharacters, improvedGrounds }));
@@ -614,6 +678,11 @@ function proposalToPromptXml(p) {
     for (const c of p.custom || []) lines.push(`<custom name="${escAttr(c.name)}" value="${escAttr(c.value)}" description="${escAttr(c.description)}"/>`);
     for (const w of p.warnings || []) lines.push(`<warning name="${escAttr(w.name)}" text="${escAttr(w.text)}"/>`);
     if (p.brief) lines.push(`<brief>${escAttr(p.brief)}</brief>`);
+    if (p.clock) lines.push(`<clock date="${escAttr(p.clock.date)}" time="${escAttr(p.clock.time)}"/>`);
+    for (const o of p.objectives || []) {
+        const opt = [o.deadline ? ` deadline="${escAttr(o.deadline)}"` : "", o.steps ? ` steps="${escAttr(o.steps)}"` : ""].join("");
+        lines.push(`<objective owner="${escAttr(o.owner)}" title="${escAttr(o.title)}"${opt}>${escAttr(o.description)}</objective>`);
+    }
     if (p.progression) {
         const g = p.progression;
         lines.push(`<progression enabled="${g.enabled !== false ? "true" : "false"}" exp_base="${escAttr(g.exp_base)}" exp_growth="${escAttr(g.exp_growth)}" max_level="${escAttr(g.max_level ?? 99)}" skill_points="${escAttr(g.skill_points_per_level)}" bonus_every="${escAttr(g.bonus_every)}" attr_points="${escAttr(g.attr_points_per_level)}" attr_cost_every="${escAttr(g.attr_cost_every)}" attr_starting_budget="${escAttr(g.attr_starting_budget)}">${escAttr(g.exp_guidelines || "")}</progression>`);
@@ -642,6 +711,7 @@ async function collectRefineContext(proposal, feedback, scenarioText, { skipChar
                 ...bondsContextLines(skipCharacters),
                 "SCALING RESOURCES: every combat/effort-capable character ALWAYS carries the core resources Health and Stamina, plus Mana when magic or powers fit their role — restore any missing core resource; a core resource's max may be a formula mixing Level AND attribute names (e.g. \"100+(Level*10)\", \"80+(Endurance*25)\") so it grows with the character — reserve formulas for 1-2 of those core stats when growth is implied; situational resources (Ammo, Stress) stay plain numbers.",
             ]),
+        ...chronoContextLines(),
         "",
         "RECENT CHAT (context):",
         ...recentChatLines(s.wizard_chat_messages),
@@ -677,6 +747,7 @@ export async function refineProposal(proposal, feedback, scenarioText, { skipCha
         const card = !skipCharacters && !hasTemplate(stateManager.getData());
         const systemPrompt = refinePromptHeader(card)
             + (bondsWizard(skipCharacters) ? BONDS_RULE : "")
+            + (chronoWizard() ? CHRONO_RULE : "")
             + (skipCharacters ? SKIP_CHARACTERS_RULE : "")
             + (improvedGrounds ? IMPROVED_GROUNDS_RULE : "");
         const refined = await runSetupLLM(systemPrompt, await collectRefineContext(proposal, feedback, scenarioText, { skipCharacters, improvedGrounds }));
@@ -712,6 +783,11 @@ export function applyProposal(proposal, mode = "replace") {
         d.activeCharacterId = null;
         // A replaced scenario takes the proposal's relationship bars.
         if (proposal.bonds?.length) stateManager.setBondDefs([]);
+        // The old cast's days and goals go with it; a proposed clock re-anchors.
+        const cc = chronoConfig(d);
+        cc.schedules = {};
+        cc.objectives = [];
+        if (proposal.clock) cc.clock = null;
     }
 
     // Per-scenario progression config FIRST: replace resets it (absent = no
@@ -790,6 +866,15 @@ export function applyProposal(proposal, mode = "replace") {
     const applyBrief = proposal.applyBrief ?? !getScenarioBriefText();
     if (briefText && applyBrief) {
         setScenarioBrief({ text: briefText });
+    }
+    // Time: the wizard anchors the clock only when the chat has none (after
+    // that the post-pass reports elapsed time); objectives resolve their
+    // owner against the party just created.
+    if (proposal.clock && !chronoConfig(d).clock) {
+        stateManager.setClock(proposal.clock.date, proposal.clock.time, { silent: true });
+    }
+    for (const o of proposal.objectives || []) {
+        stateManager.addObjective({ ...o, owner: stateManager.resolveChronoOwner(o.owner, players) || "", ownerName: o.owner }, { silent: true });
     }
 
     stateManager.emitChange(mode === "replace" ? "wizard_replace" : "wizard_merge");

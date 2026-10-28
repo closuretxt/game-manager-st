@@ -49,9 +49,11 @@ import { progression } from "./progression.js";
 import { logDebug } from "./debug.js";
 import { characterSpawner, spawnReviewEnabled } from "./characterSpawner.js";
 import { bondDefs, isPlayerSheet } from "./bonds.js";
+import { PLAYER_OWNER, chronoConfig, parseDelta, parseScheduleLines } from "./chrono.js";
 
-const BLOCK_TAGS = ["change_values", "set_attributes", "set_traits", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies", "transfer", "renames", "deaths", "knockouts", "new_characters", "bonds"];
+const BLOCK_TAGS = ["change_values", "set_attributes", "set_traits", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies", "transfer", "renames", "deaths", "knockouts", "new_characters", "bonds", "chrono"];
 const BOND_RE = /<(bond_label|bond_status|bond_end)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
+const CHRONO_RE = /<(clock_update|new_schedule|objective_new|objective_update|objective_done|objective_drop)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const BLOCK_RE = new RegExp(`<(${BLOCK_TAGS.join("|")})>([\\s\\S]*?)<\\/\\1>`, "gi");
 const INNER_RE = /<(char|target|enemy|shared|resource|item|attribute|trait|entry|status|warning|warning_clear|thread|thread_clear|passive|skill|exp|death|ko|ko_clear)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const ENEMY_RE = /<enemy\b([^>]*?)(?:\/>|>([\s\S]*?)<\/enemy>)/gi;
@@ -439,6 +441,65 @@ function applyBondsBlock(raw, now) {
     return applied;
 }
 
+// <chrono>: the clock first (absolute ONLY while unset — after the anchor
+// the tracker reports elapsed time), then schedules and objectives, so a
+// schedule for "the date after the advance" lands on the advanced clock.
+function applyChronoBlock(raw) {
+    const d = stateManager.getData();
+    const cfg = chronoConfig(d);
+    const players = playerNames();
+    const actions = [];
+    CHRONO_RE.lastIndex = 0;
+    let m;
+    while ((m = CHRONO_RE.exec(raw || "")) !== null) {
+        actions.push({ tag: m[1].toLowerCase(), attrs: parseAttrs(m[2] || ""), content: decodeEntities((m[3] ?? "").trim()) });
+    }
+    let applied = 0;
+    const clock = actions.find(a => a.tag === "clock_update");
+    if (clock) {
+        if (!cfg.clock) {
+            if (stateManager.setClock(clock.attrs.date, clock.attrs.time)) applied++;
+            else logDebug("toolParser: <clock_update> skipped — clock unset and no usable date/time");
+        } else {
+            const minutes = parseDelta(clock.attrs, clock.content);
+            if (minutes && stateManager.advanceClock(minutes)) applied++;
+        }
+    }
+    for (const { tag, attrs, content } of actions) {
+        let ok = false;
+        if (tag === "new_schedule") {
+            if (!cfg.schedules_on) continue;
+            const owner = stateManager.resolveChronoOwner(attrs.owner ?? attrs.char, players);
+            // Player-only mode: party schedules are ignored, not stored. A
+            // revision replaces the whole day (the prompt keeps it rare).
+            ok = !!owner && (cfg.schedules_party || owner === PLAYER_OWNER)
+                && !!stateManager.setSchedule(owner, attrs.date || cfg.clock?.date, parseScheduleLines(content));
+        } else if (tag === "objective_new") {
+            if (!cfg.objectives_on) continue;
+            const ownerName = String(attrs.owner ?? attrs.char ?? "").trim();
+            ok = !!stateManager.addObjective({
+                owner: stateManager.resolveChronoOwner(ownerName, players) || "",
+                ownerName,
+                title: attrs.title,
+                description: attrs.description ?? content,
+                deadline: attrs.deadline,
+                steps: attrs.steps,
+            })?.created;
+        } else if (tag === "objective_update") {
+            if (!cfg.objectives_on) continue;
+            ok = !!stateManager.updateObjective(attrs.title ?? content, { progress: attrs.progress, deadline: attrs.deadline });
+        } else if (tag === "objective_done" || tag === "objective_drop") {
+            if (!cfg.objectives_on) continue;
+            ok = !!stateManager.setObjectiveStatus(attrs.title ?? content, tag === "objective_done" ? "completed" : "abandoned");
+        } else {
+            continue;
+        }
+        if (ok) applied++;
+        else logDebug(`toolParser: NOT applied — <${tag}${attrs.title ? ` title="${attrs.title}"` : ""}${attrs.owner ? ` owner="${attrs.owner}"` : ""}> (unknown owner/title, duplicate or no change)`);
+    }
+    return applied;
+}
+
 // Tool blocks that only touch one tab-toggleable container (core/features.js).
 const BLOCK_CONTAINERS = {
     add_items: "inventory",
@@ -458,6 +519,11 @@ export function applyToolBlocks(blocks, { autoCreateChars = false, now = null } 
             if (!gmSettings().feature_bonds || !bondDefs(stateManager.getData()).length) continue;
             const chat = getContext()?.chat;
             applied += applyBondsBlock(block.raw, now ?? Math.max(0, (chat?.length || 1) - 1));
+            continue;
+        }
+        if (block.type === "chrono") {
+            if (!gmSettings().feature_chrono) continue;
+            applied += applyChronoBlock(block.raw);
             continue;
         }
         // Enemies have their own nested format — handled separately.

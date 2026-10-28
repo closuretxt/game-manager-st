@@ -30,6 +30,7 @@ export const FEATURE_LABELS = {
     feature_death: "Permadeath",
     feature_roster_rotation: "Roster rotation",
     feature_bonds: "Bonds",
+    feature_chrono: "Time (clock, schedules, objectives)",
 };
 export const CHAT_FEATURE_KEYS = Object.keys(FEATURE_LABELS);
 
@@ -86,6 +87,7 @@ export const FEATURE_MODES = {
             feature_warnings: true,
             feature_rewrite: true,
             feature_bonds: true,
+            feature_chrono: true,
             tab_statuses: true,
             tab_custom: true,
         },
@@ -99,6 +101,7 @@ export const FEATURE_MODES = {
             feature_warnings: true,
             feature_rewrite: true,
             feature_bonds: true,
+            feature_chrono: true,
             tab_inventory: true,
             tab_skills: false,
             tab_passives: false,

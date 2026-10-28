@@ -2,8 +2,9 @@
 //   {{gamemaster-low-priority}}  — persistent context: warnings, always-inject
 //                                  shared resource values (XML, minimal).
 //   {{gamemaster-high-priority}} — one-shot immediate reports: dice roll
-//                                  results, transaction checks (XML, minimal).
-// Both macros return "" when nothing is relevant or injection is disabled.
+//                                  results, transaction checks, per-turn
+//                                  context such as the world clock (XML, minimal).
+// All macros return "" when nothing is relevant or injection is disabled.
 
 import { macros as macroSystem } from "../../../../macros/macro-system.js";
 import { logDebug } from "../core/debug.js";
