@@ -33,6 +33,7 @@ import { setupWizard } from "./setupWizard.js";
 import { characterCreator } from "./characterCreator.js";
 import { iconBtn } from "./characterView.js";
 import { popoverMenu } from "./popoverMenu.js";
+import { renderBondSection, openBondsDialog, bondsVisible } from "./bondsView.js";
 
 // `toggle` = the per-chat tab toggle (core/features.js) that hides the tab.
 const TABS = [
@@ -536,6 +537,15 @@ class MainPanel {
                 .append($("<i>").addClass("fa-solid fa-id-card"), $("<span>").text(" Card"));
             cardBtn.on("click", () => openCardTemplateDialog());
             header.append(cardBtn);
+
+            // Bonds — the chat's relationship bars (NPC feelings toward the player).
+            if (bondsVisible()) {
+                const bondsBtn = $("<div>").addClass("menu_button gm_add_btn")
+                    .attr("title", "Bonds — the bars that track how NPCs feel about the player")
+                    .append($("<i>").addClass("fa-solid fa-heart-circle-check"), $("<span>").text(" Bonds"));
+                bondsBtn.on("click", () => openBondsDialog());
+                header.append(bondsBtn);
+            }
 
             // Party cap — max full sheets the Setup Wizard proposes; extra
             // allies go to the roster. Lives here (edit mode only) instead of
@@ -1299,7 +1309,11 @@ class MainPanel {
                 break;
             case "stats":
             default:
+                // Divider lines between the categories (style.css).
+                body.addClass("gm_stats_body");
                 characterView.renderStats(body, char, edit);
+                // Bond: how this character feels about the player.
+                renderBondSection(body, char, edit);
                 break;
         }
         content.append(body);

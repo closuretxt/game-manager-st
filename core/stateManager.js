@@ -9,6 +9,7 @@ import { extensionName, CHARACTER_STATES } from "./constants.js";
 import { CHARACTER_CONTAINERS, GM_SCHEMA, defaultEntry, genId } from "./schemas.js";
 import { resolveResourceMax } from "./resourceScaler.js";
 import { getTemplate, conformSheet, followsCard } from "./cardTemplates.js";
+import { bondConfig, bondSheets, ensureBond, isPlayerSheet, setBondStatus, endBondStatus, settleBondStatuses, setBondDefs } from "./bonds.js";
 import { logDebug } from "./debug.js";
 
 const _listeners = new Set();
@@ -24,6 +25,11 @@ export function playerLabel() {
     const custom = String(settings()?.player_label || "").trim();
     if (custom) return custom;
     return String(getContext()?.name1 || "Player");
+}
+
+// Every name the player's own character may go by (custom label + persona).
+export function playerNames() {
+    return [playerLabel(), getContext()?.name1].filter(Boolean);
 }
 
 // Speaker label for the AI's lines in the engines' prompt contexts —
@@ -230,6 +236,9 @@ export const stateManager = {
             }
             _normalizeProgression(r.sheet);
         }
+        // Bonds (core/bonds.js): bar definitions + each existing bond.
+        bondConfig(d);
+        for (const c of bondSheets(d)) if (c.bond) ensureBond(c, d, false);
         if (!d.characters.some(c => c.id === d.activeCharacterId)) {
             d.activeCharacterId = d.characters[0]?.id ?? null;
         }
@@ -530,6 +539,81 @@ export const stateManager = {
         if (pinned) char.pinned = true;
         else delete char.pinned;
         this.emitChange("pin_character");
+    },
+
+    // ---------- bonds (core/bonds.js) ----------
+    // Characters (party or benched) that carry a bond: everyone but the
+    // player's own character.
+    bondHolders(playerNames = []) {
+        return bondSheets(this.getData()).filter(c => !isPlayerSheet(c, playerNames));
+    },
+
+    setBondDefs(defs) {
+        setBondDefs(this.getData(), defs);
+        this.emitChange("bond_defs");
+    },
+
+    setBondOptions({ inject, step, settle } = {}) {
+        const cfg = bondConfig(this.getData());
+        if (inject !== undefined) cfg.inject = !!inject;
+        if (step !== undefined) cfg.step = step;
+        if (settle !== undefined) cfg.settle = settle;
+        bondConfig(this.getData());
+        this.emitChange("bond_options");
+    },
+
+    // Start of a post-pass: every holder gets a bond (bars at their start
+    // values) and statuses past the settle window settle. Returns
+    // [{ name, settled: [statusNames] }] for the notifications.
+    tickBonds(now, playerNames = []) {
+        const d = this.getData();
+        if (!bondConfig(d).defs.length) return [];
+        const out = [];
+        for (const c of this.bondHolders(playerNames)) {
+            ensureBond(c, d);
+            const settled = settleBondStatuses(d, c, now);
+            if (settled.length) out.push({ id: c.id, name: c.name, settled });
+        }
+        this.emitChange("bond_tick");
+        return out;
+    },
+
+    setBondLabel(id, label) {
+        const c = this.getSheet(id);
+        if (!c || !bondConfig(this.getData()).defs.length) return false;
+        const text = String(label ?? "").trim().slice(0, 160);
+        const bond = ensureBond(c, this.getData());
+        if (bond.label === text) return false;
+        bond.label = text;
+        this.emitChange("bond_label");
+        return true;
+    },
+
+    // Returns setBondStatus' result ({ action, status, shifts }) or null.
+    applyBondStatus(id, fields, now) {
+        const c = this.getSheet(id);
+        if (!c) return null;
+        const res = setBondStatus(this.getData(), c, fields, now);
+        if (res) this.emitChange("bond_status");
+        return res;
+    },
+
+    endBondStatus(id, name, now) {
+        const c = this.getSheet(id);
+        if (!c) return null;
+        const res = endBondStatus(this.getData(), c, name, now);
+        if (res) this.emitChange("bond_end");
+        return res;
+    },
+
+    // Manual bar edit (sheet, edit mode).
+    setBondValue(id, defId, value) {
+        const c = this.getSheet(id);
+        if (!c) return;
+        const bond = ensureBond(c, this.getData());
+        if (!(defId in bond.values)) return;
+        bond.values[defId] = Math.min(100, Math.max(0, Math.round(Number(value) || 0)));
+        this.emitChange("bond_value");
     },
 
     // Roster entry by entry id, its sheet's id, or name.

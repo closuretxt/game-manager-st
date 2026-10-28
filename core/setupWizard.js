@@ -13,7 +13,8 @@
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
-import { stateManager, playerLabel, charLabel } from "./stateManager.js";
+import { stateManager, playerLabel, charLabel, playerNames } from "./stateManager.js";
+import { bondDefs, ensureBond, isPlayerSheet, matchDef } from "./bonds.js";
 import { progression } from "./progression.js";
 import { GM_SCHEMA, CHARACTER_CONTAINERS, CONTAINER_TYPES, defaultEntry } from "./schemas.js";
 import { parseAttrs } from "./toolParser.js";
@@ -34,6 +35,7 @@ const TAG_CONTAINERS = Object.fromEntries(Object.entries(GM_SCHEMA).map(([type, 
 export function wireTagEnabled(tag) {
     if (tag === "warning") return !!gmSettings().feature_warnings;
     if (tag === "progression") return !!gmSettings().feature_progression;
+    if (tag === "bonds" || tag === "bond") return !!gmSettings().feature_bonds;
     const container = TAG_CONTAINERS[tag];
     return container ? containerEnabled(container) : true;
 }
@@ -62,6 +64,7 @@ const RESPONSE_SHAPE_LINES = [
     '<skill name="Fireball" cost="10 Mana" cooldown="2" description="..."/> <!-- cooldown in messages; 0 or omitted = always ready -->',
     '<passive name="Tough" ptype="stat" description="..."/> <!-- ptype: special|stat -->',
     '<status name="Dazed" modifiers="Aim -2" effect="..."/> <!-- TEMPORARY conditions only, removed when they end -->',
+    '<bond label="Old friend, a little guarded" values="Trust=45, Affection=60"/> <!-- how THIS character feels about the player (never on the player\'s own character) -->',
     "</char>",
     "</party>",
     '<ally name="..." note="<one line: who they are, why they matter>"/>',
@@ -69,6 +72,7 @@ const RESPONSE_SHAPE_LINES = [
     '<custom name="Seeds" value="Pouch" description="..."/> <!-- gimmick, objective, clock or note -->',
     '<progression enabled="true" exp_base="100" exp_growth="1.10" max_level="90" skill_points="1" bonus_every="5" attr_points="0" attr_cost_every="10" attr_starting_budget="20">EXP guidelines: dynamic grants + level tiers (see rules)</progression>',
     '<warning name="Food" text="<under 15 words, imminent need>"/>',
+    '<bonds><bar name="Trust" start="20" description="..."/><bar name="Affection" start="15" description="..."/></bonds> <!-- the chat\'s relationship bars, 0-100; omit when the input lists BOND BARS -->',
     "<brief>2-6 plain sentences: premise, tone, how the world works, what the stakes are</brief>",
     "</setup>",
 ];
@@ -191,6 +195,7 @@ async function collectContext(scenarioText, { skipCharacters = false, improvedGr
                 `PARTY CAP: ${partyCap} full character sheets maximum.`,
                 entryFieldShapes(),
                 ...templatePromptBlock(d, escAttr),
+                ...bondsContextLines(skipCharacters),
                 "SCALING RESOURCES: every combat/effort-capable character ALWAYS carries the core resources Health and Stamina, plus Mana when magic or powers fit their role; a core resource's max may be a formula mixing Level AND attribute names (e.g. \"100+(Level*10)\", \"80+(Endurance*25)\") so it grows with the character — reserve formulas for 1-2 of those core stats when growth is implied; situational resources (Ammo, Stress) stay plain numbers.",
             ]),
         "",
@@ -276,6 +281,9 @@ export function sanitizeProposal(parsed) {
                 // Hidden containers stay empty — they are untracked here.
                 char[container] = containerEnabled(container) ? sanitizeList(CONTAINER_TYPES[container], raw[container]) : [];
             }
+            if (wireTagEnabled("bond") && raw.bond && typeof raw.bond === "object") {
+                char.bond = { label: String(raw.bond.label || "").slice(0, 160), values: String(raw.bond.values || "").slice(0, 300) };
+            }
             return char;
         })
         .filter(Boolean);
@@ -317,8 +325,20 @@ export function sanitizeProposal(parsed) {
         };
     }
 
+    // Proposed relationship bars (empty when absent or Bonds are off).
+    const bonds = (wireTagEnabled("bonds") && Array.isArray(parsed.bonds) ? parsed.bonds : [])
+        .map(b => {
+            const name = String(b?.name || "").trim().slice(0, 40);
+            if (!name) return null;
+            const start = Math.trunc(Number(b.start));
+            return { name, start: Number.isFinite(start) ? Math.min(100, Math.max(0, start)) : 20, description: String(b.description || "").slice(0, 300) };
+        })
+        .filter(Boolean)
+        .slice(0, 8);
+
     return {
         scenarioName: String(parsed.scenario_name || "Scenario").slice(0, 80),
+        bonds,
         party,
         roster,
         sharedResources,
@@ -368,6 +388,9 @@ export function parseSetupXml(text) {
             let e;
             while ((e = entryRe.exec(body)) !== null) char[container].push(parseAttrs(e[1]));
         }
+        // How this character feels about the player (Bonds).
+        const bondMatch = /<bond\b([^>]*?)\/?>/i.exec(body);
+        if (bondMatch) char.bond = parseAttrs(bondMatch[1]);
         parsed.party.push(char);
     }
 
@@ -383,6 +406,14 @@ export function parseSetupXml(text) {
             while ((m = re.exec(cardMatch[1])) !== null) parsed.card[key].push(parseAttrs(m[1]));
         }
         stripped = stripped.replace(cardMatch[0], " ");
+    }
+    // The chat's relationship bars (Bonds).
+    const bondsMatch = /<bonds\b[^>]*>([\s\S]*?)<\/bonds>/i.exec(stripped);
+    if (bondsMatch) {
+        parsed.bonds = [];
+        const re = /<bar\b([^>]*?)(?:\/>|>[\s\S]*?<\/bar>)/gi;
+        while ((m = re.exec(bondsMatch[1])) !== null) parsed.bonds.push(parseAttrs(m[1]));
+        stripped = stripped.replace(bondsMatch[0], " ");
     }
     for (const [tag, key] of [["ally", "roster"], ["shared", "sharedResources"], ["custom", "custom"], ["warning", "warnings"]]) {
         const re = new RegExp(`<${tag}\\b([^>]*?)(?:\\/>|>[\\s\\S]*?<\\/${tag}>)`, "gi");
@@ -446,6 +477,32 @@ const IMPROVED_GROUNDS_RULE = [
     "  - CONSEQUENCES: the setup must imply that ignoring the pressure changes the scenario (deadlines pass, rivals act). Reflect that in custom features with states that can worsen.",
 ].join("\n");
 
+// Bonds rule: depends only on the chat's feature flag, so the system prompt
+// stays byte-identical across wizard runs (cache-first). Whether the chat
+// already HAS bars is said in the user message (bondsContextLines).
+const BONDS_RULE = [
+    "",
+    "- BONDS are active: they track how each NPC feels about the PLAYER'S character (never the reverse, never between NPCs).",
+    "  - <bonds>: 2-5 relationship bars that fit THIS scenario (a romance: Affection, Trust, Tension; a crime drama: Loyalty, Fear, Respect), each 0-100 with a start value for a stranger and a one-line, in-world description of what raises or lowers it. Skip <bonds> when the input lists the chat's BOND BARS — use those names exactly.",
+    "  - Every party <char> other than the player's own character gets one <bond>: a short label (under 12 words) for the relationship as it stands, and values for EVERY bar reflecting their shared history (strangers sit near the start values; old friends, rivals and lovers do not).",
+].join("\n");
+
+function bondsWizard(skipCharacters) {
+    return !skipCharacters && !!gmSettings().feature_bonds;
+}
+
+// User-message side of the bonds rule: the chat's fixed bars, if any.
+function bondsContextLines(skipCharacters) {
+    if (!bondsWizard(skipCharacters)) return [];
+    const defs = bondDefs(stateManager.getData());
+    const player = playerLabel();
+    const lines = [`PLAYER CHARACTER (no <bond> for them): ${player}`];
+    if (defs.length) {
+        lines.push(`BOND BARS (fixed for this chat — do NOT propose <bonds>; use exactly these names in <bond values>): ${defs.map(x => `${x.name} (start ${x.start})`).join(", ")}`);
+    }
+    return lines;
+}
+
 // Runs the setup LLM call. Returns a sanitized proposal (for the review
 // modal) or null on failure.
 export async function generateProposal(scenarioText, { skipCharacters = false, improvedGrounds = false } = {}) {
@@ -454,6 +511,7 @@ export async function generateProposal(scenarioText, { skipCharacters = false, i
     try {
         const card = !skipCharacters && !hasTemplate(stateManager.getData());
         const systemPrompt = systemPromptHeader(card)
+            + (bondsWizard(skipCharacters) ? BONDS_RULE : "")
             + (skipCharacters ? SKIP_CHARACTERS_RULE : "")
             + (improvedGrounds ? IMPROVED_GROUNDS_RULE : "");
         const proposal = await runSetupLLM(systemPrompt, await collectContext(scenarioText, { skipCharacters, improvedGrounds }));
@@ -545,7 +603,11 @@ function proposalToPromptXml(p) {
         const lvl = Math.trunc(Number(c.level));
         lines.push(`<char name="${escAttr(c.name)}"${Number.isFinite(lvl) && lvl >= 1 ? ` level="${lvl}"` : ""}>`);
         lines.push(...sheetWireLines(c));
+        if (c.bond) lines.push(`<bond label="${escAttr(c.bond.label)}" values="${escAttr(c.bond.values)}"/>`);
         lines.push("</char>");
+    }
+    if (p.bonds?.length) {
+        lines.push(`<bonds>${p.bonds.map(b => `<bar name="${escAttr(b.name)}" start="${escAttr(b.start)}" description="${escAttr(b.description)}"/>`).join("")}</bonds>`);
     }
     for (const a of p.roster || []) lines.push(`<ally name="${escAttr(a.name)}" note="${escAttr(a.note)}"/>`);
     for (const r of p.sharedResources || []) lines.push(`<shared name="${escAttr(r.name)}" qty="${escAttr(r.qty)}" description="${escAttr(r.description)}" always_inject="${r.always_inject ? "true" : "false"}"/>`);
@@ -577,6 +639,7 @@ async function collectRefineContext(proposal, feedback, scenarioText, { skipChar
                 `PARTY CAP: ${partyCap} full character sheets maximum.`,
                 entryFieldShapes(),
                 ...templatePromptBlock(stateManager.getData(), escAttr),
+                ...bondsContextLines(skipCharacters),
                 "SCALING RESOURCES: every combat/effort-capable character ALWAYS carries the core resources Health and Stamina, plus Mana when magic or powers fit their role — restore any missing core resource; a core resource's max may be a formula mixing Level AND attribute names (e.g. \"100+(Level*10)\", \"80+(Endurance*25)\") so it grows with the character — reserve formulas for 1-2 of those core stats when growth is implied; situational resources (Ammo, Stress) stay plain numbers.",
             ]),
         "",
@@ -613,6 +676,7 @@ export async function refineProposal(proposal, feedback, scenarioText, { skipCha
     try {
         const card = !skipCharacters && !hasTemplate(stateManager.getData());
         const systemPrompt = refinePromptHeader(card)
+            + (bondsWizard(skipCharacters) ? BONDS_RULE : "")
             + (skipCharacters ? SKIP_CHARACTERS_RULE : "")
             + (improvedGrounds ? IMPROVED_GROUNDS_RULE : "");
         const refined = await runSetupLLM(systemPrompt, await collectRefineContext(proposal, feedback, scenarioText, { skipCharacters, improvedGrounds }));
@@ -646,6 +710,8 @@ export function applyProposal(proposal, mode = "replace") {
         d.custom = [];
         d.warnings = [];
         d.activeCharacterId = null;
+        // A replaced scenario takes the proposal's relationship bars.
+        if (proposal.bonds?.length) stateManager.setBondDefs([]);
     }
 
     // Per-scenario progression config FIRST: replace resets it (absent = no
@@ -664,6 +730,13 @@ export function applyProposal(proposal, mode = "replace") {
         syncTemplate(d, structuredClone(proposal.card));
     }
 
+    // Relationship bars before the party, so each character's <bond> values
+    // resolve against them. A chat's existing bars always win.
+    if (proposal.bonds?.length && !bondDefs(d).length) {
+        stateManager.setBondDefs(proposal.bonds.map(b => ({ ...b })));
+    }
+    const players = playerNames();
+
     for (const raw of proposal.party || []) {
         const templateEntries = {};
         for (const container of CHARACTER_CONTAINERS) {
@@ -680,6 +753,15 @@ export function applyProposal(proposal, mode = "replace") {
         if (raw.needs_build) {
             char.needs_build = true;
             char.buildNote = String(raw.buildNote || raw.note || "");
+        }
+        // Starting bond: label + "Bar=N" values matched to the chat's bars.
+        if (raw.bond && bondDefs(d).length && !isPlayerSheet(char, players)) {
+            const bond = ensureBond(char, d);
+            bond.label = String(raw.bond.label || "").trim();
+            for (const [, name, num] of String(raw.bond.values || "").matchAll(/([^,;=:]+?)\s*[=:]\s*(\d+)/g)) {
+                const def = matchDef(bondDefs(d), name);
+                if (def) bond.values[def.id] = Math.min(100, Math.max(0, Number(num)));
+            }
         }
     }
 

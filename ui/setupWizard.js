@@ -23,6 +23,7 @@ import { iconBtn } from "./characterView.js";
 import { sheetEditor } from "./sheetEditor.js";
 import { stateManager } from "../core/stateManager.js";
 import { hasTemplate, TEMPLATE_CONTAINERS } from "../core/cardTemplates.js";
+import { bondDefs } from "../core/bonds.js";
 
 const CONTAINER_LABELS = {
     resources: "res",
@@ -326,6 +327,32 @@ export const setupWizard = {
             body.append(cardWrap);
         }
 
+        // Bonds — the chat's relationship bars, proposed only when it has none.
+        if (p.bonds?.length && !bondDefs(stateManager.getData()).length) {
+            const bondsWrap = $("<div>").addClass("gm_list");
+            bondsWrap.append($("<div>").addClass("gm_section_header").append(
+                $("<b>").text("Bond Bars"),
+                $("<span>").addClass("gm_section_hint").text("How NPCs feel about the player (0-100). Moved only by feelings the post-pass reports."),
+            ));
+            const list = $("<div>").addClass("gm_entry_list");
+            p.bonds.forEach((b, i) => {
+                const name = $("<input>").addClass("gm_input").val(b.name).on("input", () => { b.name = name.val(); this._sessionQueue(); });
+                const start = $("<input>").addClass("gm_input gm_bond_start").attr({ type: "number", min: 0, max: 100, title: "Start value" }).val(b.start)
+                    .on("change", () => { b.start = Math.min(100, Math.max(0, Math.trunc(Number(start.val()) || 0))); this._sessionQueue(); });
+                const desc = $("<input>").addClass("gm_input").val(b.description || "").on("input", () => { b.description = desc.val(); this._sessionQueue(); });
+                const del = iconBtn("fa-solid fa-trash").on("click", () => { p.bonds.splice(i, 1); this._renderReview(); });
+                list.append($("<div>").addClass("gm_entry_row").append(
+                    $("<div>").addClass("gm_entry_top").append(
+                        $("<div>").addClass("gm_entry_main").append(name, start),
+                        $("<div>").addClass("gm_entry_actions").append(del),
+                    ),
+                    desc,
+                ));
+            });
+            bondsWrap.append(list);
+            body.append(bondsWrap);
+        }
+
         // Party — full sheets, capped.
         const partyWrap = $("<div>").addClass("gm_list");
         partyWrap.append($("<div>").addClass("gm_section_header").append(
@@ -352,6 +379,7 @@ export const setupWizard = {
                 .filter(k => (char[k] || []).length)
                 .map(k => `${char[k].length} ${CONTAINER_LABELS[k]}`)
                 .join(", ") || "empty sheet";
+            const bondNote = char.bond?.label ? ` · Bond: ${char.bond.label}${char.bond.values ? ` (${char.bond.values})` : ""}` : "";
             const del = iconBtn("fa-solid fa-trash");
             del.on("click", () => {
                 this._expanded.delete(char);
@@ -363,7 +391,7 @@ export const setupWizard = {
                     $("<div>").addClass("gm_entry_main").append(chevron, name),
                     $("<div>").addClass("gm_entry_actions").append(del),
                 ),
-                $("<div>").addClass("gm_entry_desc").text(summary),
+                $("<div>").addClass("gm_entry_desc").text(summary + bondNote),
             );
             if (open) row.append(this._sheetEditor(char));
             partyList.append(row);

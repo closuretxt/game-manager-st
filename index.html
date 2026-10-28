@@ -192,6 +192,10 @@
                             <input id="gm_setting_feat_roster_rotation" type="checkbox" />
                             <span>Roster rotation</span>
                         </label>
+                        <label class="checkbox_label" for="gm_setting_feat_bonds" title="Bonds: how each NPC feels about the player. The chat defines the bars (Trust, Affection...); they move only through bond statuses the post-pass reports. On by default in the Romance and Slice of life modes.">
+                            <input id="gm_setting_feat_bonds" type="checkbox" />
+                            <span>Bonds</span>
+                        </label>
                     </div>
                     <div class="gm_settings_subhead" title="A hidden tab is not tracked: the AI no longer sees or changes that part of the sheets for this chat (the data is kept).">Tabs</div>
                     <div class="gm_settings_grid">
@@ -294,6 +298,14 @@
                         <label class="checkbox_label" for="gm_setting_notify_enemies" title="Also notify for enemy sheets (HP changes, skill use...). Off by default to avoid combat spam.">
                             <input id="gm_setting_notify_enemies" type="checkbox" />
                             <span>Include enemies</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_notify_bonds" title="Notify on bond changes: feelings gained, edited, ended or settled, and relationship label rewrites">
+                            <input id="gm_setting_notify_bonds" type="checkbox" />
+                            <span>Bonds</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_notify_attach" title="Also log the post-pass notifications under the AI message that caused them (a collapsible line, kept per swipe and saved with the chat)">
+                            <input id="gm_setting_notify_attach" type="checkbox" />
+                            <span>Attach to message</span>
                         </label>
                     </div>
                 </div>

@@ -702,8 +702,23 @@
 
 .gm_sheet_top {
     display: flex;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 6px 8px;
     align-items: center;
+}
+
+/* Sheet actions: tighter padding so Party + Pin + Move To + Preset + Edit
+   fit one row in a narrow panel; whatever still overflows wraps below. */
+.gm_sheet_top .gm_back_btn {
+    padding: 6px 10px;
+}
+
+/* Basic Stats: a divider between categories (resources, attributes,
+   details, bond). */
+.gm_stats_body > .gm_list + .gm_list {
+    border-top: 1px solid var(--gm-line);
+    margin-top: 12px;
+    padding-top: 10px;
 }
 
 /* ---------- settings warning banner ---------- */
@@ -1062,27 +1077,32 @@ textarea.gm_input {
 
 /* Notification highlights (notifications.js composes lines as HTML with
    these classes; all dynamic values are escaped before interpolation). */
-.gm_status_line .gm_n_name {
+.gm_status_line .gm_n_name,
+.gm_msg_log_line .gm_n_name {
     color: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
     font-weight: 700;
 }
 
-.gm_status_line .gm_n_pos {
+.gm_status_line .gm_n_pos,
+.gm_msg_log_line .gm_n_pos {
     color: var(--gm-ok, #4caf7d);
     font-weight: 600;
 }
 
-.gm_status_line .gm_n_neg {
+.gm_status_line .gm_n_neg,
+.gm_msg_log_line .gm_n_neg {
     color: #e06c6c;
     font-weight: 600;
 }
 
-.gm_status_line .gm_n_val {
+.gm_status_line .gm_n_val,
+.gm_msg_log_line .gm_n_val {
     color: var(--SmartThemeBodyColor, #ddd);
     font-weight: 600;
 }
 
-.gm_status_line .gm_n_dim {
+.gm_status_line .gm_n_dim,
+.gm_msg_log_line .gm_n_dim {
     opacity: 0.7;
     font-weight: 400;
 }
@@ -3583,4 +3603,144 @@ body > #gm_spawn_chip {
     font-size: 10px;
     font-style: italic;
     opacity: 0.5;
+}
+
+/* ---------- Bonds (character page + dialog) ---------- */
+.gm_bond_label {
+    width: 100%;
+    margin-bottom: 6px;
+}
+
+.gm_bond_label_text {
+    font-style: italic;
+    opacity: 0.85;
+    margin-bottom: 6px;
+}
+
+.gm_bond_bars {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.gm_bond_bar {
+    display: grid;
+    grid-template-columns: minmax(70px, 30%) 1fr auto;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.gm_bond_name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gm_bond_track {
+    height: 6px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor, #ddd) 15%, transparent);
+    overflow: hidden;
+}
+
+.gm_bond_fill {
+    height: 100%;
+    background: var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
+}
+
+.gm_bond_value,
+.gm_bond_start {
+    width: 4.5em !important;
+    flex: none;
+}
+
+.gm_bond_value_text {
+    min-width: 2em;
+    text-align: right;
+    font-weight: 600;
+}
+
+.gm_bond_feelings {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.gm_bond_feeling {
+    padding: 4px 8px;
+    border-left: 2px solid var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e));
+    background: color-mix(in srgb, var(--SmartThemeBodyColor, #ddd) 5%, transparent);
+    border-radius: 0 4px 4px 0;
+}
+
+.gm_bond_feeling_top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.gm_bond_effect {
+    flex: 1;
+    opacity: 0.8;
+}
+
+.gm_bond_history {
+    margin-top: 6px;
+    font-size: 12px;
+}
+
+.gm_bond_history summary {
+    cursor: pointer;
+    opacity: 0.75;
+}
+
+.gm_bond_presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 6px 0;
+}
+
+.gm_bonds_modal .gm_cap_wrap {
+    margin-left: 0;
+}
+
+/* Bar rows (dialog + wizard review): the description input spans the row. */
+.gm_bonds_modal .gm_entry_row > .gm_input,
+.gm_wizard_body .gm_entry_row > .gm_input {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.gm_bonds_modal .gm_entry_main,
+.gm_wizard_body .gm_entry_main {
+    min-width: 0;
+}
+
+/* ---------- Message log (post-pass notifications under the AI message) ---------- */
+.gm_msg_log {
+    margin-top: 6px;
+    font-size: 12px;
+    border-left: 2px solid color-mix(in srgb, var(--gm-accent, var(--SmartThemeQuoteColor, #b58e5e)) 60%, transparent);
+    padding: 2px 8px;
+    opacity: 0.9;
+}
+
+.gm_msg_log summary {
+    cursor: pointer;
+    color: var(--SmartThemeEmColor, #aaa);
+    user-select: none;
+}
+
+.gm_msg_log_body {
+    padding-top: 4px;
+}
+
+.gm_msg_log_line {
+    color: var(--SmartThemeEmColor, #aaa);
+    padding: 1px 0;
 }

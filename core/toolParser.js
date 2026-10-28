@@ -41,15 +41,17 @@
 // scope it; when omitted the active character is used. <warnings> and
 // <threads> are party-level and <char> resolves party characters AND enemies.
 
-import { extension_settings } from "../../../../extensions.js";
+import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
 import { gmSettings, containerEnabled } from "./features.js";
-import { stateManager } from "./stateManager.js";
+import { stateManager, playerNames } from "./stateManager.js";
 import { progression } from "./progression.js";
 import { logDebug } from "./debug.js";
 import { characterSpawner, spawnReviewEnabled } from "./characterSpawner.js";
+import { bondDefs, isPlayerSheet } from "./bonds.js";
 
-const BLOCK_TAGS = ["change_values", "set_attributes", "set_traits", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies", "transfer", "renames", "deaths", "knockouts", "new_characters"];
+const BLOCK_TAGS = ["change_values", "set_attributes", "set_traits", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies", "transfer", "renames", "deaths", "knockouts", "new_characters", "bonds"];
+const BOND_RE = /<(bond_label|bond_status|bond_end)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const BLOCK_RE = new RegExp(`<(${BLOCK_TAGS.join("|")})>([\\s\\S]*?)<\\/\\1>`, "gi");
 const INNER_RE = /<(char|target|enemy|shared|resource|item|attribute|trait|entry|status|warning|warning_clear|thread|thread_clear|passive|skill|exp|death|ko|ko_clear)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const ENEMY_RE = /<enemy\b([^>]*?)(?:\/>|>([\s\S]*?)<\/enemy>)/gi;
@@ -401,6 +403,42 @@ function applyRenameBlock(raw) {
     return applied;
 }
 
+// <bonds>: per-action scoped (char="..."), NPCs only — the player's own
+// character is the other side of every bond. `now` = the message being
+// accounted, the settle clock of new/edited statuses.
+function applyBondsBlock(raw, now) {
+    let applied = 0;
+    const players = playerNames();
+    BOND_RE.lastIndex = 0;
+    let m;
+    while ((m = BOND_RE.exec(raw || "")) !== null) {
+        const tag = m[1].toLowerCase();
+        const attrs = parseAttrs(m[2] || "");
+        const content = decodeEntities((m[3] ?? "").trim());
+        const char = stateManager.getSheet(attrs.char || "");
+        if (!char || isPlayerSheet(char, players)) {
+            logDebug(`toolParser: skipping <${tag}> — no bond holder named '${attrs.char || ""}'`);
+            continue;
+        }
+        let ok = false;
+        if (tag === "bond_label") {
+            ok = stateManager.setBondLabel(char.id, attrs.text ?? attrs.label ?? content);
+        } else if (tag === "bond_status") {
+            ok = !!stateManager.applyBondStatus(char.id, {
+                name: attrs.name,
+                effect: attrs.effect,
+                ends: attrs.ends,
+                note: attrs.why ?? attrs.note ?? content,
+            }, now);
+        } else if (tag === "bond_end") {
+            ok = !!stateManager.endBondStatus(char.id, attrs.name ?? content, now);
+        }
+        if (ok) applied++;
+        else logDebug(`toolParser: NOT applied — <${tag} char="${char.name}"${attrs.name ? ` name="${attrs.name}"` : ""}> (unknown status, unchanged, or no bond bars)`);
+    }
+    return applied;
+}
+
 // Tool blocks that only touch one tab-toggleable container (core/features.js).
 const BLOCK_CONTAINERS = {
     add_items: "inventory",
@@ -412,9 +450,16 @@ const BLOCK_CONTAINERS = {
 };
 
 // Applies parsed blocks to the state. Returns the number of applied actions.
-export function applyToolBlocks(blocks, { autoCreateChars = false } = {}) {
+export function applyToolBlocks(blocks, { autoCreateChars = false, now = null } = {}) {
     let applied = 0;
     for (const block of blocks) {
+        // Bonds: feature-gated and only once the chat defines bars.
+        if (block.type === "bonds") {
+            if (!gmSettings().feature_bonds || !bondDefs(stateManager.getData()).length) continue;
+            const chat = getContext()?.chat;
+            applied += applyBondsBlock(block.raw, now ?? Math.max(0, (chat?.length || 1) - 1));
+            continue;
+        }
         // Enemies have their own nested format — handled separately.
         if (block.type === "enemies") {
             applied += applyEnemiesBlock(block.raw);

@@ -29,6 +29,7 @@ export const FEATURE_LABELS = {
     feature_skill_tree: "Skill Trees",
     feature_death: "Permadeath",
     feature_roster_rotation: "Roster rotation",
+    feature_bonds: "Bonds",
 };
 export const CHAT_FEATURE_KEYS = Object.keys(FEATURE_LABELS);
 
@@ -62,13 +63,16 @@ const RPG_OFF = {
     feature_death: false,
 };
 
+// Bonds (NPC feelings toward the player) belong to the relationship modes.
+const NO_BONDS = { feature_bonds: false };
+
 // Mode presets: only the keys a mode cares about; anything unlisted falls
 // back to the global setting. "custom" lists nothing = the global settings.
 export const FEATURE_MODES = {
     custom: { label: "Custom", values: {} },
     rpg: {
         label: "RPG",
-        values: ALL_ON,
+        values: { ...ALL_ON, ...NO_BONDS },
     },
     romance: {
         label: "Romance",
@@ -81,6 +85,7 @@ export const FEATURE_MODES = {
             tab_shared: false,
             feature_warnings: true,
             feature_rewrite: true,
+            feature_bonds: true,
             tab_statuses: true,
             tab_custom: true,
         },
@@ -93,6 +98,7 @@ export const FEATURE_MODES = {
             feature_transactions: true,
             feature_warnings: true,
             feature_rewrite: true,
+            feature_bonds: true,
             tab_inventory: true,
             tab_skills: false,
             tab_passives: false,
@@ -105,6 +111,7 @@ export const FEATURE_MODES = {
         label: "Survival",
         values: {
             ...ALL_ON,
+            ...NO_BONDS,
             feature_progression: false,
             feature_skill_tree: false,
         },

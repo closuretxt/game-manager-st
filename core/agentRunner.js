@@ -16,9 +16,11 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { generateRaw, substituteParams } from "../../../../../script.js";
 import { extensionName, CHARACTER_STATES } from "./constants.js";
 import { gmSettings, containerEnabled } from "./features.js";
-import { logDebug, gmNotify } from "./debug.js";
+import { logDebug } from "./debug.js";
 import { ROTATION_LOOKBACK, planRotation, presentRoster } from "./rosterRotation.js";
-import { stateManager, playerLabel, charLabel } from "./stateManager.js";
+import { stateManager, playerLabel, charLabel, playerNames } from "./stateManager.js";
+import { bondDefs, isPlayerSheet, formatEffects } from "./bonds.js";
+import { beginMessageLog, commitMessageLog } from "../ui/messageLog.js";
 import { progression } from "./progression.js";
 import { parseToolBlocks, applyToolBlocks, escAttr } from "./toolParser.js";
 import { sheetXml, sharedXml, customXml, xmlEl } from "./sheetXml.js";
@@ -44,6 +46,30 @@ let _running = false;
 function setPanelBusy(on) {
     $("#gm_floating_window").toggleClass("gm_agent_busy", !!on);
     $("#gm_agent_busy").css("display", on ? "flex" : "none");
+}
+
+// Bonds are live for this chat: the feature is on AND the chat defines bars.
+function bondsOn() {
+    return !!gmSettings().feature_bonds && bondDefs(stateManager.getData()).length > 0;
+}
+
+// The bonds section of the snapshot: the chat's bars once, then one line per
+// NPC in the scene (party + present benched sheets) with exact values and
+// active feelings. Lives in the per-turn user message, never the system
+// prompt, so bar edits do not break the system prompt's cache.
+function bondsXml(holders) {
+    const defs = bondDefs(stateManager.getData());
+    const bars = defs.map(x => `${x.name} (start ${x.start}): ${x.description}`).join(" | ");
+    const lines = [`<bonds bars="${escAttr(bars)}" range="0-100">`];
+    for (const c of holders) {
+        const b = c.bond;
+        if (!b) continue;
+        const values = defs.map(x => `${x.name}=${b.values?.[x.id] ?? x.start}`).join(" ");
+        const feelings = (b.statuses || []).map(s => `<feeling name="${escAttr(s.name)}" effect="${escAttr(formatEffects(s.effects, defs))}"${s.ends ? ` ends="${escAttr(s.ends)}"` : ""}/>`).join("");
+        lines.push(`<bond char="${escAttr(c.name)}" label="${escAttr(b.label || "")}" values="${escAttr(values)}">${feelings}</bond>`);
+    }
+    lines.push("</bonds>");
+    return lines.join("\n");
 }
 
 // Renders the tracked state as a compact XML snapshot: ONE line per actor,
@@ -93,6 +119,12 @@ function buildStateSummaryXml(present = []) {
     if (bench.length) {
         parts.push(`<roster>${bench.map(r => escAttr(r.name)).join(", ")}</roster>`);
     }
+    if (bondsOn()) {
+        const players = playerNames();
+        const holders = [...d.characters, ...present.map(r => stateManager.getSheet(r.id))]
+            .filter(c => c && !isPlayerSheet(c, players));
+        if (holders.length) parts.push(bondsXml(holders));
+    }
     // Shared party resources: visible to the tracker so it can account
     // consumption the pre-pass transaction engine did not already handle.
     if ((d.sharedResources || []).length && containerEnabled("sharedResources")) {
@@ -139,6 +171,8 @@ async function buildSystemPrompt(exchange = []) {
         shared: containerEnabled("sharedResources"),
         custom: containerEnabled("custom"),
     };
+    // Rules only (static per chat) — the bars themselves ride in the snapshot.
+    const bonds = bondsOn();
     let deep = "";
     if (s.deep_context) {
         const extraText = exchange.length ? exchange[exchange.length - 1].text : "";
@@ -230,7 +264,8 @@ async function buildSystemPrompt(exchange = []) {
         ...(spawnReview ? ['<new_characters><char name="Kael" kind="party" details="wounded knight the party rescued, stoic and dry-humored" level="3"/><char name="Goblin Chief" kind="enemy" details="scarred veteran leading the warband, brutal close-quarters fighter"/></new_characters>'] : []),
         ...(s.feature_death !== false ? ['<deaths><death char="Name" reason="short cause of death"/></deaths>'] : []),
         '<knockouts><ko char="Name" reason="short cause"/><ko_clear char="Name"/></knockouts>',
-        ...(prog ? ['<grant_exp><char>Name</char><exp amount="25"/></grant_exp>'] : []),
+        ...(bonds ? ['<bonds><bond_label char="Name">Wary ally, slowly warming up</bond_label><bond_status char="Name" name="Shared secret" effect="Trust +6, Affection +2" ends="if the secret gets out">She told the player about her past</bond_status><bond_end char="Name" name="Broken promise"/></bonds>'] : []),
+        ...(prog ?['<grant_exp><char>Name</char><exp amount="25"/></grant_exp>'] : []),
         "",
         // Numeric values: shared guidelines — the parser resolves pure math
         // exactly and rolls true-RNG dice (core/valueResolver.js), so the LLM
@@ -247,6 +282,13 @@ async function buildSystemPrompt(exchange = []) {
         "Use <set_traits> when the exchange CHANGES one of a character's tracked <traits> (free-text details such as Clothing, Appearance, Mood, Location): write the full NEW text, short and concrete, replacing the old one. Only names already in that character's <traits>; never re-emit unchanged text.",
         ...(on.statuses ? ["Use <set_statuses> for TEMPORARY per-character conditions (Dazed, Drunk, Inspired...). When a status lands, also apply its listed stat modifiers through <change_values>; when the condition ends, remove the modifiers with a matching <change_values> and clear the status with <clear_statuses>. Do not use statuses for permanent traits (passives) or party-wide gimmicks (custom)."] : []),
         "Use <knockouts> when a character is clearly unconscious or incapacitated but NOT dead — non-lethal defeat, blunt trauma to the head, choking, blood loss, drugging, electrocution, exhaustion, a spell that drops them. Do NOT hesitate to knock out human characters, allies or the player character when the fiction calls for it: being beaten unconscious is a normal game outcome, not something to shield anyone from. <ko char=\"Name\" reason=\"...\"/> knocks them out, <ko_clear char=\"Name\"/> when they regain consciousness (rest, recovery, a timeskip). Write the reason bluntly and concretely (\"choked out in a headlock\", \"cracked skull on the pavement\", \"drugged wine\") — never a vague euphemism. A character with state=\"ko\" cannot act until cleared — do not report actions, skill use or EXP for them.",
+        ...(bonds ? [
+            "BONDS — the snapshot's <bonds> track how each NPC feels about the PLAYER'S character (bars 0-100, defined per scenario). Never a bond for the player's own character, never between NPCs.",
+            "- Bars NEVER move directly: every change is a FEELING — <bond_status> with a short name for what happened, effect=\"Bar +N, Bar -N\" (bar names exactly as in <bonds>, 1-15 each, most beats 2-6; big swings only for real turning points), an optional ends=\"condition that would resolve it\" and a one-line reason as the body. The system applies the effect ONCE.",
+            "- Report a feeling only when the exchange gives a CONCRETE reason (a kindness, a betrayal, a promise, flirting that lands or falls flat, being pushed or given space) — quiet scenes change nothing. To deepen or soften an existing feeling, re-emit it with the SAME name and the new total effect; never stack near-duplicates.",
+            "- <bond_end> ONLY when the feeling is genuinely resolved in the exchange (an apology accepted, a misunderstanding cleared): its effect is taken back. Lasting feelings settle into the bars on their own after a while — never end a feeling just to tidy the list.",
+            "- <bond_label>: a short (under 12 words) description of the relationship as it stands; rewrite it only when the relationship meaningfully shifts.",
+        ] : []),
         ...(s.feature_death !== false ? [
             "LETHALITY — be realistic about damage and health. Do NOT soften outcomes to protect characters: wounds have consequences, and a resource reaching its minimum (or a clearly unsurvivable blow shown in the exchange) means DEATH — for the player character, allies, human NPCs and bystanders just as much as for monsters. Nobody is plot-armored: a knife to the throat kills a king, a fall kills a child NPC, an ambush kills an ally. When a character or ally dies, report it with <deaths><death char=\"Name\" reason=\"short cause\"/></deaths>. Write the cause concretely and without euphemism — \"run through by the bandit's spear\", \"throat slit\", \"burned alive in the collapsing house\", \"bled out from a gut wound\" — graphic accuracy is correct bookkeeping, not gratuitousness. A character survives a lethal hit ONLY if one of their listed skills or passives (not on cooldown) explicitly says otherwise (a revive, an undying passive). Never invent a rescue the scene and sheets do not support, never fudge a death into a 'critical injury' to spare the player, and never ask permission before reporting a death. Enemies die via <enemies action=\"remove\" reason=\"slain\">. A character marked dead in the snapshot stays dead — never report actions, healing or EXP for them.",
         ] : []),
@@ -358,13 +400,8 @@ function rotateRoster(chat, now) {
         keepNames: [playerLabel(), st?.name1].filter(Boolean),
     });
     captureSnapshot(now);
-    const moved = stateManager.applyRotation(plan, now);
-    if (moved.out.length || moved.in.length) {
-        gmNotify([
-            moved.out.length ? `To the roster: ${moved.out.join(", ")}` : "",
-            moved.in.length ? `Back in the party: ${moved.in.join(", ")}` : "",
-        ].filter(Boolean).join(" · "), "info");
-    }
+    // Moves are announced by ui/notifications.js (wraps applyRotation).
+    stateManager.applyRotation(plan, now);
 }
 
 // Runs one agentic analysis pass for the message `mesId`. Returns the number
@@ -377,16 +414,26 @@ export async function runAgentPass(reason = "manual", mesId = null) {
         return 0;
     }
     _running = true;
+    const st = getContext();
+    const now = mesId ?? Math.max(0, (st.chat?.length || 1) - 1);
+    // Every notification this pass raises is also logged under the message
+    // (ui/messageLog.js), per swipe.
+    beginMessageLog(now);
     try {
         setPanelBusy(true);
-        const st = getContext();
         const recent = collectRecentMessages();
         // Last player action + AI reply = the exchange being accounted;
         // everything before it is read-only context.
         const exchange = recent.slice(-CURRENT_EXCHANGE_MESSAGES);
         const history = recent.slice(0, -CURRENT_EXCHANGE_MESSAGES);
         if (s.feature_roster_rotation && Array.isArray(st.chat) && st.chat.length) {
-            rotateRoster(st.chat, mesId ?? st.chat.length - 1);
+            rotateRoster(st.chat, now);
+        }
+        // Bonds: every NPC gets their bars, feelings past the settle window
+        // settle — after the baseline, so a swipe rolls this back too.
+        if (bondsOn()) {
+            captureSnapshot(now);
+            stateManager.tickBonds(now, playerNames());
         }
         // Benched characters named in the exchange get their full sheets in.
         const present = presentRoster(stateManager.getData(), exchange.map(m => `${m.role}\n${m.text}`).join("\n"));
@@ -430,7 +477,7 @@ export async function runAgentPass(reason = "manual", mesId = null) {
         if (blocks.length) {
             console.info(`[GM DIAG] agent pass: capturing baseline snapshot for message ${snapId} (chat.length=${st2.chat.length})`);
             captureSnapshot(snapId);
-            applied = applyToolBlocks(blocks);
+            applied = applyToolBlocks(blocks, { now: snapId });
             logDebug(`agent pass (${reason}): applied ${applied} change(s)`);
         } else {
             logDebug(`agent pass (${reason}): no changes reported`);
@@ -446,6 +493,7 @@ export async function runAgentPass(reason = "manual", mesId = null) {
         setPanelBusy(false);
         return 0;
     } finally {
+        commitMessageLog();
         _running = false;
     }
 }

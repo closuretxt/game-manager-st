@@ -18,8 +18,9 @@ import { extension_settings } from "../../../../extensions.js";
 import { extensionName, CHARACTER_STATES } from "./constants.js";
 import { gmSettings, containerEnabled } from "./features.js";
 import { logDebug } from "./debug.js";
-import { stateManager } from "./stateManager.js";
+import { stateManager, playerNames } from "./stateManager.js";
 import { resolveResourceMax } from "./resourceScaler.js";
+import { bondConfig, bondInjectionLine, isPlayerSheet } from "./bonds.js";
 import { CHARACTER_CONTAINERS } from "./schemas.js";
 import { sheetXml } from "./sheetXml.js";
 import { scenarioBriefInjection } from "./scenarioBrief.js";
@@ -272,6 +273,20 @@ export function buildLowPriority() {
         // Per-entry "always inject" flags (clothing, a signature stat...).
         if (CHARACTER_CONTAINERS.some(k => containerEnabled(k) && (c[k] || []).some(e => e.always_inject))) {
             parts.push(sheetXml(c, { tag: "char", descriptions: false, filter: e => !!e.always_inject }));
+        }
+    }
+
+    // Bonds: banded words, never raw numbers — the line only changes when a
+    // bar crosses a band or a feeling starts/ends, so the cached prefix holds.
+    const bondCfg = s.feature_bonds ? bondConfig(d) : null;
+    if (bondCfg?.inject && bondCfg.defs.length) {
+        const players = playerNames();
+        const holders = (d.characters || [])
+            .filter(c => c.bond && c.state?.mode !== "dead" && !isPlayerSheet(c, players))
+            .sort(byName);
+        for (const c of holders) {
+            const line = bondInjectionLine(d, c, esc);
+            if (line) parts.push(line);
         }
     }
 
