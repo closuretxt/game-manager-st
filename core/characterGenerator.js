@@ -13,9 +13,10 @@ import { progression } from "./progression.js";
 import { CHARACTER_CONTAINERS } from "./schemas.js";
 import { skillGuidelines } from "./skillGuidelines.js";
 import { escAttr } from "./toolParser.js";
-import { parseSetupXml, sanitizeProposal, characterToXml, fieldKeysFor, recentChatLines } from "./setupWizard.js";
+import { parseSetupXml, sanitizeProposal, characterToXml, entryFieldShapes, recentChatLines } from "./setupWizard.js";
 import { sendRequestViaProfile, resolveWizardProfile, hasConnectionProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
+import { scenarioBriefBlock } from "./scenarioBrief.js";
 
 const CHAR_RESPONSE_SHAPE = [
     '<setup name="<short source/title>">',
@@ -23,6 +24,7 @@ const CHAR_RESPONSE_SHAPE = [
     '<char name="..." level="N"> <!-- exactly ONE char; level = progression level (see rules); give only the containers that matter for them -->',
     '<resource name="Health" value="80" min="0" max="100" description="..."/> <!-- max: plain number, OR a formula with Level / attribute names (e.g. "100+(Level*10)") for stats meant to grow with level; the description of anything that changes on its own states the drift rate (e.g. "rises 1 per scene; a meal resets it") -->',
     '<attribute name="Strength" value="5" description="..."/>',
+    '<trait name="Clothing" value="Grey wool coat, scuffed boots"/> <!-- free-text detail the story keeps changing: clothing, appearance, mood, current goal -->',
     '<item name="Rope" qty="1" description="..."/>',
     '<skill name="Fireball" cost="10 Mana" cooldown="2" description="..."/> <!-- cooldown in messages; 0 or omitted = always ready -->',
     '<passive name="Tough" ptype="stat" description="..."/> <!-- ptype: special|stat -->',
@@ -177,7 +179,7 @@ function briefBlocks({ name, details, references, level = null, kind = "party" }
         ...(kind === "enemy" ? [`<enemies>${(d.enemies || []).map(e => escAttr(e.name)).join(", ")}</enemies>`] : []),
     ];
     const blocks = [
-        `ENTRY FIELD SHAPES: resource {${fieldKeysFor("resource")}}, attribute {${fieldKeysFor("attribute")}}, item {${fieldKeysFor("item")}}, skill {${fieldKeysFor("skill")}}, passive {${fieldKeysFor("passive")}} (ptype: special|stat), status {${fieldKeysFor("status")}}.`,
+        entryFieldShapes(),
         ...progressionBlocks(level, kind === "enemy"),
         ...(kind === "enemy" ? enemyBlocks() : []),
         "",
@@ -205,9 +207,11 @@ function briefBlocks({ name, details, references, level = null, kind = "party" }
 // when "Show all to Wizard" is on — the outlet filter is bypassed).
 async function deepContextBlocks(details) {
     const s = extension_settings[extensionName];
-    if (!s.deep_context) return [];
+    const brief = scenarioBriefBlock();
+    const out = brief ? ["", brief] : [];
+    if (!s.deep_context) return out;
     const deep = await buildDeepContext(String(details || ""), { showAll: true });
-    return deep ? ["", "<deep_context>", deep, "</deep_context>"] : [];
+    return deep ? [...out, "", "<deep_context>", deep, "</deep_context>"] : out;
 }
 
 // Recent chat tail: the LAST context block in the prompt, so the scene the

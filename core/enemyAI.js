@@ -19,6 +19,7 @@ import { valueGuidelines } from "./valueGuidelines.js";
 import { getPreviousPrePassRaw } from "./prePass.js";
 import { resolveCombatProfile, sendRequestViaProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
+import { scenarioBriefBlock } from "./scenarioBrief.js";
 
 import { recentMessages, sceneContextBlock } from "../util/chatStore.js";
 
@@ -172,6 +173,8 @@ export async function runEnemyAI({ maxActions = 6, playerAction = null } = {}) {
         const st = getContext();
         const profileId = resolveCombatProfile(st, s.combat_profile, s.premaster_profile, s.connection_profile);
         let systemContent = systemPrompt(playerAction);
+        const brief = scenarioBriefBlock();
+        if (brief) systemContent += `\n\n${brief}`;
         if (s.deep_context_engines) {
             const deep = await buildDeepContext("");
             if (deep) systemContent += `\n\n<deep_context>\n${deep}\n</deep_context>`;

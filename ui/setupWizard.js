@@ -15,6 +15,7 @@ import { saveSettingsDebounced } from "../../../../../script.js";
 import { extensionName } from "../core/constants.js";
 import { gmNotify, logDebug } from "../core/debug.js";
 import { generateProposal, refineProposal, applyProposal } from "../core/setupWizard.js";
+import { getScenarioBriefText } from "../core/scenarioBrief.js";
 import { captureModalScroll, restoreModalScroll } from "../util/scrollKeeper.js";
 import { fadeOutRemove } from "../util/fx.js";
 import { confirmAction } from "./confirmModal.js";
@@ -24,6 +25,7 @@ import { sheetEditor } from "./sheetEditor.js";
 const CONTAINER_LABELS = {
     resources: "res",
     attributes: "attr",
+    traits: "details",
     inventory: "items",
     skills: "skills",
     passives: "passives",
@@ -185,6 +187,10 @@ export const setupWizard = {
             this._sessionQueue();
         });
         body.append(ta);
+        if (getScenarioBriefText()) {
+            body.append($("<div>").addClass("gm_section_hint")
+                .append($("<i>").addClass("fa-solid fa-scroll"), $("<span>").text(" This chat's Scenario Brief is sent along automatically.")));
+        }
 
         // Options row — chat depth and the skip toggle, side by side (the
         // generic gm_field stacks label-over-input; this row stays flat).
@@ -266,6 +272,34 @@ export const setupWizard = {
         const p = this._proposal;
 
         const body = $("<div>").addClass("gm_wizard_body");
+
+        // Scenario brief — the explanation every later generation reads.
+        // Applied by default only when the chat has none yet; overwriting an
+        // existing brief is an explicit opt-in.
+        const currentBrief = getScenarioBriefText();
+        if (p.applyBrief === undefined) p.applyBrief = !currentBrief;
+        const briefWrap = $("<div>").addClass("gm_list");
+        briefWrap.append($("<div>").addClass("gm_section_header").append(
+            $("<b>").text("Scenario Brief"),
+            $("<span>").addClass("gm_section_hint").text(currentBrief
+                ? "This chat already has a brief (the wizard read it). Tick below to replace it."
+                : "Premise, tone, world rules — every later generation reads it."),
+        ));
+        const briefArea = $("<textarea>").addClass("gm_input gm_brief_area")
+            .attr("placeholder", "No brief proposed — write one or leave empty.")
+            .val(p.brief || "");
+        briefArea.on("input", () => {
+            p.brief = String(briefArea.val() || "");
+            this._sessionQueue();
+        });
+        const applyBox = $("<input>").attr("type", "checkbox").prop("checked", !!p.applyBrief);
+        applyBox.on("change", () => {
+            p.applyBrief = applyBox.prop("checked");
+            this._sessionQueue();
+        });
+        briefWrap.append(briefArea, $("<label>").addClass("checkbox_label").append(applyBox,
+            $("<span>").text(currentBrief ? "Replace the chat's current brief" : "Save as the chat's scenario brief")));
+        body.append(briefWrap);
 
         // Party — full sheets, capped.
         const partyWrap = $("<div>").addClass("gm_list");

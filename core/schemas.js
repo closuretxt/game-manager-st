@@ -8,6 +8,10 @@ export function genId() {
     return `gm_${Date.now().toString(36)}_${(_idCounter++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
+// Per-entry "always inject" flag — any tracked entry can opt into the
+// persistent {{gamemaster-low-priority}} block (core/injection.js).
+const ALWAYS_INJECT = { key: "always_inject", label: "Always inject into context", type: "checkbox", default: false };
+
 export const GM_SCHEMA = {
     resource: {
         label: "Resource",
@@ -21,6 +25,7 @@ export const GM_SCHEMA = {
             { key: "min", label: "Min", type: "number", default: 0 },
             { key: "max", label: "Max (num or formula)", type: "text", default: "100" },
             { key: "description", label: "Description", type: "textarea", default: "" },
+            ALWAYS_INJECT,
         ],
     },
     attribute: {
@@ -33,6 +38,20 @@ export const GM_SCHEMA = {
             { key: "name", label: "Name", type: "text", default: "New Attribute" },
             { key: "value", label: "Value", type: "number", default: 5 },
             { key: "description", label: "Description", type: "textarea", default: "" },
+            ALWAYS_INJECT,
+        ],
+    },
+    trait: {
+        label: "Detail",
+        plural: "Details",
+        icon: "fa-solid fa-shirt",
+        container: "traits",
+        description: "Free-text field the AI keeps current (clothing worn, appearance, mood, current goal).",
+        aiManaged: true,
+        fields: [
+            { key: "name", label: "Name", type: "text", default: "New Detail" },
+            { key: "value", label: "Value", type: "textarea", default: "" },
+            ALWAYS_INJECT,
         ],
     },
     item: {
@@ -45,6 +64,7 @@ export const GM_SCHEMA = {
             { key: "name", label: "Name", type: "text", default: "New Item" },
             { key: "qty", label: "Qty", type: "number", default: 1 },
             { key: "description", label: "Description", type: "textarea", default: "" },
+            ALWAYS_INJECT,
         ],
     },
     skill: {
@@ -58,6 +78,7 @@ export const GM_SCHEMA = {
             { key: "cost", label: "Cost", type: "text", default: "" },
             { key: "cooldown", label: "Cooldown (messages)", type: "number", default: 0 },
             { key: "description", label: "Description", type: "textarea", default: "" },
+            ALWAYS_INJECT,
         ],
     },
     passive: {
@@ -70,6 +91,7 @@ export const GM_SCHEMA = {
             { key: "name", label: "Name", type: "text", default: "New Passive" },
             { key: "ptype", label: "Type", type: "select", options: ["special", "stat"], default: "special" },
             { key: "description", label: "Description", type: "textarea", default: "" },
+            ALWAYS_INJECT,
         ],
     },
     status: {
@@ -83,6 +105,7 @@ export const GM_SCHEMA = {
             { key: "name", label: "Name", type: "text", default: "New Status" },
             { key: "modifiers", label: "Modifiers", type: "text", default: "" },
             { key: "effect", label: "Effect", type: "textarea", default: "" },
+            ALWAYS_INJECT,
         ],
     },
     custom: {
@@ -97,6 +120,7 @@ export const GM_SCHEMA = {
             { key: "name", label: "Name", type: "text", default: "New Feature" },
             { key: "value", label: "Value / State", type: "text", default: "" },
             { key: "description", label: "Description", type: "textarea", default: "" },
+            ALWAYS_INJECT,
         ],
     },
     roster: {
@@ -122,13 +146,13 @@ export const GM_SCHEMA = {
             { key: "name", label: "Name", type: "text", default: "New Shared Resource" },
             { key: "qty", label: "Qty", type: "number", default: 0 },
             { key: "description", label: "Description", type: "textarea", default: "" },
-            { key: "always_inject", label: "Always inject value into context", type: "checkbox", default: false },
+            ALWAYS_INJECT,
         ],
     },
 };
 
 // Containers that live on each character sheet.
-export const CHARACTER_CONTAINERS = ["resources", "attributes", "inventory", "skills", "passives", "statuses"];
+export const CHARACTER_CONTAINERS = ["resources", "attributes", "traits", "inventory", "skills", "passives", "statuses"];
 
 // container name -> type key (reverse lookup, used by presets & parsers).
 export const CONTAINER_TYPES = Object.fromEntries(

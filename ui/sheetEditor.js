@@ -48,6 +48,8 @@ export function entryInputs(type, entry, onDelete, onChange = () => {}) {
     del.on("click", onDelete);
     row.append(del);
     box.append(row);
+    // Types without a description field (text details) end at the row.
+    if (!GM_SCHEMA[type].fields.some(f => f.key === "description")) return box;
     const desc = $("<input>").attr("type", "text")
         .addClass("gm_input gm_wizard_sheet_desc")
         .attr("placeholder", "Description — what this tracks / why it matters")

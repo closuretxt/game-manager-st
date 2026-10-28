@@ -24,6 +24,7 @@ import { sheetXml as renderSheet } from "./sheetXml.js";
 import { valueGuidelines } from "./valueGuidelines.js";
 import { resolveDiceProfile, sendRequestViaProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
+import { scenarioBriefBlock } from "./scenarioBrief.js";
 
 import { recentMessages, sceneContextBlock } from "../util/chatStore.js";
 
@@ -218,6 +219,8 @@ export async function resolveClashes({ playerAction = "", partyActions = [], ene
         if (s.deterministic_clashes) {
             systemContent += `\n\n${DETERMINISTIC_GUIDELINES}`;
         }
+        const brief = scenarioBriefBlock();
+        if (brief) systemContent += `\n\n${brief}`;
         if (s.deep_context_engines) {
             const deep = await buildDeepContext(String(playerAction || ""));
             if (deep) systemContent += `\n\n<deep_context>\n${deep}\n</deep_context>`;

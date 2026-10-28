@@ -6,6 +6,7 @@
 // Supported blocks (see docs/TOOL_TAGS.md for the full reference):
 //   <change_values>   — resource/attribute deltas or absolute values
 //   <set_attributes>  — attribute values
+//   <set_traits>      — free-text details (clothing worn, mood, appearance)
 //   <add_items>       — add items to a character's inventory
 //   <remove_items>    — remove items (qty optional: default removes all)
 //   <update_custom>   — create/update AI-managed custom features
@@ -47,9 +48,9 @@ import { progression } from "./progression.js";
 import { logDebug } from "./debug.js";
 import { characterSpawner, spawnReviewEnabled } from "./characterSpawner.js";
 
-const BLOCK_TAGS = ["change_values", "set_attributes", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies", "transfer", "renames", "deaths", "knockouts", "new_characters"];
+const BLOCK_TAGS = ["change_values", "set_attributes", "set_traits", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies", "transfer", "renames", "deaths", "knockouts", "new_characters"];
 const BLOCK_RE = new RegExp(`<(${BLOCK_TAGS.join("|")})>([\\s\\S]*?)<\\/\\1>`, "gi");
-const INNER_RE = /<(char|target|enemy|shared|resource|item|attribute|entry|status|warning|warning_clear|thread|thread_clear|passive|skill|exp|death|ko|ko_clear)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
+const INNER_RE = /<(char|target|enemy|shared|resource|item|attribute|trait|entry|status|warning|warning_clear|thread|thread_clear|passive|skill|exp|death|ko|ko_clear)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const ENEMY_RE = /<enemy\b([^>]*?)(?:\/>|>([\s\S]*?)<\/enemy>)/gi;
 const MOVE_RE = /<move\b([^>]*?)(?:\/>|>([\s\S]*?)<\/move>)/gi;
 const RENAME_RE = /<rename\b([^>]*?)(?:\/>|>([\s\S]*?)<\/rename>)/gi;
@@ -166,6 +167,12 @@ function applyAction(blockType, char, action) {
         }
         else if (blockType === "remove_items") {
             ok = stateManager.removeItem(char.id, name, resolveNum(attrs.qty) ?? null);
+        }
+        break;
+    case "trait":
+        // Free-text details (Clothing, Mood...): value attr or tag body.
+        if (blockType === "set_traits") {
+            ok = stateManager.updateTrait(char.id, { name, value: attrs.value ?? content });
         }
         break;
     case "entry":

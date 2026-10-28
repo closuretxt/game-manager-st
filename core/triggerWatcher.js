@@ -40,7 +40,8 @@ import { runPrePass, planFromRaw } from "./prePass.js";
 import { restoreSnapshot } from "./snapshots.js";
 import { attachRollToMessage } from "../ui/diceBubble.js";
 import { attachCombatToMessage } from "../ui/combatBubble.js";
-import { queueLowOnce, queueLowNote, queueRewrite, queueSkillUse, replayHigh, stashHigh, resetInjectionRecord } from "./injection.js";
+import { queueLowOnce, queueLowNote, queueRewrite, queueSkillUse, replayHigh, stashHigh, resetInjectionRecord, discardPending } from "./injection.js";
+import { escAttr } from "./toolParser.js";
 import { attachRewriteToMessage } from "../ui/rewriteTag.js";
 import { statusBubble } from "../ui/statusBubble.js";
 
@@ -202,6 +203,9 @@ export async function handlePreTurn(type = "normal") {
         console.info("[GM DIAG] handlePreTurn skipped: already running");
         return;
     }
+    // Every queue entry is produced inside this handler, so anything still
+    // pending belongs to an earlier generation whose macros never drained it.
+    discardPending();
 
     const st = getContext();
     const chat = st.chat || [];
@@ -363,20 +367,20 @@ export async function handlePreTurn(type = "normal") {
                     if (rel.entry) {
                         if (rel.entry.always_inject || transacted.has(rel.entry.id)) continue;
                         // source="readout" marks these as snapshot mirrors, never payments.
-                        queueLowOnce(`<resource name="${rel.entry.name}" value="${rel.entry.qty}" source="readout"/>`);
+                        queueLowOnce(`<resource name="${escAttr(rel.entry.name)}" value="${escAttr(rel.entry.qty)}" source="readout"/>`);
                     } else if (rel.skill) {
                         // Skill cooldown state (turns 0 = ready) — relevance-gated
                         // by the pre-pass so the story engine never hallucinates a use.
                         if (rel.cooldown > 0) {
                             logDebug(`pre-turn: skill cooldown queued "${rel.character}.${rel.name}" (${rel.cooldown} left)`);
-                            queueLowOnce(`<skill_cooldown character="${rel.character}" skill="${rel.name}" turns="${rel.cooldown}" source="readout"/>`);
+                            queueLowOnce(`<skill_cooldown character="${escAttr(rel.character)}" skill="${escAttr(rel.name)}" turns="${rel.cooldown}" source="readout"/>`);
                         } else {
                             logDebug(`pre-turn: skill ready queued "${rel.character}.${rel.name}"`);
-                            queueLowOnce(`<skill_ready character="${rel.character}" skill="${rel.name}" source="readout"/>`);
+                            queueLowOnce(`<skill_ready character="${escAttr(rel.character)}" skill="${escAttr(rel.name)}" source="readout"/>`);
                         }
                     } else {
                         logDebug(`pre-turn: character stat queued "${rel.character}.${rel.name}" = ${rel.value}`);
-                        queueLowOnce(`<character_stat character="${rel.character}" name="${rel.name}" value="${rel.value}" source="readout"/>`);
+                        queueLowOnce(`<character_stat character="${escAttr(rel.character)}" name="${escAttr(rel.name)}" value="${escAttr(rel.value)}" source="readout"/>`);
                     }
                 }
             }

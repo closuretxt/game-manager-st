@@ -216,7 +216,7 @@ class Hotbar {
     // Detail block shown when a row is expanded — escaped FIRST, then light
     // markdown (**bold**, __bold__, *italic*) with accent-tinted meta lines.
     _detailsHtml(entry) {
-        const esc = (t) => String(t).replace(/&/g, "&").replace(/</g, "<").replace(/>/g, ">");
+        const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
         const fmt = (t) => esc(t)
             .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
             .replace(/__(.+?)__/g, "<b>$1</b>")

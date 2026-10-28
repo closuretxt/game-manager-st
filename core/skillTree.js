@@ -19,6 +19,7 @@ import { skillGuidelines } from "./skillGuidelines.js";
 import { skillXml, passiveXml } from "./sheetXml.js";
 import { sendRequestViaProfile, resolveWizardProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
+import { scenarioBriefBlock } from "./scenarioBrief.js";
 
 // Tiers generated per LLM call (passives make long segments work fine).
 const SEGMENT_TIERS = 6;
@@ -120,6 +121,8 @@ export const skillTree = {
 
         const userParts = [];
         const s = settings();
+        const brief = scenarioBriefBlock();
+        if (brief) userParts.push(brief);
         if (s.deep_context) {
             const deep = await buildDeepContext(String(userWish || ""));
             if (deep) userParts.push("<deep_context>", deep, "</deep_context>");

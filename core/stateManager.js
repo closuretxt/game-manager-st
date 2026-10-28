@@ -185,6 +185,8 @@ export const stateManager = {
         if (!Array.isArray(d.custom)) d.custom = [];
         if (!Array.isArray(d.warnings)) d.warnings = [];
         if (!Array.isArray(d.threads)) d.threads = [];
+        // Scenario brief shared by every generation (core/scenarioBrief.js).
+        if (!d.scenario || typeof d.scenario !== "object") d.scenario = { text: "", inject: false };
         // Per-scenario progression config (EXP curve, skill points). Absent
         // until the wizard proposes it or the user sets it by hand.
         if (d.progression !== null && (typeof d.progression !== "object" || Array.isArray(d.progression))) {
@@ -226,7 +228,11 @@ export const stateManager = {
         if (store) {
             store.data = _data;
             try {
-                getContext().saveMetadata();
+                // Debounced: saveMetadata writes the WHOLE chat file, and one
+                // post-pass can emit a dozen changes in a row.
+                const st = getContext();
+                if (typeof st.saveMetadataDebounced === "function") st.saveMetadataDebounced();
+                else st.saveMetadata();
             } catch (e) {
                 console.error("[Game Manager] saveMetadata failed:", e);
             }
@@ -800,6 +806,24 @@ export const stateManager = {
         if (modifiers !== undefined && modifiers !== "") entry.modifiers = modifiers;
         if (effect !== undefined && effect !== "") entry.effect = effect;
         this.emitChange("update_status");
+        return true;
+    },
+
+    // AI-facing: create/update a free-text detail by name (Clothing, Mood...).
+    // An empty value clears the text but keeps the field — the field set is
+    // the sheet's structure, the text is what the story changes.
+    updateTrait(characterId, { name, value } = {}) {
+        if (!name || value === undefined) return false;
+        const char = this.getSheet(characterId);
+        if (!char) return false;
+        if (!Array.isArray(char.traits)) char.traits = [];
+        let entry = matchName(char.traits, name);
+        if (!entry) {
+            entry = defaultEntry("trait", { name });
+            char.traits.push(entry);
+        }
+        entry.value = String(value).trim();
+        this.emitChange("update_trait");
         return true;
     },
 

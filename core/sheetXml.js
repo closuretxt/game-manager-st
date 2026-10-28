@@ -10,7 +10,8 @@
 // body — <HP="30/30">Vitality</HP>, <Fireball*="cost: 5 MP, cd: 3">2d6 fire
 // + 1d4 burn</Fireball>. No repeated name="..." noise, no bracket tails;
 // the description always sits inside its own entry. Empty sections are
-// skipped entirely, each actor renders as ONE line, and the closing tag
+// skipped entirely, each actor renders as ONE line (<traits> carry free-text
+// fields like Clothing as the element body), and the closing tag
 // carries the actor's name (</char Kael>) so long sheets re-bind entries to
 // the actor at both ends. Non-standard XML is fine: this is model-facing
 // text only — the tool-tag parser (core/toolParser.js) reads the MODEL's
@@ -45,9 +46,9 @@ const entryEl = (name, value, bodyText = "") => {
 // Element bodies do NOT need quote escaping — descriptions render with their
 // literal quotes ("Sleepy"), never as " noise. Only &, < and > must go.
 const bodyEsc = v => String(v)
-    .replace(/&/g, "&")
-    .replace(/</g, "<")
-    .replace(/>/g, ">");
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 const body = (v, enabled) => (enabled ? bodyEsc(oneLine(v)) : "");
 
 // ---------- per-type renderers ----------
@@ -63,6 +64,10 @@ export const resourceXml = (r, descriptions = true, actor = null) => {
 };
 
 export const attributeXml = (a, descriptions = true) => entryEl(a?.name, String(a?.value ?? 0), body(a?.description, descriptions));
+
+// Text fields: the free text IS the value, so it travels as the body even in
+// compact (descriptions off) renders — <Clothing>Black leather jacket</Clothing>.
+export const traitXml = t => entryEl(t?.name, "", body(t?.value ?? "", true));
 
 // qty travels only when it differs from the default 1 — a stack of one item
 // never needs the token.
@@ -96,6 +101,7 @@ export const customXml = (c, descriptions = true) => entryEl(c?.name, String(c?.
 const SECTIONS = {
     resources: resourceXml,
     attributes: attributeXml,
+    traits: traitXml,
     inventory: itemXml,
     skills: skillXml,
     passives: passiveXml,

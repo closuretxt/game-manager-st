@@ -28,6 +28,7 @@ import { logDebug } from "./debug.js";
 import { stateManager, playerLabel, charLabel } from "./stateManager.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
+import { scenarioBriefBlock } from "./scenarioBrief.js";
 import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
 import { itemXml, sharedXml, skillXml } from "./sheetXml.js";
 import { resolveResourceMax } from "./resourceScaler.js";
@@ -378,6 +379,9 @@ function sanitizePlan(parsed) {
 async function buildSystemContent(playerAction) {
     const s = extension_settings[extensionName];
     let content = SYSTEM_PROMPT;
+    // Scenario brief: stable, so it sits before the per-turn deep context.
+    const brief = scenarioBriefBlock();
+    if (brief) content += `\n\n${brief}`;
     if (s.deep_context) {
         const deep = await buildDeepContext(String(playerAction || ""));
         if (deep) content += `\n\n<deep_context>\n${deep}\n</deep_context>`;

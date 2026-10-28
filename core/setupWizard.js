@@ -15,10 +15,11 @@ import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel, charLabel } from "./stateManager.js";
 import { progression } from "./progression.js";
-import { GM_SCHEMA, CHARACTER_CONTAINERS, defaultEntry } from "./schemas.js";
+import { GM_SCHEMA, CHARACTER_CONTAINERS, CONTAINER_TYPES, defaultEntry } from "./schemas.js";
 import { parseAttrs } from "./toolParser.js";
 import { sendRequestViaProfile, resolveWizardProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
+import { scenarioBriefBlock, getScenarioBriefText, setScenarioBrief } from "./scenarioBrief.js";
 
 const MAX_ROSTER = 24;
 const MAX_LIST = 20;
@@ -29,6 +30,7 @@ const RESPONSE_SHAPE = [
     '<char name="..." level="N"> <!-- level: progression level when a <progression> block is proposed (see rules); omit it without progression -->',
     '<resource name="Health" value="80" min="0" max="100" description="..."/> <!-- max: plain number, OR a formula with Level / attribute names (e.g. "100+(Level*10)") for stats meant to grow with level; the description of anything that changes on its own states the drift rate (e.g. "rises 1 per scene; a meal resets it") -->',
     '<attribute name="Strength" value="5" description="..."/>',
+    '<trait name="Clothing" value="Grey wool coat, scuffed boots"/> <!-- free-text detail the story keeps changing: clothing, appearance, mood, current goal -->',
     '<item name="Rope" qty="1" description="..."/>',
     '<skill name="Fireball" cost="10 Mana" cooldown="2" description="..."/> <!-- cooldown in messages; 0 or omitted = always ready -->',
     '<passive name="Tough" ptype="stat" description="..."/> <!-- ptype: special|stat -->',
@@ -40,6 +42,7 @@ const RESPONSE_SHAPE = [
     '<custom name="Seeds" value="Pouch" description="..."/> <!-- gimmick, objective, clock or note -->',
     '<progression enabled="true" exp_base="100" exp_growth="1.10" max_level="90" skill_points="1" bonus_every="5" attr_points="0" attr_cost_every="10" attr_starting_budget="20">EXP guidelines: dynamic grants + level tiers (see rules)</progression>',
     '<warning name="Food" text="<under 15 words, imminent need>"/>',
+    "<brief>2-6 plain sentences: premise, tone, how the world works, what the stakes are</brief>",
     "</setup>",
 ].join("\n");
 
@@ -66,6 +69,7 @@ const SYSTEM_PROMPT_HEADER = [
     "- PROGRESSION: include <progression> ONLY when the scenario implies growth over time (combat, leveling, long campaigns). Set max_level to the world's level cap (infer from context/lorebook; otherwise 99). Keep exp_growth LOW — compounding is brutal: 1.10 or less for caps of 30+, 1.05 or less for caps of 50+, never above 1.25 — and calibrate exp_base (EXP for the first level-up) so the PACE is right, not the growth. Set skill_points per level (bonus_every: +1 extra point every N levels, 0 = off). Attribute points are a second currency the PLAYER spends to raise attributes: attr_points per level (0 = off), attr_cost_every (raising costs +1 extra point per N current value, 0 = flat), attr_starting_budget (the TOTAL attribute points a fresh level-1 character should have). Omit the tag for purely casual scenarios.",
     "- EXP GUIDELINES (the tag's text) must be DYNAMIC, never a static table — grants scale with level so late levels stay reachable. Template: a per-level grant formula ('standard victory over a level-L foe = L*10 EXP' — pick the factor so 3 standard victories roughly cover the next level-up at mid levels), difficulty multipliers (minion = half or less, elite = x2, boss = x3-4), EXP buffs (clever solutions, quests, great play = +25-50%), and 3-4 named TIER anchors matching the world's seniority ladder ('fresh recruit = 1, seasoned soldier = 20, veteran knight = 45, legendary hero = max_level'). Example: 'Standard victory = level*10 EXP; minion half, elite x2, boss x3; quests +50%. Tiers: recruit=1, soldier=20, knight=45, legendary hero=90.'",
     "- LEVELS: when you propose a <progression> block, EVERY <char> carries a level attribute that matches their background — level 1 ONLY for genuine beginners (fresh recruits, newly awakened heroes); veterans, career soldiers, established mages and mid-campaign joiners sit higher, using the tier anchors from the EXP guidelines. max_level is the hard cap — no character sits above it. Scale each character's attribute totals and core resources to their level (roughly attr_starting_budget plus attr_points per level above 1) so an experienced fighter never reads like a raw recruit.",
+    "- BRIEF: the <brief> is the scenario explanation every other engine of this game reads before judging anything. Plain, factual, no purple prose: premise, tone (grim, cozy, comedic...), how the world works (magic, tech, economy, danger level), and what the player is up against. When a SCENARIO BRIEF is given in the input, keep its facts — the player wrote it.",
     "- Omit tags that do not apply (an empty <setup> is valid). Never invent entries outside the given shapes.",
 ].join("\n");
 
@@ -89,6 +93,7 @@ const REFINE_PROMPT_HEADER = [
     "- sharedResources stay party-wide and user-managed (money, food, expendables) — keep always_inject: true ONLY on the one whose value is relevant almost every turn (e.g. money); custom features stay AI-managed PARTY-WIDE entries — gimmicks, objectives, clocks, or hidden notes (secrets, plans, leads; visible in the Custom tab, never relationship/intimacy meters or per-character stats); warnings stay minimalist imminent-need remarks about the whole party, under 15 words.",
     "- If the scenario implies survival pressure (food, water, enemies, territory), keep it tangible through sharedResources + warnings for the group and per-character resources/statuses for individual states. If it is purely casual, keep the setup minimal.",
     "- Preserve the <progression> block exactly as given unless the feedback asks to change it.",
+    "- Keep the <brief> (plain scenario explanation: premise, tone, world rules, stakes); sharpen it only where it is vague or the feedback asks.",
     "- LEVELS: keep each <char>'s level attribute from the current proposal unless the feedback asks to change it.",
     "- OWNERSHIP TEST — apply to EVERY shared/custom/warning entry: if it is about ONE named character (their hunger, health, mood, condition, stats), MOVE it onto that character's sheet as a resource/attribute/status. Party-wide entries must be true for the whole group and must not name a single character.",
     "- Omit tags that do not apply (an empty <setup> is valid). Never invent entries outside the given shapes.",
@@ -99,6 +104,16 @@ const REFINE_PROMPT_HEADER = [
 // Field keys per type, derived from the schema registry (id excluded).
 export function fieldKeysFor(type) {
     return GM_SCHEMA[type].fields.map(f => f.key);
+}
+
+// "ENTRY FIELD SHAPES" prompt line for every sheet container, from the schema.
+export function entryFieldShapes() {
+    const shapes = CHARACTER_CONTAINERS.map(c => {
+        const type = CONTAINER_TYPES[c];
+        const extra = type === "passive" ? " (ptype: special|stat)" : "";
+        return `${type} {${fieldKeysFor(type)}}${extra}`;
+    });
+    return `ENTRY FIELD SHAPES: ${shapes.join(", ")}. always_inject=true ONLY on the rare entry the story needs in view EVERY turn (e.g. a worn outfit in a romance, money in a heist).`;
 }
 
 export function recentChatLines(count) {
@@ -135,7 +150,7 @@ async function collectContext(scenarioText, { skipCharacters = false, improvedGr
             ]
             : [
                 `PARTY CAP: ${partyCap} full character sheets maximum.`,
-                `ENTRY FIELD SHAPES: resource {${fieldKeysFor("resource")}}, attribute {${fieldKeysFor("attribute")}}, item {${fieldKeysFor("item")}}, skill {${fieldKeysFor("skill")}}, passive {${fieldKeysFor("passive")}} (ptype: special|stat), status {${fieldKeysFor("status")}}.`,
+                entryFieldShapes(),
                 "SCALING RESOURCES: every combat/effort-capable character ALWAYS carries the core resources Health and Stamina, plus Mana when magic or powers fit their role; a core resource's max may be a formula mixing Level AND attribute names (e.g. \"100+(Level*10)\", \"80+(Endurance*25)\") so it grows with the character — reserve formulas for 1-2 of those core stats when growth is implied; situational resources (Ammo, Stress) stay plain numbers.",
             ]),
         "",
@@ -150,6 +165,8 @@ async function collectContext(scenarioText, { skipCharacters = false, improvedGr
         `SCENARIO DESCRIPTION:`,
         String(scenarioText || "(none provided — infer from the recent chat)"),
     ];
+    const brief = scenarioBriefBlock();
+    if (brief) blocks.push("", brief);
 
     // Deep context (setting-gated): character card, persona, author's note and
     // activated World Info — so lorebook-defined casts and settings are known.
@@ -261,6 +278,7 @@ export function sanitizeProposal(parsed) {
         custom,
         warnings,
         progression,
+        brief: String(parsed.brief || "").slice(0, 2000),
     };
 }
 
@@ -288,7 +306,7 @@ export function parseSetupXml(text) {
     };
 
     // Party characters with nested container entries.
-    const CONTAINER_TAGS = { resource: "resources", attribute: "attributes", item: "inventory", skill: "skills", passive: "passives", status: "statuses" };
+    const CONTAINER_TAGS = Object.fromEntries(Object.entries(PROMPT_CONTAINER_TAGS).map(([container, tag]) => [tag, container]));
     const charRe = /<char\b([^>]*?)\/>|<char\b([^>]*?)>([\s\S]*?)<\/char>/gi;
     let m;
     while ((m = charRe.exec(inner)) !== null) {
@@ -329,6 +347,9 @@ export function parseSetupXml(text) {
             exp_guidelines: (progMatch[2] ?? "").trim(),
         };
     }
+
+    const briefMatch = /<brief>([\s\S]*?)<\/brief>/i.exec(stripped);
+    if (briefMatch) parsed.brief = briefMatch[1].trim();
 
     return parsed;
 }
@@ -405,8 +426,14 @@ function escAttr(v) {
         .replace(/"/g, "&" + "quot;");
 }
 
-// Container -> tag mapping for the LLM wire shape (proposals & references).
-const PROMPT_CONTAINER_TAGS = { resources: "resource", attributes: "attribute", inventory: "item", skills: "skill", passives: "passive", statuses: "status" };
+// Container -> tag mapping for the LLM wire shape (proposals & references),
+// derived from the schema so new sheet types ride along automatically.
+const PROMPT_CONTAINER_TAGS = Object.fromEntries(CHARACTER_CONTAINERS.map(c => [c, CONTAINER_TYPES[c]]));
+
+// Wire attributes of one entry: internal ids and unset inject flags stay out
+// of the prompt (always_inject="false" on every line is pure noise).
+const wireAttrs = e => Object.entries(e)
+    .filter(([k, v]) => k !== "id" && !(k === "always_inject" && !v));
 
 // Serializes a single character sheet to the LLM wire shape (internal ids
 // stripped) — used as reference context by the character generator.
@@ -421,8 +448,7 @@ export function characterToXml(c) {
         for (const e of c?.[container] || []) {
             // Every field rides along (descriptions, costs, effects...) —
             // whitespace collapsed so multi-line text stays single-line.
-            const attrs = Object.entries(e)
-                .filter(([k]) => k !== "id")
+            const attrs = wireAttrs(e)
                 .map(([k, v]) => `${k}="${escAttr(String(v ?? "").replace(/\s+/g, " ").trim())}"`)
                 .join(" ");
             lines.push(`<${tag} ${attrs}/>`);
@@ -442,8 +468,7 @@ function proposalToPromptXml(p) {
         lines.push(`<char name="${escAttr(c.name)}"${Number.isFinite(lvl) && lvl >= 1 ? ` level="${lvl}"` : ""}>`);
         for (const [container, tag] of Object.entries(PROMPT_CONTAINER_TAGS)) {
             for (const e of c[container] || []) {
-                const attrs = Object.entries(e)
-                    .filter(([k]) => k !== "id")
+                const attrs = wireAttrs(e)
                     .map(([k, v]) => `${k}="${escAttr(v)}"`)
                     .join(" ");
                 lines.push(`<${tag} ${attrs}/>`);
@@ -455,6 +480,7 @@ function proposalToPromptXml(p) {
     for (const r of p.sharedResources || []) lines.push(`<shared name="${escAttr(r.name)}" qty="${escAttr(r.qty)}" description="${escAttr(r.description)}" always_inject="${r.always_inject ? "true" : "false"}"/>`);
     for (const c of p.custom || []) lines.push(`<custom name="${escAttr(c.name)}" value="${escAttr(c.value)}" description="${escAttr(c.description)}"/>`);
     for (const w of p.warnings || []) lines.push(`<warning name="${escAttr(w.name)}" text="${escAttr(w.text)}"/>`);
+    if (p.brief) lines.push(`<brief>${escAttr(p.brief)}</brief>`);
     if (p.progression) {
         const g = p.progression;
         lines.push(`<progression enabled="${g.enabled !== false ? "true" : "false"}" exp_base="${escAttr(g.exp_base)}" exp_growth="${escAttr(g.exp_growth)}" max_level="${escAttr(g.max_level ?? 99)}" skill_points="${escAttr(g.skill_points_per_level)}" bonus_every="${escAttr(g.bonus_every)}" attr_points="${escAttr(g.attr_points_per_level)}" attr_cost_every="${escAttr(g.attr_cost_every)}" attr_starting_budget="${escAttr(g.attr_starting_budget)}">${escAttr(g.exp_guidelines || "")}</progression>`);
@@ -478,7 +504,7 @@ async function collectRefineContext(proposal, feedback, scenarioText, { skipChar
             ]
             : [
                 `PARTY CAP: ${partyCap} full character sheets maximum.`,
-                `ENTRY FIELD SHAPES: resource {${fieldKeysFor("resource")}}, attribute {${fieldKeysFor("attribute")}}, item {${fieldKeysFor("item")}}, skill {${fieldKeysFor("skill")}}, passive {${fieldKeysFor("passive")}} (ptype: special|stat), status {${fieldKeysFor("status")}}.`,
+                entryFieldShapes(),
                 "SCALING RESOURCES: every combat/effort-capable character ALWAYS carries the core resources Health and Stamina, plus Mana when magic or powers fit their role — restore any missing core resource; a core resource's max may be a formula mixing Level AND attribute names (e.g. \"100+(Level*10)\", \"80+(Endurance*25)\") so it grows with the character — reserve formulas for 1-2 of those core stats when growth is implied; situational resources (Ammo, Stress) stay plain numbers.",
             ]),
         "",
@@ -494,6 +520,8 @@ async function collectRefineContext(proposal, feedback, scenarioText, { skipChar
         "REFINEMENT FEEDBACK:",
         String(feedback || "(none — deepen the setup on your own judgment: richer sheets, deliberate values, no filler)"),
     ];
+    const brief = scenarioBriefBlock();
+    if (brief) blocks.push("", brief);
 
     // Deep context (setting-gated), same as the initial generation.
     if (s.deep_context) {
@@ -590,10 +618,17 @@ export function applyProposal(proposal, mode = "replace") {
         });
     }
     for (const entry of proposal.custom || []) {
-        stateManager.addCustomEntry({ name: entry.name, value: entry.value || "", description: entry.description || "" });
+        stateManager.addCustomEntry({ name: entry.name, value: entry.value || "", description: entry.description || "", always_inject: !!entry.always_inject });
     }
     for (const w of proposal.warnings || []) {
         stateManager.setWarning({ name: w.name, text: w.text });
+    }
+    // Brief: the review modal decides (applyBrief — default on only when the
+    // chat has none). Without that flag, never overwrite the player's text.
+    const briefText = String(proposal.brief || "").trim();
+    const applyBrief = proposal.applyBrief ?? !getScenarioBriefText();
+    if (briefText && applyBrief) {
+        setScenarioBrief({ text: briefText });
     }
 
     stateManager.emitChange(mode === "replace" ? "wizard_replace" : "wizard_merge");

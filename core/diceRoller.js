@@ -26,6 +26,7 @@ import { sheetXml as renderSheet } from "./sheetXml.js";
 import { valueGuidelines } from "./valueGuidelines.js";
 import { sendRequestViaProfile, resolveDiceProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
+import { scenarioBriefBlock } from "./scenarioBrief.js";
 import { diceBubble, attachRollToMessage } from "../ui/diceBubble.js";
 import { playRoll, playTierResult } from "./soundFx.js";
 
@@ -162,7 +163,8 @@ export function weightedRoll(tiers) {
 function queueRollResult(title, tier) {
     // Swipe-recovered tiers are read from the persisted gm_roll record and may
     // predate agent-output entity decoding — normalize before injecting.
-    queueHigh(`<roll title="${decodeEntities(title)}" tier="${tier.name}">${decodeEntities(tier.outcome)}</roll>`);
+    // Decode first (old records may hold entities), then escape once.
+    queueHigh(`<roll title="${escAttr(decodeEntities(title))}" tier="${escAttr(tier.name)}">${escAttr(decodeEntities(tier.outcome))}</roll>`);
 }
 
 // Re-queues an ALREADY RESOLVED roll result (swipe recovery) — the outcome
@@ -191,6 +193,8 @@ export async function rollDice(playerAction, mesId, { title = null } = {}) {
         // system message, after the dice engine instructions — the roller must
         // know who and where the scene is to build fitting outcome tiers.
         let systemContent = SYSTEM_PROMPT;
+        const brief = scenarioBriefBlock();
+        if (brief) systemContent += `\n\n${brief}`;
         if (s.deep_context_engines) {
             const deep = await buildDeepContext(String(playerAction || ""));
             if (deep) systemContent += `\n\n<deep_context>\n${deep}\n</deep_context>`;

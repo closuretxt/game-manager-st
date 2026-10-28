@@ -21,7 +21,8 @@ import { manualRun } from "../inject/postTurn.js";
 import { getCharacterAvatar, clearAvatarCache, uploadCharacterAvatar, deleteCharacterAvatar, resolveAvatar, extractDominantColor } from "../util/avatars.js";
 import { fadeOutRemove } from "../util/fx.js";
 import { settingsUI } from "./settingsUI.js";
-import { characterView, clearEditorState } from "./characterView.js";
+import { characterView, clearEditorState, injectPin } from "./characterView.js";
+import { getScenario, setScenarioBrief } from "../core/scenarioBrief.js";
 import { customTab } from "./customTab.js";
 import { resourceManager } from "./resourceManager.js";
 import { setupWizard } from "./setupWizard.js";
@@ -510,6 +511,8 @@ class MainPanel {
             });
             header.append(addBtn);
 
+            header.append(this._briefButton(true));
+
             // Party cap — max full sheets the Setup Wizard proposes; extra
             // allies go to the roster. Lives here (edit mode only) instead of
             // the settings drawer.
@@ -535,6 +538,8 @@ class MainPanel {
                 progBtn.on("click", () => this._openProgressionConfig());
                 header.append(progBtn);
             }
+        } else if (String(getScenario().text || "").trim()) {
+            header.append(this._briefButton(false));
         }
 
         const list = $("<div>").addClass("gm_entry_list");
@@ -606,6 +611,54 @@ class MainPanel {
         content.append(wrap);
 
         this._renderRoster(content, edit);
+    }
+
+    _briefButton(edit) {
+        const sc = getScenario();
+        const btn = $("<div>").addClass("menu_button gm_add_btn")
+            .attr("title", String(sc.text || "").trim() ? "Scenario brief (set)" : "Scenario brief (empty — the Setup Wizard fills it)")
+            .append($("<i>").addClass("fa-solid fa-scroll"), $("<span>").text(" Brief"));
+        if (sc.inject) btn.append(injectPin());
+        btn.on("click", () => this._openScenarioBrief(edit));
+        return btn;
+    }
+
+    // ---------- Scenario brief modal: the explanation every LLM call reads ----------
+    // Editable in edit mode; read-only otherwise (button only shows when set).
+    _openScenarioBrief(edit) {
+        const sc = getScenario();
+        const overlay = $("<div>").addClass("gm_modal_overlay");
+        const dialog = $("<div>").addClass("gm_modal");
+        const close = () => fadeOutRemove(overlay);
+
+        const area = $("<textarea>").addClass("gm_modal_textarea gm_brief_area")
+            .attr("placeholder", "Premise, tone, how the world works, what the stakes are. Leave empty and the Setup Wizard writes one.")
+            .prop("readonly", !edit)
+            .val(String(sc.text || ""));
+        const injectBox = $("<input>").attr("type", "checkbox").prop("checked", !!sc.inject).prop("disabled", !edit);
+
+        dialog.append(
+            $("<b>").text("Scenario Brief"),
+            $("<div>").addClass("gm_modal_hint").text("Read by every Game Manager generation: Setup Wizard, character and skill generators, pre-pass, dice, combat and post-pass."),
+            area,
+            $("<label>").addClass("checkbox_label").append(injectBox, $("<span>").text("Also inject into the story prompt ({{gamemaster-low-priority}})")),
+        );
+        const actions = $("<div>").addClass("gm_modal_actions");
+        if (edit) {
+            actions.append(
+                $("<div>").addClass("menu_button").text("Cancel").on("click", close),
+                $("<div>").addClass("menu_button gm_modal_save").text("Save").on("click", () => {
+                    setScenarioBrief({ text: String(area.val() || ""), inject: injectBox.prop("checked") });
+                    gmNotify("Scenario brief saved.", "success");
+                    close();
+                }),
+            );
+        } else {
+            actions.append($("<div>").addClass("menu_button").text("Close").on("click", close));
+        }
+        dialog.append(actions);
+        overlay.append(dialog).appendTo("body");
+        overlay.on("mousedown", e => { if (e.target === overlay[0]) close(); });
     }
 
     // ---------- Roster: lightweight allies (collapsed chips, never injected) ----------

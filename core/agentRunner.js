@@ -26,6 +26,7 @@ import { captureSnapshot, captureSwipeState } from "./snapshots.js";
 import { sendRequestViaProfile, resolveConnectionProfile, getProfileNameById } from "../util/connectionService.js";
 import { swapProfile } from "../util/profileSwapper.js";
 import { buildDeepContext } from "../util/loreContext.js";
+import { scenarioBriefBlock } from "./scenarioBrief.js";
 
 const MAX_CONTEXT_MESSAGES = 4;
 // The tracker only reports changes from the LAST exchange (player action +
@@ -193,6 +194,7 @@ async function buildSystemPrompt(exchange = []) {
         '<change_values><char>Name</char><resource name="HP" delta="-12"|value="45"/><attribute name="STR" delta="1"/></change_values>',
         '<change_values><shared name="Dinheiro" delta="-6"/></change_values>',
         '<set_attributes><char>Name</char><attribute name="STR" value="14"/></set_attributes>',
+        '<set_traits><char>Name</char><trait name="Clothing" value="Soaked travel cloak over a torn shirt"/></set_traits>',
         '<add_items><char>Name</char><item name="Rope" qty="1" description="..."/></add_items>',
         '<remove_items><char>Name</char><item name="Ammo" qty="3"/></remove_items>',
         '<update_custom><entry name="Seeds" value="Sprouting" description="..."/></update_custom>',
@@ -221,6 +223,7 @@ async function buildSystemPrompt(exchange = []) {
         ...(spawnReview ? [
             "Use <new_characters> when a NEW named character or enemy clearly enters the scene and matters beyond this exchange: one <char> per newcomer with kind=\"party\" (a potential companion or recurring NPC) or kind=\"enemy\" (a hostile threat), a short details brief (role, appearance, combat style, what makes them different) and their level when progression is active. Never re-emit names already in the state snapshot. When you report a new enemy here, skip the <enemies> add — the player reviews and builds the full sheet from your brief; keep <enemies> for updates and removals.",
         ] : []),
+        "Use <set_traits> when the exchange CHANGES one of a character's tracked <traits> (free-text details such as Clothing, Appearance, Mood, Location): write the full NEW text, short and concrete, replacing the old one. Only names already in that character's <traits>; never re-emit unchanged text.",
         "Use <set_statuses> for TEMPORARY per-character conditions (Dazed, Drunk, Inspired...). When a status lands, also apply its listed stat modifiers through <change_values>; when the condition ends, remove the modifiers with a matching <change_values> and clear the status with <clear_statuses>. Do not use statuses for permanent traits (passives) or party-wide gimmicks (custom).",
         "Use <knockouts> when a character is clearly unconscious or incapacitated but NOT dead — non-lethal defeat, blunt trauma to the head, choking, blood loss, drugging, electrocution, exhaustion, a spell that drops them. Do NOT hesitate to knock out human characters, allies or the player character when the fiction calls for it: being beaten unconscious is a normal game outcome, not something to shield anyone from. <ko char=\"Name\" reason=\"...\"/> knocks them out, <ko_clear char=\"Name\"/> when they regain consciousness (rest, recovery, a timeskip). Write the reason bluntly and concretely (\"choked out in a headlock\", \"cracked skull on the pavement\", \"drugged wine\") — never a vague euphemism. A character with state=\"ko\" cannot act until cleared — do not report actions, skill use or EXP for them.",
         ...(s.feature_death !== false ? [
@@ -237,6 +240,8 @@ async function buildSystemPrompt(exchange = []) {
                 : []),
         ] : []),
     ];
+    const brief = scenarioBriefBlock();
+    if (brief) lines.push("", brief);
     if (deep) {
         lines.push("", "<deep_context>", deep, "</deep_context>");
     }

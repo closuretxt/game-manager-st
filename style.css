@@ -405,6 +405,21 @@
     font-size: 12px;
 }
 
+/* Scenario brief (panel modal + wizard review). */
+.gm_brief_area {
+    width: 100%;
+    min-height: 10em;
+    box-sizing: border-box;
+    resize: vertical;
+}
+
+/* Always-inject marker: small pin after the entry name. */
+.gm_inject_pin {
+    margin-left: 5px;
+    font-size: 10px;
+    opacity: 0.55;
+}
+
 /* Skill cooldown badge: clock + number right after the skill name. Neutral
    when ready (shows the configured length), red while under cooldown
    (shows the messages left). */

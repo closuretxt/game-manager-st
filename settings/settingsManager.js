@@ -45,6 +45,7 @@ export const defaultSettings = {
     feature_dice: true,           // Dice rolls (pre-master LLM on skill mentions).
     feature_transactions: true,   // Fair-use transactions (pre-master LLM on shared resource mentions).
     feature_injection: true,      // {{gamemaster-*}} macros inject warnings/context into prompts.
+    cache_first: true,            // Low-priority block = persistent state only; per-turn context rides in the high-priority macro.
     feature_enemies: true,        // Context-based enemies (AI-managed sheets, archived when irrelevant).
     feature_rewrite: true,        // Pre-pass rewrites vague/contradictory actions (highlighted tag + high-priority injection).
     feature_skill_suggest: true,  // Pre-pass suggests a tracked skill that fits the action (high-priority narration hint).
@@ -153,6 +154,7 @@ export async function loadSettings() {
     $("#gm_setting_feat_dice").prop("checked", !!s.feature_dice);
     $("#gm_setting_feat_transactions").prop("checked", !!s.feature_transactions);
     $("#gm_setting_feat_injection").prop("checked", !!s.feature_injection);
+    $("#gm_setting_cache_first").prop("checked", !!s.cache_first);
     $("#gm_setting_feat_enemies").prop("checked", !!s.feature_enemies);
     $("#gm_setting_feat_rewrite").prop("checked", !!s.feature_rewrite);
     $("#gm_setting_feat_skill_suggest").prop("checked", !!s.feature_skill_suggest);
@@ -207,6 +209,7 @@ export function saveSettings() {
     s.feature_dice = $("#gm_setting_feat_dice").prop("checked");
     s.feature_transactions = $("#gm_setting_feat_transactions").prop("checked");
     s.feature_injection = $("#gm_setting_feat_injection").prop("checked");
+    s.cache_first = $("#gm_setting_cache_first").prop("checked");
     s.feature_enemies = $("#gm_setting_feat_enemies").prop("checked");
     s.feature_rewrite = $("#gm_setting_feat_rewrite").prop("checked");
     s.feature_skill_suggest = $("#gm_setting_feat_skill_suggest").prop("checked");
@@ -238,7 +241,7 @@ export function saveSettings() {
 export function initSettingsListeners() {
     $("#gm_setting_enabled, #gm_setting_auto_update, #gm_setting_debug_mode, #gm_setting_open_panel, #gm_setting_bubble_btn, #gm_setting_hotbar, #gm_setting_legacy, #gm_setting_pre_pass, " +
       "#gm_setting_feat_wizard, #gm_setting_feat_char_creator, #gm_setting_spawn_review, #gm_setting_dyn_enemies, #gm_setting_deep_context, #gm_setting_deep_context_engines, " +
-      "#gm_setting_feat_warnings, #gm_setting_feat_dice, #gm_setting_feat_transactions, #gm_setting_feat_injection, " +
+      "#gm_setting_feat_warnings, #gm_setting_feat_dice, #gm_setting_feat_transactions, #gm_setting_feat_injection, #gm_setting_cache_first, " +
       "#gm_setting_feat_enemies, #gm_setting_feat_rewrite, #gm_setting_feat_skill_suggest, #gm_setting_feat_progression, #gm_setting_feat_skill_tree, " +
       "#gm_setting_feat_combat, #gm_setting_feat_ally_ai, #gm_setting_rich_clash, #gm_setting_deterministic_clashes, #gm_setting_roll_attachment, #gm_setting_feat_death, " +
       "#gm_setting_notify, #gm_setting_notify_stats, #gm_setting_notify_items, #gm_setting_notify_skills, " +

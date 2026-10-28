@@ -70,6 +70,7 @@ export function buildEntryRow(type, entry, handlers = {}) {
     const row = $("<div>").addClass("gm_entry_row");
     const main = $("<div>").addClass("gm_entry_main");
     main.append($("<span>").addClass("gm_entry_name").text(entry.name || "(unnamed)"));
+    if (entry.always_inject) main.append(injectPin());
     if (handlers.nameBadge) {
         const badge = handlers.nameBadge(entry);
         if (badge) main.append(badge);
@@ -88,8 +89,15 @@ export function buildEntryRow(type, entry, handlers = {}) {
     }
     top.append(actions);
     row.append(top);
-    if (entry.description) row.append($("<div>").addClass("gm_entry_desc").text(entry.description));
+    const bodyText = handlers.bodyText ? handlers.bodyText(entry) : entry.description;
+    if (bodyText) row.append($("<div>").addClass("gm_entry_desc").text(bodyText));
     return row;
+}
+
+// Marker for entries flagged "always inject" (persistent context).
+export function injectPin() {
+    return $("<i>").addClass("fa-solid fa-thumbtack gm_inject_pin")
+        .attr("title", "Always injected into the story context");
 }
 
 function metaFor(type, entry) {
@@ -253,6 +261,9 @@ export const characterView = {
         if (!char.attributes.length) grid.append($("<div>").addClass("gm_empty").text("No attributes yet."));
         attrWrap.append(attrHeader, grid);
         container.append(attrWrap);
+
+        // Free-text details (clothing, mood...) live with the basic stats.
+        this.renderList(container, char, "trait", edit);
     },
 
     _resourceRow(char, r, edit = false) {
@@ -266,7 +277,9 @@ export const characterView = {
 
         const rowWrap = $("<div>").addClass("gm_entry_row");
         const row = $("<div>").addClass("gm_res_row");
-        row.append($("<div>").addClass("gm_res_name").attr("title", r.name).text(r.name));
+        const resName = $("<div>").addClass("gm_res_name").attr("title", r.name).text(r.name);
+        if (r.always_inject) resName.append(injectPin());
+        row.append(resName);
         row.append($("<div>").addClass("gm_res_track").append(
             $("<div>").addClass("gm_res_fill").css("width", pct + "%")));
         // Formula-based maxes expose the raw formula on hover.
@@ -298,6 +311,7 @@ export const characterView = {
         const wrap = $("<div>").addClass("gm_entry_row");
         const chip = $("<div>").addClass("gm_attr_chip");
         chip.append($("<span>").addClass("gm_attr_name").text(a.name));
+        if (a.always_inject) chip.append(injectPin());
         chip.append($("<span>").addClass("gm_attr_value").text(a.value));
         // Attribute-point raise: standard usage, available OUTSIDE edit mode —
         // shown whenever the character has unspent AP (cost scales with the
@@ -382,6 +396,8 @@ export const characterView = {
                             $("<span>").text(String(on ? left : cd)),
                         );
                 } : null,
+                // Text details show their free text where descriptions go.
+                bodyText: type === "trait" ? e => e.value : null,
                 showActions: edit,
                 onEdit: (e, row) => startInlineEdit(char.id, type, e, row),
                 onDelete: e => stateManager.removeEntry(char.id, type, e.id),

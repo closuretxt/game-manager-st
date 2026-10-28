@@ -16,10 +16,11 @@ import { stateManager, playerLabel, charLabel } from "./stateManager.js";
 import { captureSnapshot } from "./snapshots.js";
 import { queueHigh } from "./injection.js";
 import { sharedXml } from "./sheetXml.js";
-import { parseAttrs } from "./toolParser.js";
+import { parseAttrs, escAttr } from "./toolParser.js";
 import { resolveValue } from "./valueResolver.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
+import { scenarioBriefBlock } from "./scenarioBrief.js";
 import { statusBubble } from "../ui/statusBubble.js";
 import { recentMessages, sceneContextBlock } from "../util/chatStore.js";
 
@@ -90,6 +91,8 @@ export async function runTransaction(resource, playerAction, mesId = null, plan 
             // the system message, after the accountant instructions —
             // plausible amounts depend on the setting's prices and economy.
             let systemContent = SYSTEM_PROMPT;
+            const brief = scenarioBriefBlock();
+            if (brief) systemContent += `\n\n${brief}`;
             if (s.deep_context_engines) {
                 const deep = await buildDeepContext(String(playerAction || ""));
                 if (deep) systemContent += `\n\n<deep_context>\n${deep}\n</deep_context>`;
@@ -118,7 +121,8 @@ export async function runTransaction(resource, playerAction, mesId = null, plan 
         resource.qty = remaining;
         stateManager.emitChange("transaction");
 
-        queueHigh(`<transaction resource="${resource.name}" current="${current}" transaction="${net}" remaining="${remaining}">${comparison}</transaction>`);
+        // Signed like the docs and the tracker prompt: negative = spent.
+        queueHigh(`<transaction resource="${escAttr(resource.name)}" current="${current}" transaction="${remaining - current}" remaining="${remaining}">${escAttr(comparison)}</transaction>`);
         statusBubble.result(`${resource.name}: ${net >= 0 ? "-" : "+"}${Math.abs(net)} → ${remaining}${comparison ? ` · ${comparison}` : ""}`);
         logDebug(`transactions: ${resource.name} ${current} -> ${remaining} (${comparison})`);
         return true;

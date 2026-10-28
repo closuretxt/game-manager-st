@@ -8,9 +8,9 @@
 //
 // High priority (immediate, one-shot): pending roll results, transaction
 // reports and skill-use suggestions queued by the pre-master flows. Consumed
-// once by the macro at prompt build time; if the macro is not placed in the
-// prompt the buffer is re-emitted until consumed, so a result is never
-// silently lost.
+// once by the macro at prompt build time. Anything the macro did not consume
+// is discarded at the next pre-turn (discardPending): a roll from an earlier
+// turn must never reach a later prompt as if it had just been resolved.
 //
 // Everything here is gated by the feature_injection setting in the macros.
 
@@ -19,6 +19,9 @@ import { extensionName, CHARACTER_STATES } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { resolveResourceMax } from "./resourceScaler.js";
+import { CHARACTER_CONTAINERS } from "./schemas.js";
+import { sheetXml } from "./sheetXml.js";
+import { scenarioBriefInjection } from "./scenarioBrief.js";
 
 let _pendingHigh = [];
 let _pendingLow = [];
@@ -154,50 +157,23 @@ export function clearLow() {
     _pendingLow = [];
 }
 
-// Returns everything queued so far and drains the queue.
-export function consumeHigh() {
-    if (!enabled() || _pendingHigh.length === 0) return "";
-    const out = _pendingHigh.join("\n");
-    _pendingHigh = [];
-    _lastHigh = out;
-    return `<gamemaster_result note="Outcomes just resolved by the game system (dice rolls, transactions, action rewrites, skill uses). Treat as ground truth; narrate accordingly, do not repeat the numbers or the tags themselves. Narrate ONLY the actions and outcomes shown here, never invent extra actions or results that are not explicit, characters not mentioned did not act.">\n${out}\n</gamemaster_result>`;
+// Cache-first: the low-priority block only carries what persists between
+// turns, so a prompt prefix that contains it stays byte-identical (and
+// cached) until that state actually changes. Everything that changes per turn
+// (one-shot readouts, live enemy state) rides in the high-priority macro,
+// which sits near the end of the prompt anyway.
+function cacheFirst() {
+    return extension_settings[extensionName]?.cache_first !== false;
 }
 
-export function clearHigh() {
-    _pendingHigh = [];
-    _stashedHigh.clear();
-}
-
-// ---------- low priority (persistent context) ----------
-
-// Builds the persistent context block: warnings + always-inject shared values.
-export function buildLowPriority() {
-    if (!enabled()) return "";
+// Per-turn context: live enemy state + the pre-pass's one-shot readouts.
+// Drains the one-shot queue (recorded for the post-pass as _lastLow).
+function buildTurnContext() {
     const d = stateManager.getData();
+    const s = extension_settings[extensionName];
     const parts = [];
-
-    for (const w of d.warnings || []) {
-        parts.push(`<warning name="${esc(w.name)}">${esc(w.text || "")}</warning>`);
-    }
-
-    for (const r of d.sharedResources || []) {
-        if (r.always_inject) {
-            parts.push(`<resource name="${esc(r.name)}" value="${esc(r.qty)}"/>`);
-        }
-    }
-
-    // Characters in a special state: the story engine must respect them
-    // (dead = never use again; knocked out = down until recovery, and the
-    // scene may ease toward rest or a timeskip).
-    for (const c of d.characters || []) {
-        const mode = c.state ? CHARACTER_STATES[c.state.mode] : null;
-        if (!mode) continue;
-        parts.push(`<character name="${esc(c.name)}" status="${mode.status}"${c.state.reason ? ` reason="${esc(c.state.reason)}"` : ""}/>`);
-    }
-
     // Context-based enemies: compact state summary, only when the feature is
     // on AND enemies exist — zero tokens otherwise.
-    const s = extension_settings[extensionName];
     if (s.feature_enemies && (d.enemies || []).length) {
         parts.push(`<enemies note="Active enemies in the scene; their state is ground truth.">`);
         for (const e of d.enemies) {
@@ -208,13 +184,95 @@ export function buildLowPriority() {
         }
         parts.push(`</enemies>`);
     }
-
     // One-shot lines queued by the pre-pass for THIS turn only.
     if (_pendingLow.length) {
         const oneShot = _pendingLow.splice(0, _pendingLow.length);
         _lastLow = oneShot.join("\n");
         parts.push(...oneShot);
     }
+    return parts;
+}
+
+// Returns everything queued so far and drains the queue. In cache-first mode
+// the per-turn context (enemy state, one-shot readouts) is appended here
+// instead of in the low-priority block.
+export function consumeHigh() {
+    if (!enabled()) return "";
+    const turn = cacheFirst() ? buildTurnContext() : [];
+    if (_pendingHigh.length === 0 && !turn.length) return "";
+    const out = _pendingHigh.join("\n");
+    _pendingHigh = [];
+    if (out) _lastHigh = out;
+    const blocks = [];
+    if (out) {
+        blocks.push(`<gamemaster_result note="Outcomes just resolved by the game system (dice rolls, transactions, action rewrites, skill uses). Treat as ground truth; narrate accordingly, do not repeat the numbers or the tags themselves. Narrate ONLY the actions and outcomes shown here, never invent extra actions or results that are not explicit, characters not mentioned did not act.">\n${out}\n</gamemaster_result>`);
+    }
+    if (turn.length) {
+        blocks.push(`<gamemaster_turn_context note="Tracked state relevant to this turn only; ground truth the story engine must not recount or track itself.">\n${turn.join("\n")}\n</gamemaster_turn_context>`);
+    }
+    return blocks.join("\n");
+}
+
+export function clearHigh() {
+    _pendingHigh = [];
+    _stashedHigh.clear();
+}
+
+// Drops whatever the previous generation left unconsumed (macro not placed in
+// the preset, generation aborted before prompt assembly). Called at the start
+// of every pre-turn: without it, stale rolls/transactions piled up turn after
+// turn and flooded the first prompt that finally contained the macro. The
+// stash is kept — swipes still replay their own turn's payload.
+export function discardPending() {
+    if (_pendingHigh.length || _pendingLow.length) {
+        logDebug(`injection: discarding ${_pendingHigh.length} stale high / ${_pendingLow.length} stale low entries`);
+    }
+    _pendingHigh = [];
+    _pendingLow = [];
+}
+
+// ---------- low priority (persistent context) ----------
+
+// Builds the persistent context block: warnings, always-inject entries and
+// character states. Ordered deterministically (no insertion-order churn), so
+// the block only changes when the underlying state does.
+export function buildLowPriority() {
+    if (!enabled()) return "";
+    const d = stateManager.getData();
+    const parts = [];
+    const byName = (a, b) => String(a.name ?? "").localeCompare(String(b.name ?? ""));
+
+    const brief = scenarioBriefInjection();
+    if (brief) parts.push(brief);
+
+    for (const w of [...(d.warnings || [])].sort(byName)) {
+        parts.push(`<warning name="${esc(w.name)}">${esc(w.text || "")}</warning>`);
+    }
+
+    for (const r of (d.sharedResources || []).filter(x => x.always_inject).sort(byName)) {
+        parts.push(`<resource name="${esc(r.name)}" value="${esc(r.qty)}"/>`);
+    }
+    for (const c of (d.custom || []).filter(x => x.always_inject).sort(byName)) {
+        parts.push(`<custom name="${esc(c.name)}" value="${esc(c.value)}"/>`);
+    }
+
+    for (const c of d.characters || []) {
+        // Characters in a special state: the story engine must respect them
+        // (dead = never use again; knocked out = down until recovery, and the
+        // scene may ease toward rest or a timeskip).
+        const mode = c.state ? CHARACTER_STATES[c.state.mode] : null;
+        if (mode) {
+            parts.push(`<character name="${esc(c.name)}" status="${mode.status}"${c.state.reason ? ` reason="${esc(c.state.reason)}"` : ""}/>`);
+            if (mode.status === "dead") continue;
+        }
+        // Per-entry "always inject" flags (clothing, a signature stat...).
+        if (CHARACTER_CONTAINERS.some(k => (c[k] || []).some(e => e.always_inject))) {
+            parts.push(sheetXml(c, { tag: "char", descriptions: false, filter: e => !!e.always_inject }));
+        }
+    }
+
+    // Legacy layout: per-turn context shares this block (cache-first off).
+    if (!cacheFirst()) parts.push(...buildTurnContext());
 
     if (!parts.length) return "";
     return `<gamemaster_context note="Ground-truth tracked state the story engine must not recount or track itself; warnings describe imminent needs.">\n${parts.join("\n")}\n</gamemaster_context>`;
