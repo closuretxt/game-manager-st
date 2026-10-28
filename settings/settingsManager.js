@@ -35,6 +35,7 @@ const CHECKBOXES = {
     feature_combat: "gm_setting_feat_combat",
     feature_ally_ai: "gm_setting_feat_ally_ai",
     feature_death: "gm_setting_feat_death",
+    feature_roster_rotation: "gm_setting_feat_roster_rotation",
     tab_inventory: "gm_setting_tab_inventory",
     tab_skills: "gm_setting_tab_skills",
     tab_passives: "gm_setting_tab_passives",
@@ -111,6 +112,7 @@ export const defaultSettings = {
     roll_attachment: true,        // Roll/combat results render as file-style chips under the player's message.
     roll_duration: 1600,          // Dice roll animation length in ms (a random ±200ms variation is added per roll).
     feature_death: true,          // Permadeath: the post-pass may kill characters (<deaths> tag); only the user revives.
+    feature_roster_rotation: false, // Post-pass benches party characters unnamed for 20 messages and recalls benched ones who reappear (up to the party cap).
 
     // Per-chat feature modes (core/features.js). The feature_* flags above and
     // the tab toggles below are the GLOBAL defaults ("Custom" mode); each chat

@@ -769,6 +769,17 @@
     opacity: var(--gm-muted);
 }
 
+.gm_field_check label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.gm_field_check input[type="checkbox"] {
+    margin: 0;
+}
+
 .gm_input {
     background: rgba(0, 0, 0, 0.25);
     border: 1px solid var(--gm-line);
@@ -1552,6 +1563,11 @@ textarea.gm_input {
 }
 
 /* ---------- Roster chips ---------- */
+/* Roster rotation pin (character page): highlighted while pinned. */
+.gm_back_btn.gm_pin_on {
+    color: var(--SmartThemeQuoteColor, #e8b04b);
+}
+
 .gm_roster_chips {
     display: flex;
     flex-wrap: wrap;

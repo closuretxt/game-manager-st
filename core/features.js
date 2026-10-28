@@ -28,8 +28,13 @@ export const FEATURE_LABELS = {
     feature_progression: "Progression",
     feature_skill_tree: "Skill Trees",
     feature_death: "Permadeath",
+    feature_roster_rotation: "Roster rotation",
 };
 export const CHAT_FEATURE_KEYS = Object.keys(FEATURE_LABELS);
+
+// Opt-in per chat only: rotation moves characters on its own, so no mode
+// preset switches it on (unlisted keys fall back to the global setting).
+const OPT_IN = ["feature_roster_rotation"];
 
 // Tab toggles: hiding a tab also stops tracking its container — the LLMs no
 // longer see it in snapshots and the tracker's tags for it are ignored, so
@@ -44,6 +49,7 @@ export const TAB_TOGGLES = [
 ];
 
 export const OVERRIDABLE_KEYS = [...CHAT_FEATURE_KEYS, ...TAB_TOGGLES.map(t => t.key)];
+const ALL_ON = Object.fromEntries(OVERRIDABLE_KEYS.filter(k => !OPT_IN.includes(k)).map(k => [k, true]));
 
 const RPG_OFF = {
     feature_dice: false,
@@ -62,7 +68,7 @@ export const FEATURE_MODES = {
     custom: { label: "Custom", values: {} },
     rpg: {
         label: "RPG",
-        values: Object.fromEntries(OVERRIDABLE_KEYS.map(k => [k, true])),
+        values: ALL_ON,
     },
     romance: {
         label: "Romance",
@@ -98,7 +104,7 @@ export const FEATURE_MODES = {
     survival: {
         label: "Survival",
         values: {
-            ...Object.fromEntries(OVERRIDABLE_KEYS.map(k => [k, true])),
+            ...ALL_ON,
             feature_progression: false,
             feature_skill_tree: false,
         },

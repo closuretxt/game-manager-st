@@ -16,7 +16,8 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { generateRaw, substituteParams } from "../../../../../script.js";
 import { extensionName, CHARACTER_STATES } from "./constants.js";
 import { gmSettings, containerEnabled } from "./features.js";
-import { logDebug } from "./debug.js";
+import { logDebug, gmNotify } from "./debug.js";
+import { ROTATION_LOOKBACK, planRotation, presentRoster } from "./rosterRotation.js";
 import { stateManager, playerLabel, charLabel } from "./stateManager.js";
 import { progression } from "./progression.js";
 import { parseToolBlocks, applyToolBlocks, escAttr } from "./toolParser.js";
@@ -48,22 +49,22 @@ function setPanelBusy(on) {
 // Renders the tracked state as a compact XML snapshot: ONE line per actor,
 // tracked names used directly as attribute keys (the agent must echo those
 // exact names in its tool tags). Legends live once in the header note.
-function buildStateSummaryXml() {
+function buildStateSummaryXml(present = []) {
     const d = stateManager.getData();
     const s = gmSettings();
     // Progression tracks are only exposed when the feature is on — otherwise
     // the agent never sees (and never grants) EXP.
     const prog = progression.isEnabled();
 
-    const actorXml = (c, tag) => {
+    const actorXml = (c, tag, extra = {}) => {
         // The agent must see states so it never "heals" a corpse or keeps
         // treating the incapacitated as actors. Non-recoverable states collapse
         // the entry entirely; recoverable ones keep the sheet (they can come
         // back) flagged with state="<mode>".
         if (c.state && !CHARACTER_STATES[c.state.mode]?.llm_clearable) {
-            return xmlEl(tag, { name: c.name, state: c.state.mode, reason: c.state.reason });
+            return xmlEl(tag, { name: c.name, ...extra, state: c.state.mode, reason: c.state.reason });
         }
-        const attrs = {};
+        const attrs = { ...extra };
         if (c.state) attrs.state = c.state.mode;
         if (prog) {
             const track = progression.trackOf(c);
@@ -83,10 +84,14 @@ function buildStateSummaryXml() {
     if (s.feature_enemies) {
         for (const e of d.enemies) parts.push(actorXml(e, "enemy"));
     }
-    // Roster bench: names only — the agent needs them for <transfer> moves;
-    // bench allies are never rolled for or injected into the story.
-    if ((d.roster || []).length) {
-        parts.push(`<roster>${d.roster.map(r => escAttr(r.name)).join(", ")}</roster>`);
+    // Benched characters named in this exchange: full sheets, updatable with
+    // the usual <char> scoping (getSheet resolves roster sheets).
+    for (const r of present) parts.push(actorXml(stateManager.getSheet(r.id), "char", { roster: "present" }));
+    // Rest of the bench: names only — the agent needs them for <transfer>
+    // moves; bench allies are never rolled for or injected into the story.
+    const bench = (d.roster || []).filter(r => !present.includes(r));
+    if (bench.length) {
+        parts.push(`<roster>${bench.map(r => escAttr(r.name)).join(", ")}</roster>`);
     }
     // Shared party resources: visible to the tracker so it can account
     // consumption the pre-pass transaction engine did not already handle.
@@ -281,7 +286,7 @@ async function buildSystemPrompt(exchange = []) {
     return lines.join("\n");
 }
 
-function buildUserPrompt(exchange, history = []) {
+function buildUserPrompt(exchange, history = [], present = []) {
     // What the pre-master injected into this turn's story prompt (dice rolls,
     // transactions, action rewrites, one-shot notes) — placed BEFORE the
     // exchange so the tracker reads the raw results with the narration that
@@ -313,7 +318,9 @@ function buildUserPrompt(exchange, history = []) {
         '- <skill_use> — cost OWED: the snapshot still shows the pre-payment value. Report the use (<use_skills>) and pay its cost ONCE; a clash-committed number replaces the sheet-generic cost.',
         '- <resource> / <character_stat> / <skill_cooldown> / <skill_ready> (source="readout"), and <note> — READOUTS mirroring the snapshot for names and availability only. NEVER a payment record; they neither satisfy nor cancel a debt.',
         '- <action_rewrite> — context only: the player action the story actually ran with.',
-        buildStateSummaryXml(),
+        // Only when it applies: the system prompt stays identical turn to turn.
+        ...(present.length ? ['- <char roster="present"> — a benched character who appears in this exchange: account their changes exactly like a party character\'s (same <char> scoping).'] : []),
+        buildStateSummaryXml(present),
         "",
     );
     // Game-system results (dice rolls, clash rounds, transactions — the GM
@@ -331,6 +338,33 @@ function buildUserPrompt(exchange, history = []) {
         "Reminder: whatever else you write, deliver the report as the tool blocks listed in the instructions, each wrapped in its own <tag>...</tag> — those tags are what the system reads.",
     );
     return blocks.join("\n");
+}
+
+// Roster rotation (per-chat feature): bench / recall BEFORE the tracker reads
+// the state, so it accounts the scene's actual cast. The baseline snapshot is
+// taken first, so a swipe or delete rolls the rotation back with everything
+// else and the rerun decides again from the new text.
+function rotateRoster(chat, now) {
+    const messages = [];
+    for (let i = Math.max(0, now - ROTATION_LOOKBACK + 1); i <= now; i++) {
+        const m = chat[i];
+        if (!m || m.is_system === true || m.is_system === "true") continue;
+        messages.push({ idx: i, text: `${m.name ?? ""}\n${m.mes ?? ""}` });
+    }
+    const st = getContext();
+    const plan = planRotation(stateManager.getData(), messages, now, {
+        cap: Math.max(1, Math.trunc(Number(gmSettings().max_party_size) || 6)),
+        // The player's own character is the scene's constant.
+        keepNames: [playerLabel(), st?.name1].filter(Boolean),
+    });
+    captureSnapshot(now);
+    const moved = stateManager.applyRotation(plan, now);
+    if (moved.out.length || moved.in.length) {
+        gmNotify([
+            moved.out.length ? `To the roster: ${moved.out.join(", ")}` : "",
+            moved.in.length ? `Back in the party: ${moved.in.join(", ")}` : "",
+        ].filter(Boolean).join(" · "), "info");
+    }
 }
 
 // Runs one agentic analysis pass for the message `mesId`. Returns the number
@@ -351,9 +385,14 @@ export async function runAgentPass(reason = "manual", mesId = null) {
         // everything before it is read-only context.
         const exchange = recent.slice(-CURRENT_EXCHANGE_MESSAGES);
         const history = recent.slice(0, -CURRENT_EXCHANGE_MESSAGES);
+        if (s.feature_roster_rotation && Array.isArray(st.chat) && st.chat.length) {
+            rotateRoster(st.chat, mesId ?? st.chat.length - 1);
+        }
+        // Benched characters named in the exchange get their full sheets in.
+        const present = presentRoster(stateManager.getData(), exchange.map(m => `${m.role}\n${m.text}`).join("\n"));
         const messages = [
             { role: "system", content: await buildSystemPrompt(exchange) },
-            { role: "user", content: buildUserPrompt(exchange, history) },
+            { role: "user", content: buildUserPrompt(exchange, history, present) },
         ];
 
         let reply = "";

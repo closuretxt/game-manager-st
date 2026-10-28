@@ -541,7 +541,7 @@ class MainPanel {
             // allies go to the roster. Lives here (edit mode only) instead of
             // the settings drawer.
             const capWrap = $("<div>").addClass("gm_cap_wrap")
-                .attr("title", "Max full character sheets the Setup Wizard proposes; extra allies go to the roster");
+                .attr("title", "Party size: max full sheets the Setup Wizard proposes (extra allies go to the roster), and the limit roster rotation fills up to");
             capWrap.append($("<span>").text("Cap"));
             const capInput = $("<input>")
                 .addClass("gm_input gm_cap_input")
@@ -698,7 +698,9 @@ class MainPanel {
 
         const chips = $("<div>").addClass("gm_roster_chips");
         for (const ally of roster) {
-            const chip = $("<div>").addClass("gm_roster_chip").attr("title", ally.note || ally.name);
+            const hint = [ally.note || ally.name];
+            if (ally.rotated) hint.push("Benched by roster rotation — comes back when named in the story.");
+            const chip = $("<div>").addClass("gm_roster_chip").attr("title", hint.join("\n"));
             chip.append($("<span>").text(ally.name));
             if (edit) {
                 const promote = iconBtn("fa-solid fa-user-plus")
@@ -1188,6 +1190,15 @@ class MainPanel {
         if (edit) {
             // Spacer pushes the sheet actions right, away from "back".
             backRow.append($("<div>").addClass("gm_wizard_spacer"));
+
+            // Roster rotation pin: pinned characters never leave the party.
+            if (gmSettings().feature_roster_rotation) {
+                const pin = $("<div>").addClass("gm_back_btn").toggleClass("gm_pin_on", !!char.pinned)
+                    .attr("title", char.pinned ? "Pinned — roster rotation never benches them. Click to unpin." : "Pin — keep in the party during roster rotation")
+                    .append($("<i>").addClass("fa-solid fa-thumbtack"), $("<span>").text(char.pinned ? " Pinned" : " Pin"));
+                pin.on("click", () => stateManager.setPinned(char.id, !char.pinned));
+                backRow.append(pin);
+            }
 
             // Move To — one button, two destinations picked from a popover:
             // defection to the enemy side, or demotion to the roster (keeps

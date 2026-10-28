@@ -36,7 +36,13 @@ export function buildEditor(type, entry, onSave, onCancel) {
             if (field.type === "number") input.attr("step", "any");
         }
         input.attr("data-field", field.key);
-        wrap.append($("<label>").text(field.label), input);
+        // Checkboxes sit on one line with their label (the stacked label-over-
+        // input layout leaves a lone dot under a caption).
+        if (field.type === "checkbox") {
+            wrap.addClass("gm_field_wide gm_field_check").append($("<label>").append(input, $("<span>").text(field.label)));
+        } else {
+            wrap.append($("<label>").text(field.label), input);
+        }
         editor.append(wrap);
     }
     const saveBtn = $("<div>").addClass("menu_button gm_small_btn").attr("title", "Save").append($("<i>").addClass("fa-solid fa-check"));

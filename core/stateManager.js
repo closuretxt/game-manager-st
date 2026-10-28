@@ -219,6 +219,17 @@ export const stateManager = {
             }
             _normalizeProgression(c);
         }
+        // Benched sheets resolve like live ones (getSheet), so they carry an
+        // id and mirror the roster entry's name.
+        for (const r of d.roster) {
+            if (!r.sheet || typeof r.sheet !== "object") continue;
+            r.sheet.id = r.sheet.id || genId();
+            r.sheet.name = r.name;
+            for (const key of CHARACTER_CONTAINERS) {
+                if (!Array.isArray(r.sheet[key])) r.sheet[key] = [];
+            }
+            _normalizeProgression(r.sheet);
+        }
         if (!d.characters.some(c => c.id === d.activeCharacterId)) {
             d.activeCharacterId = d.characters[0]?.id ?? null;
         }
@@ -325,14 +336,17 @@ export const stateManager = {
     // single rename entry point, usable from the UI and future agent calls;
     // the first argument resolves by id OR current name.
     renameCharacter(id, name) {
-        const needle = String(id ?? "").toLowerCase();
-        const c = this.getSheet(id)
-            || this.getData().roster.find(x => x.id === id || String(x.name).toLowerCase() === needle)
-            || null;
-        if (c && name) {
-            c.name = name;
-            this.emitChange("rename_character");
+        if (!name) return false;
+        const c = this.getCharacter(id) || this.getEnemy(id);
+        const r = c ? null : this._findRoster(id);
+        if (!c && !r) return false;
+        if (c) c.name = name;
+        else {
+            r.name = name;
+            if (r.sheet) r.sheet.name = name;
         }
+        this.emitChange("rename_character");
+        return true;
     },
 
     // Uploaded avatar: only the servable file URL is stored here (the
@@ -411,42 +425,120 @@ export const stateManager = {
     // Demotes a party character to the roster, KEEPING their full sheet so a
     // later promotion inherits the last state (mission-based party swaps:
     // mission -> demote -> weeks later -> promote -> same HP, items, skills).
+    // The WHOLE character is kept (progression, skill tree, state, avatar,
+    // pin), not only the containers: rotation benches and recalls characters
+    // automatically, and a round trip must lose nothing.
     demoteCharacter(characterId) {
+        const entry = this._bench(characterId);
+        if (entry) this.emitChange("demote_character");
+        return entry;
+    },
+
+    _bench(characterId) {
         const d = this.getData();
         const char = d.characters.find(c => c.id === characterId);
         if (!char) return null;
-        const sheet = {};
-        for (const key of CHARACTER_CONTAINERS) sheet[key] = structuredClone(char[key] || []);
         d.characters = d.characters.filter(c => c.id !== characterId);
         if (d.activeCharacterId === characterId) {
             d.activeCharacterId = d.characters[0]?.id ?? null;
         }
         const entry = defaultEntry("roster", { name: char.name, note: "" });
-        entry.sheet = sheet;
+        entry.sheet = structuredClone(char);
         // The card link rides along so card edits keep reaching the sheet.
         if (char.template_link) entry.template_link = true;
         d.roster.push(entry);
-        this.emitChange("demote_character");
         return entry;
     },
 
     // Promotes a roster ally to a fully tracked party character. Restores the
     // saved sheet when the ally was demoted from the party before; fresh
-    // wizard/roster allies start with an empty sheet.
-    promoteRosterEntry(id) {
+    // wizard/roster allies start with an empty sheet. `select` makes them the
+    // active character (manual promotes; rotation leaves the selection alone).
+    promoteRosterEntry(id, { select = true } = {}) {
         const d = this.getData();
         const entry = d.roster.find(x => x.id === id);
         if (!entry) return null;
-        d.roster = d.roster.filter(x => x.id !== id);
-        // A demoted sheet keeps its own link choice; fresh allies follow the card.
-        const char = this.addCharacter(entry.name, entry.sheet || null, { link: entry.sheet ? !!entry.template_link : true });
-        // Wizard-created allies promote with an empty sheet: carry the
-        // needs-build flag + note so the sheet view prompts an auto build.
-        if (entry.needs_build && !entry.sheet) {
-            char.needs_build = true;
-            char.buildNote = String(entry.note || "");
+        if (!entry.sheet) {
+            d.roster = d.roster.filter(x => x.id !== id);
+            const char = this.addCharacter(entry.name, null);
+            // Wizard-created allies promote with an empty sheet: carry the
+            // needs-build flag + note so the sheet view prompts an auto build.
+            if (entry.needs_build) {
+                char.needs_build = true;
+                char.buildNote = String(entry.note || "");
+            }
+            return char;
         }
+        const char = this._unbench(id, select);
+        this.emitChange("promote_roster");
         return char;
+    },
+
+    _unbench(id, select) {
+        const d = this.getData();
+        const entry = d.roster.find(x => x.id === id);
+        if (!entry?.sheet) return null;
+        d.roster = d.roster.filter(x => x.id !== id);
+        const char = structuredClone(entry.sheet);
+        char.name = entry.name;
+        if (!char.id || d.characters.some(c => c.id === char.id)) char.id = genId();
+        for (const key of CHARACTER_CONTAINERS) {
+            if (!Array.isArray(char[key])) char[key] = [];
+        }
+        _normalizeProgression(char);
+        _normalizeSkillTree(char);
+        // A demoted sheet keeps its own link choice (the entry is the truth:
+        // the card dialog may have changed it while benched).
+        if (entry.template_link) char.template_link = true;
+        else delete char.template_link;
+        this._conformLinked(char);
+        d.characters.push(char);
+        if (select || !d.activeCharacterId) d.activeCharacterId = char.id;
+        return char;
+    },
+
+    // Roster rotation (core/rosterRotation.js plan): one change for the whole
+    // batch. Returns { out: [names], in: [names] }.
+    applyRotation(plan, now) {
+        const d = this.getData();
+        for (const c of d.characters) {
+            if (Number.isFinite(plan.seen?.[c.id])) c.last_seen = plan.seen[c.id];
+        }
+        const names = { out: [], in: [] };
+        for (const id of plan.out || []) {
+            const entry = this._bench(id);
+            if (entry) {
+                entry.rotated = true;
+                names.out.push(entry.name);
+            }
+        }
+        for (const id of plan.in || []) {
+            const char = this._unbench(id, false);
+            if (char) {
+                char.last_seen = now;
+                names.in.push(char.name);
+            }
+        }
+        this.emitChange(names.out.length || names.in.length ? "roster_rotation" : "roster_seen");
+        return names;
+    },
+
+    // Pinned characters never rotate out of the party.
+    setPinned(id, pinned) {
+        const char = this.getCharacter(id);
+        if (!char) return;
+        if (pinned) char.pinned = true;
+        else delete char.pinned;
+        this.emitChange("pin_character");
+    },
+
+    // Roster entry by entry id, its sheet's id, or name.
+    _findRoster(idOrName) {
+        const needle = String(idOrName ?? "").toLowerCase();
+        const roster = this.getData().roster;
+        return roster.find(r => r.id === idOrName || (r.sheet && r.sheet.id === idOrName))
+            || roster.find(r => String(r.name).toLowerCase() === needle)
+            || null;
     },
 
     // Overrides a character's (party or enemy) containers with the given
@@ -574,10 +666,17 @@ export const stateManager = {
             || null;
     },
 
-    // Resolves any sheet holder (party character OR enemy) by id or name —
-    // used by the entry helpers and tool-tag scoping.
+    // Resolves any sheet holder (party character, enemy, or a benched roster
+    // sheet) by id or name — used by the entry helpers and tool-tag scoping,
+    // so the post-pass can update benched characters present in the scene.
     getSheet(idOrName) {
-        return this.getCharacter(idOrName) || this.getEnemy(idOrName);
+        const live = this.getCharacter(idOrName) || this.getEnemy(idOrName);
+        if (live) return live;
+        const r = this._findRoster(idOrName);
+        if (!r?.sheet) return null;
+        r.sheet.id = r.sheet.id || genId();
+        r.sheet.name = r.name;
+        return r.sheet;
     },
 
     // Creates an enemy, or restores its archived sheet when an enemy with the
@@ -687,7 +786,7 @@ export const stateManager = {
         for (const key of CHARACTER_CONTAINERS) sheet[key] = structuredClone(enemy[key] || []);
         d.enemies = d.enemies.filter(c => c.id !== id);
         const entry = defaultEntry("roster", { name: enemy.name, note: "" });
-        entry.sheet = sheet;
+        entry.sheet = { ...sheet, id: enemy.id, name: enemy.name, progression: structuredClone(enemy.progression) };
         d.roster.push(entry);
         this.emitChange("enemy_to_roster");
         return entry;
