@@ -3,6 +3,7 @@
 // inline entry editors; edits write straight into the entry objects.
 
 import { GM_SCHEMA, CHARACTER_CONTAINERS, CONTAINER_TYPES, defaultEntry } from "../core/schemas.js";
+import { containerEnabled } from "../core/features.js";
 import { iconBtn } from "./characterView.js";
 
 //
@@ -66,10 +67,11 @@ export function entryInputs(type, entry, onDelete, onChange = () => {}) {
 
 // Expanded sheet: every container with inline schema-driven entry editors,
 // so the user can see and tweak exactly what was proposed. onAdd/onDelete
-// re-render the host view; onChange fires on field edits.
-export function sheetEditor(char, { onAdd = () => {}, onDelete = () => {}, onChange = () => {} } = {}) {
+// re-render the host view; onChange fires on field edits. `containers`
+// limits the sections (default: every container this chat tracks).
+export function sheetEditor(char, { onAdd = () => {}, onDelete = () => {}, onChange = () => {}, containers = null } = {}) {
     const wrap = $("<div>").addClass("gm_wizard_sheet");
-    for (const container of CHARACTER_CONTAINERS) {
+    for (const container of containers || CHARACTER_CONTAINERS.filter(c => containerEnabled(c))) {
         const type = CONTAINER_TYPES[container];
         const def = GM_SCHEMA[type];
         if (!Array.isArray(char[container])) char[container] = [];

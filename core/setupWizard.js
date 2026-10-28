@@ -20,12 +20,39 @@ import { parseAttrs } from "./toolParser.js";
 import { sendRequestViaProfile, resolveWizardProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 import { scenarioBriefBlock, getScenarioBriefText, setScenarioBrief } from "./scenarioBrief.js";
+import { gmSettings, containerEnabled } from "./features.js";
+import { hasTemplate, syncTemplate, templatePromptBlock, TEMPLATE_CONTAINERS } from "./cardTemplates.js";
 
 const MAX_ROSTER = 24;
 const MAX_LIST = 20;
 
-const RESPONSE_SHAPE = [
+// Wire tag -> container, for the tab-toggle gates (item -> inventory...).
+const TAG_CONTAINERS = Object.fromEntries(Object.entries(GM_SCHEMA).map(([type, def]) => [type, def.container]));
+
+// Systems the chat's feature mode hides are never prompted and never kept:
+// a hidden tab is untracked, so generating its entries is wasted tokens.
+export function wireTagEnabled(tag) {
+    if (tag === "warning") return !!gmSettings().feature_warnings;
+    if (tag === "progression") return !!gmSettings().feature_progression;
+    const container = TAG_CONTAINERS[tag];
+    return container ? containerEnabled(container) : true;
+}
+
+// Response-shape lines minus the ones for disabled tags.
+export function shapeLines(lines) {
+    return lines.filter(l => {
+        const m = /^<(\w+)/.exec(l);
+        return !m || wireTagEnabled(m[1]);
+    }).join("\n");
+}
+
+// Proposed standard card — only asked for when the chat has none yet.
+const CARD_SHAPE_LINE = '<card><resource name="Health" min="0" max="100" description="..."/><attribute name="Strength" description="..."/><trait name="Mood"/></card> <!-- STANDARD CARD: the entries EVERY party character carries (no values here) -->';
+const CARD_RULE = "\n- STANDARD CARD: list ONCE in <card> the resources, attributes and details that EVERY party character shares (the scenario's stat block: Health, Stamina, Mood...), with names, ranges and descriptions. Every <char> then carries all of them with its own values; role-specific extras (a gunner's Ammo) stay on that character only. Omit <card> when the characters share nothing.";
+
+const RESPONSE_SHAPE_LINES = [
     '<setup name="<short scenario title>">',
+    CARD_SHAPE_LINE,
     "<party> <!-- FULLY tracked characters, at most the given party cap -->",
     '<char name="..." level="N"> <!-- level: progression level when a <progression> block is proposed (see rules); omit it without progression -->',
     '<resource name="Health" value="80" min="0" max="100" description="..."/> <!-- max: plain number, OR a formula with Level / attribute names (e.g. "100+(Level*10)") for stats meant to grow with level; the description of anything that changes on its own states the drift rate (e.g. "rises 1 per scene; a meal resets it") -->',
@@ -44,13 +71,18 @@ const RESPONSE_SHAPE = [
     '<warning name="Food" text="<under 15 words, imminent need>"/>',
     "<brief>2-6 plain sentences: premise, tone, how the world works, what the stakes are</brief>",
     "</setup>",
-].join("\n");
+];
 
-const SYSTEM_PROMPT_HEADER = [
+// card: true when the LLM may propose a standard card (the chat has none).
+function responseShape(card) {
+    return shapeLines(card ? RESPONSE_SHAPE_LINES : RESPONSE_SHAPE_LINES.filter(l => l !== CARD_SHAPE_LINE));
+}
+
+const systemPromptHeader = card => [
     "You are the setup engine of a tabletop-style roleplay tracker.",
     "You receive a scenario description (and possibly the recent chat) and propose the tracked setup for it.",
     "Respond with ONLY the <setup> XML block (no markdown fences, no prose), with this shape:",
-    RESPONSE_SHAPE,
+    responseShape(card),
     "",
     "Rules:",
     "- PARTY vs ROSTER: only characters who actively adventure with the player get a full party sheet. Every other named ally (gacha rosters can be DOZENS) goes to roster as a one-liner. Respect the party cap.",
@@ -71,13 +103,13 @@ const SYSTEM_PROMPT_HEADER = [
     "- LEVELS: when you propose a <progression> block, EVERY <char> carries a level attribute that matches their background — level 1 ONLY for genuine beginners (fresh recruits, newly awakened heroes); veterans, career soldiers, established mages and mid-campaign joiners sit higher, using the tier anchors from the EXP guidelines. max_level is the hard cap — no character sits above it. Scale each character's attribute totals and core resources to their level (roughly attr_starting_budget plus attr_points per level above 1) so an experienced fighter never reads like a raw recruit.",
     "- BRIEF: the <brief> is the scenario explanation every other engine of this game reads before judging anything. Plain, factual, no purple prose: premise, tone (grim, cozy, comedic...), how the world works (magic, tech, economy, danger level), and what the player is up against. When a SCENARIO BRIEF is given in the input, keep its facts — the player wrote it.",
     "- Omit tags that do not apply (an empty <setup> is valid). Never invent entries outside the given shapes.",
-].join("\n");
+].join("\n") + (card ? CARD_RULE : "");
 
-const REFINE_PROMPT_HEADER = [
+const refinePromptHeader = card => [
     "You are the setup engine of a tabletop-style roleplay tracker, running a REFINEMENT pass on an earlier proposal.",
     "You receive the CURRENT proposal (XML), the scenario and refinement feedback, and return an IMPROVED proposal.",
     "Respond with ONLY the <setup> XML block (no markdown fences, no prose), with this shape:",
-    RESPONSE_SHAPE,
+    responseShape(card),
     "",
     "Rules:",
     "- DEPTH OVER BREADTH: replace generic/shallow entries with concrete, scenario-grounded ones. Every value must be deliberate.",
@@ -97,7 +129,7 @@ const REFINE_PROMPT_HEADER = [
     "- LEVELS: keep each <char>'s level attribute from the current proposal unless the feedback asks to change it.",
     "- OWNERSHIP TEST — apply to EVERY shared/custom/warning entry: if it is about ONE named character (their hunger, health, mood, condition, stats), MOVE it onto that character's sheet as a resource/attribute/status. Party-wide entries must be true for the whole group and must not name a single character.",
     "- Omit tags that do not apply (an empty <setup> is valid). Never invent entries outside the given shapes.",
-].join("\n");
+].join("\n") + (card ? CARD_RULE.replace("list ONCE", "keep (or, when missing, list ONCE)") : "");
 
 //
 
@@ -106,14 +138,21 @@ export function fieldKeysFor(type) {
     return GM_SCHEMA[type].fields.map(f => f.key);
 }
 
+// Sheet containers this chat tracks (tab toggles hide the rest).
+export function promptContainers() {
+    return CHARACTER_CONTAINERS.filter(c => containerEnabled(c));
+}
+
 // "ENTRY FIELD SHAPES" prompt line for every sheet container, from the schema.
 export function entryFieldShapes() {
-    const shapes = CHARACTER_CONTAINERS.map(c => {
+    const shapes = promptContainers().map(c => {
         const type = CONTAINER_TYPES[c];
         const extra = type === "passive" ? " (ptype: special|stat)" : "";
         return `${type} {${fieldKeysFor(type)}}${extra}`;
     });
-    return `ENTRY FIELD SHAPES: ${shapes.join(", ")}. always_inject=true ONLY on the rare entry the story needs in view EVERY turn (e.g. a worn outfit in a romance, money in a heist).`;
+    const off = CHARACTER_CONTAINERS.filter(c => !containerEnabled(c)).map(c => CONTAINER_TYPES[c]);
+    return `ENTRY FIELD SHAPES: ${shapes.join(", ")}. always_inject=true ONLY on the rare entry the story needs in view EVERY turn (e.g. a worn outfit in a romance, money in a heist).`
+        + (off.length ? ` NOT TRACKED in this chat (never propose): ${off.join(", ")}.` : "");
 }
 
 export function recentChatLines(count) {
@@ -151,6 +190,7 @@ async function collectContext(scenarioText, { skipCharacters = false, improvedGr
             : [
                 `PARTY CAP: ${partyCap} full character sheets maximum.`,
                 entryFieldShapes(),
+                ...templatePromptBlock(d, escAttr),
                 "SCALING RESOURCES: every combat/effort-capable character ALWAYS carries the core resources Health and Stamina, plus Mana when magic or powers fit their role; a core resource's max may be a formula mixing Level AND attribute names (e.g. \"100+(Level*10)\", \"80+(Endurance*25)\") so it grows with the character — reserve formulas for 1-2 of those core stats when growth is implied; situational resources (Ammo, Stress) stay plain numbers.",
             ]),
         "",
@@ -233,24 +273,31 @@ export function sanitizeProposal(parsed) {
                 char.buildNote = String(raw.buildNote || raw.note || "").slice(0, 400);
             }
             for (const container of CHARACTER_CONTAINERS) {
-                const type = Object.keys(GM_SCHEMA).find(t => GM_SCHEMA[t].container === container);
-                char[container] = sanitizeList(type, raw[container]);
+                // Hidden containers stay empty — they are untracked here.
+                char[container] = containerEnabled(container) ? sanitizeList(CONTAINER_TYPES[container], raw[container]) : [];
             }
             return char;
         })
         .filter(Boolean);
 
     const roster = sanitizeList("roster", parsed.roster, MAX_ROSTER);
-    const sharedResources = sanitizeList("shared", parsed.sharedResources);
-    const custom = sanitizeList("custom", parsed.custom);
-    const warnings = (Array.isArray(parsed.warnings) ? parsed.warnings : [])
+    const sharedResources = wireTagEnabled("shared") ? sanitizeList("shared", parsed.sharedResources) : [];
+    const custom = wireTagEnabled("custom") ? sanitizeList("custom", parsed.custom) : [];
+    const warnings = (wireTagEnabled("warning") && Array.isArray(parsed.warnings) ? parsed.warnings : [])
         .map(w => (w?.name ? { name: String(w.name).slice(0, 40), text: String(w.text || "").slice(0, 120) } : null))
         .filter(Boolean)
         .slice(0, MAX_LIST);
 
+    // Proposed standard card (null when absent or empty).
+    let card = null;
+    if (parsed.card && typeof parsed.card === "object") {
+        card = Object.fromEntries(TEMPLATE_CONTAINERS.map(k => [k, sanitizeList(CONTAINER_TYPES[k], parsed.card[k])]));
+        if (!TEMPLATE_CONTAINERS.some(k => card[k].length)) card = null;
+    }
+
     // Per-scenario progression config (optional; null when not proposed).
     let progression = null;
-    if (parsed.progression && typeof parsed.progression === "object") {
+    if (wireTagEnabled("progression") && parsed.progression && typeof parsed.progression === "object") {
         const raw = parsed.progression;
         const num = (v, def, min) => {
             const n = Number(v);
@@ -278,6 +325,7 @@ export function sanitizeProposal(parsed) {
         custom,
         warnings,
         progression,
+        card,
         brief: String(parsed.brief || "").slice(0, 2000),
     };
 }
@@ -324,7 +372,18 @@ export function parseSetupXml(text) {
     }
 
     // Party-level tags — scanned outside <char> blocks to avoid double-counts.
-    const stripped = inner.replace(/<char\b[^>]*?\/>|<char\b[^>]*?>[\s\S]*?<\/char>/gi, " ");
+    let stripped = inner.replace(/<char\b[^>]*?\/>|<char\b[^>]*?>[\s\S]*?<\/char>/gi, " ");
+
+    // Standard card: the shared stat block (resource/attribute/trait tags).
+    const cardMatch = /<card\b[^>]*>([\s\S]*?)<\/card>/i.exec(stripped);
+    if (cardMatch) {
+        parsed.card = { resources: [], attributes: [], traits: [] };
+        for (const [tag, key] of [["resource", "resources"], ["attribute", "attributes"], ["trait", "traits"]]) {
+            const re = new RegExp(`<${tag}\\b([^>]*?)(?:\\/>|>[\\s\\S]*?<\\/${tag}>)`, "gi");
+            while ((m = re.exec(cardMatch[1])) !== null) parsed.card[key].push(parseAttrs(m[1]));
+        }
+        stripped = stripped.replace(cardMatch[0], " ");
+    }
     for (const [tag, key] of [["ally", "roster"], ["shared", "sharedResources"], ["custom", "custom"], ["warning", "warnings"]]) {
         const re = new RegExp(`<${tag}\\b([^>]*?)(?:\\/>|>[\\s\\S]*?<\\/${tag}>)`, "gi");
         while ((m = re.exec(stripped)) !== null) parsed[key].push(parseAttrs(m[1]));
@@ -393,7 +452,8 @@ export async function generateProposal(scenarioText, { skipCharacters = false, i
     const s = extension_settings[extensionName];
     if (!s.enabled) return null;
     try {
-        const systemPrompt = SYSTEM_PROMPT_HEADER
+        const card = !skipCharacters && !hasTemplate(stateManager.getData());
+        const systemPrompt = systemPromptHeader(card)
             + (skipCharacters ? SKIP_CHARACTERS_RULE : "")
             + (improvedGrounds ? IMPROVED_GROUNDS_RULE : "");
         const proposal = await runSetupLLM(systemPrompt, await collectContext(scenarioText, { skipCharacters, improvedGrounds }));
@@ -430,10 +490,25 @@ function escAttr(v) {
 // derived from the schema so new sheet types ride along automatically.
 const PROMPT_CONTAINER_TAGS = Object.fromEntries(CHARACTER_CONTAINERS.map(c => [c, CONTAINER_TYPES[c]]));
 
-// Wire attributes of one entry: internal ids and unset inject flags stay out
-// of the prompt (always_inject="false" on every line is pure noise).
+// Wire attributes of one entry: internal ids (entry + card field) and unset
+// inject flags stay out of the prompt (always_inject="false" is pure noise).
 const wireAttrs = e => Object.entries(e)
-    .filter(([k, v]) => k !== "id" && !(k === "always_inject" && !v));
+    .filter(([k, v]) => k !== "id" && k !== "tid" && !(k === "always_inject" && !v));
+
+// Container entries of one sheet as wire tags (tracked containers only).
+function sheetWireLines(c, oneLine = false) {
+    const lines = [];
+    for (const container of promptContainers()) {
+        const tag = PROMPT_CONTAINER_TAGS[container];
+        for (const e of c?.[container] || []) {
+            const attrs = wireAttrs(e)
+                .map(([k, v]) => `${k}="${escAttr(oneLine ? String(v ?? "").replace(/\s+/g, " ").trim() : v)}"`)
+                .join(" ");
+            lines.push(`<${tag} ${attrs}/>`);
+        }
+    }
+    return lines;
+}
 
 // Serializes a single character sheet to the LLM wire shape (internal ids
 // stripped) — used as reference context by the character generator.
@@ -443,37 +518,33 @@ export function characterToXml(c) {
     // (party AND enemies) keep it on the progression track; proposals carry
     // it as a plain field.
     const lvl = Math.trunc(Number(c?.level ?? c?.progression?.level));
-    const lines = [`<char name="${escAttr(c?.name)}"${Number.isFinite(lvl) && lvl >= 1 ? ` level="${lvl}"` : ""}>`];
-    for (const [container, tag] of Object.entries(PROMPT_CONTAINER_TAGS)) {
-        for (const e of c?.[container] || []) {
-            // Every field rides along (descriptions, costs, effects...) —
-            // whitespace collapsed so multi-line text stays single-line.
-            const attrs = wireAttrs(e)
-                .map(([k, v]) => `${k}="${escAttr(String(v ?? "").replace(/\s+/g, " ").trim())}"`)
-                .join(" ");
-            lines.push(`<${tag} ${attrs}/>`);
-        }
-    }
-    lines.push("</char>");
-    return lines.join("\n");
+    // Every field rides along (descriptions, costs, effects...) — whitespace
+    // collapsed so multi-line text stays single-line.
+    return [
+        `<char name="${escAttr(c?.name)}"${Number.isFinite(lvl) && lvl >= 1 ? ` level="${lvl}"` : ""}>`,
+        ...sheetWireLines(c, true),
+        "</char>",
+    ].join("\n");
 }
 
 // Serializes a proposal back to the LLM wire shape (internal ids stripped).
 function proposalToPromptXml(p) {
     const lines = [`<setup name="${escAttr(p.scenarioName)}">`];
+    if (p.card) {
+        lines.push("<card>");
+        for (const k of TEMPLATE_CONTAINERS) {
+            for (const e of p.card[k] || []) {
+                lines.push(`<${CONTAINER_TYPES[k]} ${wireAttrs(e).filter(([key]) => key !== "value").map(([key, v]) => `${key}="${escAttr(v)}"`).join(" ")}/>`);
+            }
+        }
+        lines.push("</card>");
+    }
     for (const c of p.party || []) {
         // Level rides along (same as characterToXml) so refine passes see
         // and preserve the proposed progression tiers.
         const lvl = Math.trunc(Number(c.level));
         lines.push(`<char name="${escAttr(c.name)}"${Number.isFinite(lvl) && lvl >= 1 ? ` level="${lvl}"` : ""}>`);
-        for (const [container, tag] of Object.entries(PROMPT_CONTAINER_TAGS)) {
-            for (const e of c[container] || []) {
-                const attrs = wireAttrs(e)
-                    .map(([k, v]) => `${k}="${escAttr(v)}"`)
-                    .join(" ");
-                lines.push(`<${tag} ${attrs}/>`);
-            }
-        }
+        lines.push(...sheetWireLines(c));
         lines.push("</char>");
     }
     for (const a of p.roster || []) lines.push(`<ally name="${escAttr(a.name)}" note="${escAttr(a.note)}"/>`);
@@ -505,6 +576,7 @@ async function collectRefineContext(proposal, feedback, scenarioText, { skipChar
             : [
                 `PARTY CAP: ${partyCap} full character sheets maximum.`,
                 entryFieldShapes(),
+                ...templatePromptBlock(stateManager.getData(), escAttr),
                 "SCALING RESOURCES: every combat/effort-capable character ALWAYS carries the core resources Health and Stamina, plus Mana when magic or powers fit their role — restore any missing core resource; a core resource's max may be a formula mixing Level AND attribute names (e.g. \"100+(Level*10)\", \"80+(Endurance*25)\") so it grows with the character — reserve formulas for 1-2 of those core stats when growth is implied; situational resources (Ammo, Stress) stay plain numbers.",
             ]),
         "",
@@ -539,7 +611,8 @@ export async function refineProposal(proposal, feedback, scenarioText, { skipCha
     const s = extension_settings[extensionName];
     if (!s.enabled || !proposal) return null;
     try {
-        const systemPrompt = REFINE_PROMPT_HEADER
+        const card = !skipCharacters && !hasTemplate(stateManager.getData());
+        const systemPrompt = refinePromptHeader(card)
             + (skipCharacters ? SKIP_CHARACTERS_RULE : "")
             + (improvedGrounds ? IMPROVED_GROUNDS_RULE : "");
         const refined = await runSetupLLM(systemPrompt, await collectRefineContext(proposal, feedback, scenarioText, { skipCharacters, improvedGrounds }));
@@ -583,6 +656,12 @@ export function applyProposal(proposal, mode = "replace") {
     }
     if (proposal.progression) {
         d.progression = { ...proposal.progression };
+    }
+
+    // Standard card before the party, so every new character links to it.
+    // An existing card always wins (the wizard was told to follow it).
+    if (proposal.card && !hasTemplate(d)) {
+        syncTemplate(d, structuredClone(proposal.card));
     }
 
     for (const raw of proposal.party || []) {

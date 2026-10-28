@@ -13,12 +13,14 @@ import { progression } from "./progression.js";
 import { CHARACTER_CONTAINERS } from "./schemas.js";
 import { skillGuidelines } from "./skillGuidelines.js";
 import { escAttr } from "./toolParser.js";
-import { parseSetupXml, sanitizeProposal, characterToXml, entryFieldShapes, recentChatLines } from "./setupWizard.js";
+import { parseSetupXml, sanitizeProposal, characterToXml, entryFieldShapes, recentChatLines, shapeLines } from "./setupWizard.js";
 import { sendRequestViaProfile, resolveWizardProfile, hasConnectionProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 import { scenarioBriefBlock } from "./scenarioBrief.js";
+import { templatePromptBlock, enemiesFollowCard } from "./cardTemplates.js";
 
-const CHAR_RESPONSE_SHAPE = [
+// Built per call: lines for systems the chat hides are dropped.
+const CHAR_RESPONSE_SHAPE_LINES = [
     '<setup name="<short source/title>">',
     "<party>",
     '<char name="..." level="N"> <!-- exactly ONE char; level = progression level (see rules); give only the containers that matter for them -->',
@@ -32,13 +34,13 @@ const CHAR_RESPONSE_SHAPE = [
     "</char>",
     "</party>",
     "</setup>",
-].join("\n");
+];
 
-const CHAR_PROMPT_HEADER = [
+const charPromptHeader = () => [
     "You are the character engine of a tabletop-style roleplay tracker.",
     "You receive a character name, optional details, the recent chat and optional REFERENCE characters, and propose a full tracked sheet for that ONE character.",
     "Respond with ONLY the <setup> XML block (no markdown fences, no prose), with this shape:",
-    CHAR_RESPONSE_SHAPE,
+    shapeLines(CHAR_RESPONSE_SHAPE_LINES),
     "",
     "Rules:",
     "- Exactly ONE <char> inside <party>, named exactly as requested.",
@@ -57,11 +59,11 @@ const CHAR_PROMPT_HEADER = [
     skillGuidelines(),
 ].join("\n");
 
-const CHAR_REFINE_PROMPT_HEADER = [
+const charRefinePromptHeader = () => [
     "You are the character engine of a tabletop-style roleplay tracker, running a REFINEMENT pass on an earlier character proposal.",
     "You receive the CURRENT proposal (XML), the character brief, optional references and refinement feedback, and return an IMPROVED proposal.",
     "Respond with ONLY the <setup> XML block (no markdown fences, no prose), with this shape:",
-    CHAR_RESPONSE_SHAPE,
+    shapeLines(CHAR_RESPONSE_SHAPE_LINES),
     "",
     "Rules:",
     "- DEPTH OVER BREADTH: replace generic/shallow entries with concrete, grounded ones. Every value must be deliberate.",
@@ -170,7 +172,7 @@ function enemyBlocks() {
 // names and the character brief (+ references when given). Recent chat is
 // NOT part of this — chatBlocks() appends it at the very bottom so the
 // scene the character appears in is the LAST thing the LLM reads.
-function briefBlocks({ name, details, references, level = null, kind = "party" }) {
+function briefBlocks({ name, details, references, level = null, kind = "party", useCard = true }) {
     const d = stateManager.getData();
     // Existing names as compact XML — the LLM reads it far better than JSON.
     const existingParts = [
@@ -180,6 +182,9 @@ function briefBlocks({ name, details, references, level = null, kind = "party" }
     ];
     const blocks = [
         entryFieldShapes(),
+        // Party members follow the chat's standard card; enemies only when
+        // the chat's card covers them (the card dialog's enemy option).
+        ...((kind !== "enemy" || enemiesFollowCard(d)) && useCard ? templatePromptBlock(d, escAttr) : []),
         ...progressionBlocks(level, kind === "enemy"),
         ...(kind === "enemy" ? enemyBlocks() : []),
         "",
@@ -238,17 +243,17 @@ function enemyFallbackReferences(name) {
 
 // Runs the generation call. Returns a sanitized character (wizard party-entry
 // shape) or null on failure.
-export async function generateCharacterProposal({ name, details, references = [], level = null, kind = "party", chatMessages = null, profileId = "" } = {}) {
+export async function generateCharacterProposal({ name, details, references = [], level = null, kind = "party", chatMessages = null, profileId = "", useCard = true } = {}) {
     const s = extension_settings[extensionName];
     if (!s.enabled) return null;
     try {
         const refs = kind === "enemy" && !(references || []).length ? enemyFallbackReferences(name) : references;
         const blocks = [
-            ...briefBlocks({ name, details, references: refs, level, kind }),
+            ...briefBlocks({ name, details, references: refs, level, kind, useCard }),
             ...(await deepContextBlocks(details)),
             ...chatBlocks(chatMessages),
         ];
-        const char = await runCharLLM(CHAR_PROMPT_HEADER, blocks.join("\n"), name, profileId);
+        const char = await runCharLLM(charPromptHeader(), blocks.join("\n"), name, profileId);
         if (char) {
             logDebug(`characterGenerator: proposal for "${name}" — ` +
                 CHARACTER_CONTAINERS.map(k => `${k}=${(char[k] || []).length}`).join(" "));
@@ -265,14 +270,14 @@ export async function generateCharacterProposal({ name, details, references = []
 // Recursive refinement: feeds the (possibly user-edited) character back
 // through the LLM. Returns a NEW sanitized character or null (the caller
 // keeps the current one).
-export async function refineCharacterProposal(char, feedback, { name, details, references = [], level = null, kind = "party", profileId = "" } = {}) {
+export async function refineCharacterProposal(char, feedback, { name, details, references = [], level = null, kind = "party", profileId = "", useCard = true } = {}) {
     const s = extension_settings[extensionName];
     if (!s.enabled || !char) return null;
     try {
         // Same enemy fallback as generation — refinement keeps the anchor.
         const refs = kind === "enemy" && !(references || []).length ? enemyFallbackReferences(name) : references;
         const blocks = [
-            ...briefBlocks({ name, details, references: refs, level, kind }),
+            ...briefBlocks({ name, details, references: refs, level, kind, useCard }),
             ...(await deepContextBlocks(details)),
             ...chatBlocks(),
             "",
@@ -282,7 +287,7 @@ export async function refineCharacterProposal(char, feedback, { name, details, r
             "REFINEMENT FEEDBACK:",
             String(feedback || "(none — deepen the sheet on your own judgment: richer entries, deliberate values, no filler)"),
         ];
-        const refined = await runCharLLM(CHAR_REFINE_PROMPT_HEADER, blocks.join("\n"), name, profileId);
+        const refined = await runCharLLM(charRefinePromptHeader(), blocks.join("\n"), name, profileId);
         if (refined) logDebug(`characterGenerator: refined proposal for "${name}"`);
         return refined;
     } catch (e) {

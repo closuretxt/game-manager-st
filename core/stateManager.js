@@ -8,6 +8,7 @@ import { saveSettingsDebounced } from "../../../../../script.js";
 import { extensionName, CHARACTER_STATES } from "./constants.js";
 import { CHARACTER_CONTAINERS, GM_SCHEMA, defaultEntry, genId } from "./schemas.js";
 import { resolveResourceMax } from "./resourceScaler.js";
+import { getTemplate, conformSheet, followsCard } from "./cardTemplates.js";
 import { logDebug } from "./debug.js";
 
 const _listeners = new Set();
@@ -288,7 +289,9 @@ export const stateManager = {
         }
     },
 
-    addCharacter(name, templateEntries = null) {
+    // link: follow the chat's standard card (core/cardTemplates.js). Defaults
+    // to on whenever the chat has a card; conversions pass false.
+    addCharacter(name, templateEntries = null, { link = true } = {}) {
         const d = this.getData();
         const char = { id: genId(), name };
         for (const key of CHARACTER_CONTAINERS) char[key] = [];
@@ -296,6 +299,11 @@ export const stateManager = {
             for (const key of CHARACTER_CONTAINERS) {
                 char[key] = (templateEntries[key] || []).map(e => structuredClone(e));
             }
+        }
+        const tpl = getTemplate(d);
+        if (link && tpl) {
+            char.template_link = true;
+            conformSheet(char, tpl);
         }
         d.characters.push(char);
         d.activeCharacterId = char.id;
@@ -415,6 +423,8 @@ export const stateManager = {
         }
         const entry = defaultEntry("roster", { name: char.name, note: "" });
         entry.sheet = sheet;
+        // The card link rides along so card edits keep reaching the sheet.
+        if (char.template_link) entry.template_link = true;
         d.roster.push(entry);
         this.emitChange("demote_character");
         return entry;
@@ -428,7 +438,8 @@ export const stateManager = {
         const entry = d.roster.find(x => x.id === id);
         if (!entry) return null;
         d.roster = d.roster.filter(x => x.id !== id);
-        const char = this.addCharacter(entry.name, entry.sheet || null);
+        // A demoted sheet keeps its own link choice; fresh allies follow the card.
+        const char = this.addCharacter(entry.name, entry.sheet || null, { link: entry.sheet ? !!entry.template_link : true });
         // Wizard-created allies promote with an empty sheet: carry the
         // needs-build flag + note so the sheet view prompts an auto build.
         if (entry.needs_build && !entry.sheet) {
@@ -449,6 +460,7 @@ export const stateManager = {
         for (const key of CHARACTER_CONTAINERS) {
             char[key] = (sheet?.[key] || []).map(e => ({ ...structuredClone(e), id: genId() }));
         }
+        this._conformLinked(char);
         delete char.needs_build;
         delete char.buildNote;
         this.emitChange("apply_character_sheet");
@@ -481,9 +493,31 @@ export const stateManager = {
                 }
             }
         }
+        this._conformLinked(char);
         delete char.needs_build;
         delete char.buildNote;
         this.emitChange("merge_character_sheet");
+        return char;
+    },
+
+    // A (re)built sheet that follows the card gets every card field back —
+    // linked party sheets, and enemies when the chat's card covers them.
+    _conformLinked(char) {
+        const d = this.getData();
+        if (followsCard(d, char)) conformSheet(char, getTemplate(d));
+    },
+
+    // Links / unlinks a party character to the chat's standard card.
+    setTemplateLink(id, linked) {
+        const char = this.getCharacter(id);
+        if (!char) return null;
+        if (linked) {
+            char.template_link = true;
+            this._conformLinked(char);
+        } else {
+            delete char.template_link;
+        }
+        this.emitChange("template_link");
         return char;
     },
 
@@ -555,6 +589,7 @@ export const stateManager = {
         if (archivedIdx !== -1) {
             const enemy = d.enemyArchive.splice(archivedIdx, 1)[0];
             d.enemies.push(enemy);
+            this._conformLinked(enemy);
             this.emitChange("restore_enemy");
             return enemy;
         }
@@ -566,6 +601,7 @@ export const stateManager = {
             }
         }
         d.enemies.push(enemy);
+        this._conformLinked(enemy);
         this.emitChange("add_enemy");
         return enemy;
     },
@@ -619,7 +655,8 @@ export const stateManager = {
         const sheet = {};
         for (const key of CHARACTER_CONTAINERS) sheet[key] = structuredClone(enemy[key] || []);
         d.enemies = d.enemies.filter(c => c.id !== id);
-        return this.addCharacter(enemy.name, sheet);
+        // A recruited enemy keeps its own sheet shape (link from the sheet view).
+        return this.addCharacter(enemy.name, sheet, { link: false });
     },
 
     // Party member defects to the enemy side — keeps their full sheet.
@@ -636,6 +673,7 @@ export const stateManager = {
         const enemy = { id: genId(), name: char.name };
         for (const key of CHARACTER_CONTAINERS) enemy[key] = sheet[key];
         d.enemies.push(enemy);
+        this._conformLinked(enemy);
         this.emitChange("character_to_enemy");
         return enemy;
     },

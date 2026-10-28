@@ -14,6 +14,8 @@ import { progression } from "../core/progression.js";
 import { CHARACTER_CONTAINERS } from "../core/schemas.js";
 import { gmSettings, tabEnabled } from "../core/features.js";
 import { openChatModeDialog } from "./chatModeDialog.js";
+import { openCardTemplateDialog } from "./cardTemplateDialog.js";
+import { hasTemplate } from "../core/cardTemplates.js";
 import { resolveResourceMax } from "../core/resourceScaler.js";
 import { generateCharacterProposal } from "../core/characterGenerator.js";
 import { skillTree } from "../core/skillTree.js";
@@ -526,6 +528,15 @@ class MainPanel {
 
             header.append(this._briefButton(true));
 
+            // Standard card — the chat's shared stat block (live structure sync).
+            const cardBtn = $("<div>").addClass("menu_button gm_add_btn")
+                .attr("title", hasTemplate(stateManager.getData())
+                    ? "Standard card (set) — the fields every linked character carries"
+                    : "Standard card (none) — define the fields every character shares")
+                .append($("<i>").addClass("fa-solid fa-id-card"), $("<span>").text(" Card"));
+            cardBtn.on("click", () => openCardTemplateDialog());
+            header.append(cardBtn);
+
             // Party cap — max full sheets the Setup Wizard proposes; extra
             // allies go to the roster. Lives here (edit mode only) instead of
             // the settings drawer.
@@ -542,15 +553,17 @@ class MainPanel {
                 saveSettingsDebounced();
             });
             capWrap.append(capInput);
-            header.append(capWrap);
 
             // Progression config — per-scenario EXP curve + skill points.
+            // Appended before the cap: the cap's margin-left:auto pins it to
+            // the row's right edge and would drag any later button with it.
             if (s.feature_progression) {
                 const progBtn = $("<div>").addClass("menu_button gm_add_btn").append(
                     $("<i>").addClass("fa-solid fa-arrow-trend-up"), $("<span>").text(" Progression"));
                 progBtn.on("click", () => this._openProgressionConfig());
                 header.append(progBtn);
             }
+            header.append(capWrap);
         } else if (String(getScenario().text || "").trim()) {
             header.append(this._briefButton(false));
         }
@@ -1144,7 +1157,7 @@ class MainPanel {
                 $("<i>").addClass("fa-solid fa-hammer"), $("<span>").text(" Auto Build"));
             buildBtn.on("click", async () => {
                 buildBtn.addClass("disabled gm_busy").find("span").text(" Building...");
-                const proposal = await generateCharacterProposal({ name: char.name, details: char.buildNote || "" });
+                const proposal = await generateCharacterProposal({ name: char.name, details: char.buildNote || "", useCard: !!char.template_link });
                 if (!proposal) {
                     gmNotify("Character generation failed — check the connection profile.", "error");
                     buildBtn.removeClass("disabled gm_busy").find("span").text(" Auto Build");
@@ -1203,10 +1216,17 @@ class MainPanel {
                 $("<i>").addClass("fa-solid fa-wand-magic-sparkles"), $("<span>").text(" Preset"));
             preset.on("click", e => {
                 e.stopPropagation();
-                popoverMenu(preset, [
+                const items = [
                     { icon: "fa-solid fa-floppy-disk", label: "Save As...", action: () => settingsUI.savePresetFor(char, { newName: true }) },
                     { icon: "fa-solid fa-file-import", label: "Load Current", action: () => settingsUI.applyTemplateToCharacter(char) },
-                ]);
+                ];
+                // Standard card link: linking adds the card's missing fields.
+                if (hasTemplate(stateManager.getData())) {
+                    items.push(char.template_link
+                        ? { icon: "fa-solid fa-link-slash", label: "Stop following the card", action: () => stateManager.setTemplateLink(char.id, false) }
+                        : { icon: "fa-solid fa-id-card", label: "Follow the standard card", action: () => stateManager.setTemplateLink(char.id, true) });
+                }
+                popoverMenu(preset, items);
             });
             backRow.append(preset);
 

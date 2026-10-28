@@ -16,6 +16,7 @@ import { stateManager } from "../core/stateManager.js";
 import { progression } from "../core/progression.js";
 import { CHARACTER_CONTAINERS, genId } from "../core/schemas.js";
 import { generateCharacterProposal, refineCharacterProposal } from "../core/characterGenerator.js";
+import { getTemplate, conformSheet, enemiesFollowCard } from "../core/cardTemplates.js";
 import { captureModalScroll, restoreModalScroll } from "../util/scrollKeeper.js";
 import { fadeOutRemove } from "../util/fx.js";
 import { confirmAction } from "./confirmModal.js";
@@ -34,6 +35,7 @@ export const characterCreator = {
     _refinements: 0,
     _targetId: null,  // override mode: apply onto this character's sheet
     _applyMode: "replace",  // "replace" (needs build) | "merge" (refine — nothing removed)
+    _useCard: true,   // party sheet follows the chat's standard card (core/cardTemplates.js)
     onApplied: null,  // set by the host (mainPanel): (char) => select + render
 
     open({ mode = "party" } = {}) {
@@ -43,6 +45,7 @@ export const characterCreator = {
         this._details = "";
         this._reference = "";
         this._mode = mode === "enemy" ? "enemy" : "party";
+        this._useCard = true;
         this._level = null;
         this._targetId = null;
         this._proposal = null;
@@ -65,7 +68,9 @@ export const characterCreator = {
         this._level = level ?? null;
         this._targetId = targetCharacterId || null;
         this._applyMode = applyMode === "merge" ? "merge" : "replace";
-        this._proposal = char;
+        // An existing sheet keeps its own link choice; new ones follow the card.
+        this._useCard = this._targetId ? !!stateManager.getSheet(this._targetId)?.template_link : true;
+        this._proposal = this._conform(char);
         this._history = [];
         this._refinements = 0;
         this._renderReview();
@@ -74,6 +79,21 @@ export const characterCreator = {
 
     _isEnemy() {
         return this._mode === "enemy";
+    },
+
+    // The chat's standard card when this sheet should follow it, else null.
+    // Enemies have no per-sheet choice: the chat's enemy option decides.
+    _card() {
+        const d = stateManager.getData();
+        if (this._isEnemy()) return enemiesFollowCard(d) ? getTemplate(d) : null;
+        return this._useCard ? getTemplate(d) : null;
+    },
+
+    // Review shows the card fields the sheet will carry once applied.
+    _conform(char) {
+        const card = this._card();
+        if (card && char) conformSheet(char, card);
+        return char;
     },
 
     close() {
@@ -200,6 +220,18 @@ export const characterCreator = {
         refRow.append($("<label>").text("Copy from"), refSel);
         body.append(refRow);
 
+        // Standard card (party only): the new sheet carries the chat's card
+        // fields and keeps following card edits.
+        if (!this._isEnemy() && getTemplate(stateManager.getData())) {
+            const cardBox = $("<input>").attr("type", "checkbox").prop("checked", this._useCard);
+            cardBox.on("change", () => {
+                this._useCard = cardBox.prop("checked");
+            });
+            body.append($("<label>").addClass("checkbox_label")
+                .attr("title", "Linked sheets carry every standard card field and follow later card edits")
+                .append(cardBox, $("<span>").text("Follow the standard card")));
+        }
+
         // Level picker (progression on): calibrates the generated sheet to a
         // chosen level — a threat for enemies, a starting point for party
         // members. Empty = AUTO: the LLM infers the level from the context.
@@ -258,11 +290,13 @@ export const characterCreator = {
             return;
         }
         const ref = this._resolveReference();
-        const template = ref ? this._cloneSheet(ref.sheet) : settingsUI.getTemplateEntries();
+        // Without a reference: the standard card when followed (addCharacter
+        // fills it in), otherwise the global preset.
+        const template = ref ? this._cloneSheet(ref.sheet) : (this._card() ? null : settingsUI.getTemplateEntries());
         const char = this._isEnemy()
             ? this._applyEnemy(template)
-            : this._stampLevel(stateManager.addCharacter(this._name, template));
-        logDebug(`characterCreator: created "${char.name}" (${this._mode}) from ${ref ? `reference ${ref.label}` : "preset template"}`);
+            : this._stampLevel(stateManager.addCharacter(this._name, template, { link: this._useCard }));
+        logDebug(`characterCreator: created "${char.name}" (${this._mode}) from ${ref ? `reference ${ref.label}` : (this._card() ? "standard card" : "preset template")}`);
         gmNotify(`Created ${char.name}${ref ? ` (copy of ${ref.label})` : ""}.`, "success");
         this._finish(char);
     },
@@ -280,7 +314,7 @@ export const characterCreator = {
             btn.removeClass("disabled gm_busy").find("span").text(" Generate");
             return;
         }
-        this._proposal = char;
+        this._proposal = this._conform(char);
         // Auto mode: adopt the LLM-inferred level for the review display
         // and the progression stamping on Apply.
         logDebug(`characterCreator: generated "${char.name}" — partyLevel=${progression.isEnabled() ? progression.partyLevel() : "(off)"}, ` +
@@ -296,7 +330,7 @@ export const characterCreator = {
     // progression anchoring (null = the LLM infers it from the context).
     _brief() {
         const refs = this._reference ? [this._resolveReference()].filter(Boolean) : [];
-        const brief = { name: this._name, details: this._details, references: refs.map(r => r.sheet) };
+        const brief = { name: this._name, details: this._details, references: refs.map(r => r.sheet), useCard: !!this._card() };
         if (this._isEnemy()) brief.kind = "enemy";
         if (progression.isEnabled()) brief.level = this._level;
         return brief;
@@ -349,7 +383,7 @@ export const characterCreator = {
             }
             this._history.push(this._proposal);
             if (this._history.length > 5) this._history.shift();
-            this._proposal = refined;
+            this._proposal = this._conform(refined);
             if (progression.isEnabled() && refined.level) this._level = refined.level;
             this._refinements++;
             this._renderReview();
@@ -401,7 +435,7 @@ export const characterCreator = {
             }
             const created = this._isEnemy()
                 ? this._applyEnemy(sheet)
-                : this._stampLevel(stateManager.addCharacter(this._name, sheet));
+                : this._stampLevel(stateManager.addCharacter(this._name, sheet, { link: this._useCard }));
             gmNotify(`Created ${created.name} from the generated sheet.`, "success");
             logDebug(`characterCreator: applied generated sheet (${this._mode})`);
             this._finish(created);

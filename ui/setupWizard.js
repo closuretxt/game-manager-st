@@ -21,6 +21,8 @@ import { fadeOutRemove } from "../util/fx.js";
 import { confirmAction } from "./confirmModal.js";
 import { iconBtn } from "./characterView.js";
 import { sheetEditor } from "./sheetEditor.js";
+import { stateManager } from "../core/stateManager.js";
+import { hasTemplate, TEMPLATE_CONTAINERS } from "../core/cardTemplates.js";
 
 const CONTAINER_LABELS = {
     resources: "res",
@@ -300,6 +302,29 @@ export const setupWizard = {
         briefWrap.append(briefArea, $("<label>").addClass("checkbox_label").append(applyBox,
             $("<span>").text(currentBrief ? "Replace the chat's current brief" : "Save as the chat's scenario brief")));
         body.append(briefWrap);
+
+        // Standard card — the shared stat block. Proposed only when the chat
+        // has none; applying it links every new party character to it.
+        if (p.card && !hasTemplate(stateManager.getData())) {
+            const cardWrap = $("<div>").addClass("gm_list");
+            const cardDel = iconBtn("fa-solid fa-trash").attr("title", "Drop the proposed card");
+            cardDel.on("click", () => {
+                p.card = null;
+                this._renderReview();
+            });
+            cardWrap.append($("<div>").addClass("gm_section_header").append(
+                $("<b>").text("Standard Card"),
+                $("<span>").addClass("gm_section_hint").text("Fields every party character carries; later card edits reach all of them."),
+                cardDel,
+            ));
+            cardWrap.append(sheetEditor(p.card, {
+                containers: TEMPLATE_CONTAINERS,
+                onAdd: () => this._renderReview(),
+                onDelete: () => this._renderReview(),
+                onChange: () => this._sessionQueue(),
+            }));
+            body.append(cardWrap);
+        }
 
         // Party — full sheets, capped.
         const partyWrap = $("<div>").addClass("gm_list");
