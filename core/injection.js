@@ -20,11 +20,10 @@ import { gmSettings, containerEnabled } from "./features.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerNames } from "./stateManager.js";
 import { resolveResourceMax } from "./resourceScaler.js";
-import { bondConfig, bondInjectionLine, bondShiftLine, isPlayerSheet } from "./bonds.js";
+import { bondConfig, bondInjectionLine, isPlayerSheet } from "./bonds.js";
 import { isMentioned } from "./rosterRotation.js";
-import { clockInjectionText, scheduleInjectionLines, objectiveInjectionLines } from "./chrono.js";
+import { clockInjectionText, scheduleInjectionLines, objectiveInjectionLines, nameTag } from "./chrono.js";
 import { CHARACTER_CONTAINERS } from "./schemas.js";
-import { sheetXml } from "./sheetXml.js";
 import { scenarioBriefInjection } from "./scenarioBrief.js";
 
 let _pendingHigh = [];
@@ -51,12 +50,70 @@ function enabled() {
     return !!(s.enabled && s.feature_injection);
 }
 
-function esc(v) {
+// Element-body escaper: story text keeps its literal quotes (no &quot; noise
+// in prose-facing blocks); only &, < and > must go.
+function txt(v) {
     return String(v ?? "")
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
+        .replace(/>/g, "&gt;");
+}
+
+const oneLine = v => String(v ?? "").replace(/\s+/g, " ").trim();
+
+// STORY-FACING FORMAT: everything the story engine reads is plain, name-keyed
+// XML — <tokai_teio><outfit>...</outfit></tokai_teio> — with any guidance as
+// a plain sentence inside the block, never note="..." attributes. Attribute
+// soup reads like a database dump and bleeds into prose; short named tags read
+// like labelled facts. The tracker-facing snapshot (sheetXml) keeps its own
+// format: its model must echo exact names back into tool tags.
+function block(tag, guidance, lines) {
+    return [`<${tag}>`, ...(guidance ? [guidance] : []), ...lines, `</${tag}>`].join("\n");
+}
+
+// What a tracked entry reads as in the story prompt. Descriptions stay out:
+// only always-inject entries land here, and their value is the fact.
+function entryText(section, e, c) {
+    switch (section) {
+        case "resources": {
+            const max = resolveResourceMax(c, e);
+            return Number.isFinite(max) ? `${e.value ?? 0}/${max}` : String(e.value ?? 0);
+        }
+        case "attributes": return String(e.value ?? 0);
+        case "traits": return String(e.value ?? "");
+        case "inventory": return (e.qty ?? 1) !== 1 ? `carrying ${e.qty}` : "carrying";
+        case "skills": return (Number(e.cooldown_left) || 0) > 0 ? "on cooldown" : "ready";
+        case "statuses": return String(e.modifiers || "").trim() || "active";
+        default: return "active";
+    }
+}
+
+// One character as a name-keyed block: their state (dead / knocked out) and
+// always-inject entries, one labelled line each. "" when there is nothing.
+function characterBlock(c, mode) {
+    const lines = [];
+    if (mode) {
+        const reason = oneLine(c.state?.reason);
+        lines.push(`<state>${txt(mode.status.replace(/_/g, " "))}${reason ? ` (${txt(reason)})` : ""}</state>`);
+    }
+    if (mode?.status !== "dead") {
+        for (const k of CHARACTER_CONTAINERS) {
+            if (!containerEnabled(k)) continue;
+            for (const e of (c[k] || []).filter(x => x.always_inject)) {
+                const val = oneLine(entryText(k, e, c));
+                const tag = nameTag(e.name, "detail");
+                lines.push(`<${tag}>${txt(val)}</${tag}>`);
+            }
+        }
+    }
+    if (!lines.length) return "";
+    const tag = nameTag(c.name);
+    return lines.length === 1 ? `<${tag}>${lines[0]}</${tag}>` : block(tag, "", lines);
+}
+
+// The player's persona name, for wording like "toward Aaru".
+function personaName() {
+    return String(getContext()?.name1 || "").trim() || "the player";
 }
 
 // ---------- high priority (one-shot queue) ----------
@@ -113,10 +170,9 @@ export function replayHigh(mesId) {
 // Queues a ONE-SHOT high-priority action rewrite produced by the pre-pass.
 // XML-escaped on queue.
 export function queueRewrite(text) {
-    const t = esc(String(text ?? "").trim());
+    const t = txt(String(text ?? "").trim());
     if (!t) return;
-    
-    queueHigh(`<action_rewrite note="The original message may be vague, contain meta, deterministic narration or contradictory. Dialogue in the original message still stands.">${t}</action_rewrite>`);
+    queueHigh(block("action_rewrite", "The player's action, clarified (vague, meta or contradictory parts resolved). Their original dialogue still stands.", [t]));
 }
 
 // Queues a ONE-SHOT high-priority skill suggestion produced by the pre-pass:
@@ -124,12 +180,12 @@ export function queueRewrite(text) {
 // The cooldown itself is NOT applied here — the post-pass <use_skills> report
 // stays the only cooldown writer. XML-escaped on queue.
 export function queueSkillUse(character, skill, cost = "") {
-    const c = esc(String(character ?? "").trim());
-    const sk = esc(String(skill ?? "").trim());
-    const co = esc(String(cost ?? "").trim());
+    const c = txt(oneLine(character));
+    const sk = txt(oneLine(skill));
+    const co = txt(oneLine(cost));
     if (!c || !sk) return;
-    const costNote = co ? ` Its cost (${co}) must be narrated as paid — resource, stat or narrative, exactly as the skill describes.` : "";
-    queueHigh(`<skill_use character="${c}" skill="${sk}" note="The game system judged this tracked skill to fit the player's action; narrate the character using it.${costNote} Its cooldown is applied by the tracker afterwards."/>`);
+    const costNote = co ? ` Narrate its cost (${co}) as paid, exactly as the skill describes.` : "";
+    queueHigh(`<skill_use>${c} uses ${sk} in this action.${costNote}</skill_use>`);
 }
 
 // Queues a ONE-SHOT high-priority clash override — ONLY when a clash
@@ -137,7 +193,7 @@ export function queueSkillUse(character, skill, cost = "") {
 // story engine that clash outcomes supersede the skill-use suggestions
 // whose actions got interrupted, cancelled or negated by a clash.
 export function queueClashOverride() {
-    queueHigh(`<clash_override note="This turn's actions were clash-resolved: a clash outcome that interrupts, cancels or negates an action supersedes any <skill_use> in this block — that action fails before it happens, so narrate ONLY the interruption, pay no cost, apply no cooldown, no effect."/>`);
+    queueHigh(`<clash_override>A clash outcome that interrupts, cancels or negates an action overrides any skill_use for it: that action fails before it happens. Narrate only the interruption; no cost, no effect.</clash_override>`);
 }
 
 // Queues a ONE-SHOT low-priority line (e.g. a shared resource value the
@@ -152,9 +208,10 @@ export function queueLowOnce(line) {
 // pre-pass judged relevant this turn (relevance-gated world info). Rendered
 // inside the low-priority block, then dropped. XML-escaped on queue.
 export function queueLowNote(text) {
-    const t = esc(String(text ?? "").trim());
+    const t = txt(oneLine(text));
     if (!t) return;
-    queueLowOnce(`<note>${t}</note>`);
+    // Plain sentence, not a <note> element: it reads as context, not data.
+    queueLowOnce(`Note: ${t}`);
 }
 
 export function clearLow() {
@@ -173,27 +230,20 @@ function cacheFirst() {
 // Bonds of the characters in the scene: the party, plus benched sheets named
 // in the last few messages. Per-turn on purpose: in the cached low block a
 // change surfaced late (only on a band crossing) and every change broke the
-// prefix anyway. A <bond_shift> line tells what moved in the latest pass.
+// prefix anyway.
 function bondLines(d, s) {
     const cfg = s.feature_bonds ? bondConfig(d) : null;
     if (!cfg?.inject || !cfg.defs.length) return [];
     const chat = getContext()?.chat || [];
-    const last = chat.length - 1;
     const recent = chat.slice(-3).map(m => `${m?.name ?? ""}\n${m?.mes ?? ""}`).join("\n");
     const players = playerNames();
     const benched = (d.roster || []).map(r => r.sheet).filter(c => c && isMentioned(recent, c.name));
     const holders = [...(d.characters || []), ...benched]
         .filter(c => c.bond && c.state?.mode !== "dead" && !isPlayerSheet(c, players))
         .sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? "")));
-    const lines = [];
-    for (const c of holders) {
-        const line = bondInjectionLine(d, c, esc);
-        if (line) lines.push(line);
-        const shift = bondShiftLine(d, c, last, esc);
-        if (shift) lines.push(shift);
-    }
+    const lines = holders.map(c => bondInjectionLine(d, c, txt, nameTag(c.name))).filter(Boolean);
     if (!lines.length) return [];
-    return [`<bonds note="How each character feels toward the player right now; a bond_shift is what changed last turn. Let it color their behavior; never mention the numbers.">`, ...lines, `</bonds>`];
+    return [block("bonds", `How each character feels toward ${txt(personaName())}. Let it color their behavior; never state it outright.`, lines)];
 }
 
 // Per-turn context: world clock, live enemy state, bonds + the pre-pass's
@@ -204,20 +254,19 @@ function buildTurnContext() {
     const parts = [];
     // Time moves every turn, so the clock (and now/next) is per-turn context.
     if (s.feature_chrono) {
-        const clock = clockInjectionText(d, esc);
+        const clock = clockInjectionText(d, txt);
         if (clock) parts.push(clock);
     }
     // Context-based enemies: compact state summary, only when the feature is
     // on AND enemies exist — zero tokens otherwise.
     if (s.feature_enemies && (d.enemies || []).length) {
-        parts.push(`<enemies note="Active enemies in the scene; their state is ground truth.">`);
-        for (const e of d.enemies) {
+        const lines = d.enemies.map(e => {
             const res = (e.resources || []).map(r => `${r.name} ${r.value}/${resolveResourceMax(e, r)}`).join(", ");
             const st = (e.statuses || []).map(x => x.name).join(", ");
-            const state = [res, st].filter(Boolean).join("; ");
-            parts.push(`<enemy name="${esc(e.name)}"${state ? ` state="${esc(state)}"` : ""}/>`);
-        }
-        parts.push(`</enemies>`);
+            const tag = nameTag(e.name, "enemy");
+            return `<${tag}>${txt([res, st].filter(Boolean).join("; ") || "present")}</${tag}>`;
+        });
+        parts.push(block("enemies", "Active enemies in the scene.", lines));
     }
     parts.push(...bondLines(d, s));
     // One-shot lines queued by the pre-pass for THIS turn only.
@@ -241,10 +290,10 @@ export function consumeHigh() {
     if (out) _lastHigh = out;
     const blocks = [];
     if (out) {
-        blocks.push(`<gamemaster_result note="Outcomes just resolved by the game system (dice rolls, transactions, action rewrites, skill uses). Treat as ground truth; narrate accordingly, do not repeat the numbers or the tags themselves. Narrate ONLY the actions and outcomes shown here, never invent extra actions or results that are not explicit, characters not mentioned did not act.">\n${out}\n</gamemaster_result>`);
+        blocks.push(block("gamemaster_result", "Outcomes the game system just resolved. Narrate them as they are, in prose: never quote numbers or tags, never add actions or results not shown here.", [out]));
     }
     if (turn.length) {
-        blocks.push(`<gamemaster_turn_context note="Tracked state relevant to this turn only; ground truth the story engine must not recount or track itself.">\n${turn.join("\n")}\n</gamemaster_turn_context>`);
+        blocks.push(block("gamemaster_turn_context", "Background facts for this turn. Use them for consistency; don't recite them.", turn));
     }
     return blocks.join("\n");
 }
@@ -283,46 +332,57 @@ export function buildLowPriority() {
 
     const s = gmSettings();
     for (const w of s.feature_warnings ? [...(d.warnings || [])].sort(byName) : []) {
-        parts.push(`<warning name="${esc(w.name)}">${esc(w.text || "")}</warning>`);
+        const text = oneLine(w.text);
+        parts.push(`<warning>${txt(oneLine(w.name))}${text ? `: ${txt(text)}` : ""}</warning>`);
     }
 
     const shared = containerEnabled("sharedResources") ? d.sharedResources || [] : [];
     for (const r of shared.filter(x => x.always_inject).sort(byName)) {
-        parts.push(`<resource name="${esc(r.name)}" value="${esc(r.qty)}"/>`);
+        const tag = nameTag(r.name, "resource");
+        parts.push(`<${tag}>${txt(oneLine(r.qty))}</${tag}>`);
     }
     const custom = containerEnabled("custom") ? d.custom || [] : [];
     for (const c of custom.filter(x => x.always_inject).sort(byName)) {
-        parts.push(`<custom name="${esc(c.name)}" value="${esc(c.value)}"/>`);
+        const tag = nameTag(c.name, "detail");
+        parts.push(`<${tag}>${txt(oneLine(c.value))}</${tag}>`);
     }
 
+    // Characters in a special state (dead = never use again; knocked out =
+    // down until recovery) plus their "always inject" entries (outfit, a
+    // signature stat...), one name-keyed block each.
     for (const c of d.characters || []) {
-        // Characters in a special state: the story engine must respect them
-        // (dead = never use again; knocked out = down until recovery, and the
-        // scene may ease toward rest or a timeskip).
         const mode = c.state ? CHARACTER_STATES[c.state.mode] : null;
-        if (mode) {
-            parts.push(`<character name="${esc(c.name)}" status="${mode.status}"${c.state.reason ? ` reason="${esc(c.state.reason)}"` : ""}/>`);
-            if (mode.status === "dead") continue;
-        }
-        // Per-entry "always inject" flags (clothing, a signature stat...).
-        if (CHARACTER_CONTAINERS.some(k => containerEnabled(k) && (c[k] || []).some(e => e.always_inject))) {
-            parts.push(sheetXml(c, { tag: "char", descriptions: false, filter: e => !!e.always_inject }));
-        }
+        const blockText = characterBlock(c, mode);
+        if (blockText) parts.push(blockText);
     }
 
     // Time: the day's schedules (change once a day) and active objectives —
     // the clock itself is volatile and rides in the turn context so this
     // block keeps its cached prefix.
+    // The pacing guidance is static text, so it sits here (cached) rather than
+    // next to the per-turn clock; it only appears with something to apply to.
     if (s.feature_chrono) {
-        parts.push(...scheduleInjectionLines(d, stateManager.chronoOwners(playerNames()), esc));
-        parts.push(...objectiveInjectionLines(d, esc, o => stateManager.objectiveOwnerName(o)));
+        const scheds = scheduleInjectionLines(d, stateManager.chronoOwners(playerNames()), txt);
+        const objs = objectiveInjectionLines(d, txt, o => stateManager.objectiveOwnerName(o));
+        if (scheds.length || objs.length) {
+            const guide = [];
+            if (d.chrono?.inject_clock) guide.push("The current in-fiction date and time are in <clock>; keep the narration consistent with them.");
+            if (scheds.length) {
+                guide.push(
+                    `- Each plan covers the whole day: work out what each character is doing right now from the time. Someone mid-task isn't instantly free, and ${txt(personaName())} has plans that may pull them away too.`,
+                    "- Plans are a loose reference, not a script. If an activity runs long, stay in it: don't rush, skip ahead, or have characters bring up later items (like dinner) before the current scene ends. If the narration is mid another scene, ignore the plan for this beat; the timeline catches up afterward.",
+                );
+            }
+            if (objs.length) guide.push("- Objectives are slower-burning goals that keep unfolding in the background, even when nobody mentions them for a while.");
+            parts.push(block("chronogram", guide.join("\n"), [...scheds, ...objs]));
+        }
     }
 
     // Legacy layout: per-turn context shares this block (cache-first off).
     if (!cacheFirst()) parts.push(...buildTurnContext());
 
     if (!parts.length) return "";
-    return `<gamemaster_context note="Ground-truth tracked state the story engine must not recount or track itself; warnings describe imminent needs.">\n${parts.join("\n")}\n</gamemaster_context>`;
+    return block("gamemaster_context", "Tracked facts about the story. Keep the narration consistent with them without reciting them; warnings are imminent needs.", parts);
 }
 
 // ---------- post-pass visibility ----------
@@ -360,7 +420,7 @@ export function getLastInjections() {
     const parts = [];
     if (_lastHigh) parts.push(_lastHigh);
     if (_lastLow) parts.push(_lastLow);
-    return `<gamemaster_injections note="Results and context the game system injected into this turn's story prompt (dice rolls, transactions, action rewrites, one-shot notes). Treat as ground truth when reading the exchange.">\n${parts.join("\n")}\n</gamemaster_injections>`;
+    return block("gamemaster_injections", "Results and context the game system injected into this turn's story prompt (dice rolls, transactions, action rewrites, notes). Treat as ground truth when reading the exchange.", parts);
 }
 
 // Whether THIS turn's story prompt contained a resolved combat round

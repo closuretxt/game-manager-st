@@ -156,7 +156,7 @@ function buildClashLines(groups, winners) {
 }
 
 function queueCombatRoundLines(lines) {
-    queueHigh(`<combat_round note="This turn's actions were already resolved by dice; narrate these outcomes as ground truth, never re-roll or re-resolve them.">\n${lines.join("\n")}\n</combat_round>`);
+    queueHigh(`<combat_round>\nThis turn's actions were already resolved by dice; narrate these outcomes, never re-resolve them.\n${lines.join("\n")}\n</combat_round>`);
 }
 
 // Queues the resolved round for the story LLM (high-priority, one-shot).

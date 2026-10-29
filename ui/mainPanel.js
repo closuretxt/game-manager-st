@@ -635,6 +635,8 @@ class MainPanel {
                 }
             }
             top.append(chips);
+            if (Number.isFinite(c.bannerY)) row.css("--gm-row-pos-y", `${c.bannerY}%`);
+            if (edit) top.append(this._bannerCropHandle(c, row));
             row.append(top);
             row.on("click", () => {
                 this.selectedCharacterId = c.id;
@@ -650,6 +652,46 @@ class MainPanel {
         content.append(wrap);
 
         this._renderRoster(content, edit);
+    }
+
+    // Edit-mode grip that pans the row banner's crop vertically. Pointer
+    // events cover mouse and touch; the value only persists on release so a
+    // drag doesn't re-render the panel on every move. Double-click resets.
+    _bannerCropHandle(c, row) {
+        const DEFAULT_Y = 15;
+        const handle = $("<div>").addClass("gm_banner_crop_handle")
+            .attr("title", "Drag up/down to move the picture crop. Double-click to reset.")
+            .append($("<i>").addClass("fa-solid fa-arrows-up-down"));
+        let startY = 0, startPos = 0, pos = null;
+        handle.on("click", (e) => e.stopPropagation());
+        handle.on("dblclick", (e) => {
+            e.stopPropagation();
+            stateManager.setCharacterBannerY(c.id, null);
+        });
+        handle.on("pointerdown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            startY = e.clientY;
+            startPos = Number.isFinite(c.bannerY) ? c.bannerY : DEFAULT_Y;
+            pos = startPos;
+            handle[0].setPointerCapture(e.pointerId);
+            row.addClass("gm_banner_cropping");
+        });
+        handle.on("pointermove", (e) => {
+            if (pos == null) return;
+            // Dragging down reveals more of the top of the picture.
+            pos = Math.max(0, Math.min(100, startPos - (e.clientY - startY) * 0.5));
+            row.css("--gm-row-pos-y", `${pos}%`);
+        });
+        const end = () => {
+            if (pos == null) return;
+            const final = pos;
+            pos = null;
+            row.removeClass("gm_banner_cropping");
+            if (Math.round(final) !== Math.round(startPos)) stateManager.setCharacterBannerY(c.id, final);
+        };
+        handle.on("pointerup pointercancel", end);
+        return handle;
     }
 
     _briefButton(edit) {

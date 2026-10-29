@@ -356,23 +356,37 @@ export function chronoStateXml(d, owners, esc, ownerNameOf = o => o.ownerName) {
     return lines.join("\n");
 }
 
+// Story-facing tag from a display name: "Tokai Teio" -> "tokai_teio". The
+// story engine reads <tokai_teio_chronogram> far more naturally than
+// <schedule owner="Tokai Teio">, and the name stays bound to the content.
+export function nameTag(name, fallback = "character") {
+    const t = String(name ?? "").trim().toLowerCase()
+        .replace(/\s+/g, "_").replace(/[^\p{L}\p{N}_]/gu, "").replace(/^_+|_+$/g, "");
+    if (!t) return fallback;
+    return /^\p{N}/u.test(t) ? `_${t}` : t;
+}
+
 // The volatile part (time moves every turn): only the clock. Rides in the
 // high-priority turn context, never in the cached low-priority block.
 export function clockInjectionText(d, esc) {
     const c = d?.chrono;
     if (!c?.clock || !c.inject_clock) return "";
-    return `<clock date="${esc(c.clock.date)}" day="${weekday(c.clock)}" time="${esc(c.clock.time)}"/>`;
+    return `<clock>${weekday(c.clock)} ${esc(c.clock.date)}, ${esc(c.clock.time)}</clock>`;
 }
 
 // Low-priority (cache-first): the whole day's plan only changes on a new
 // calendar day or when the tracker revises it, so it stays in the cached prefix.
+// Story-facing form, keyed by the owner's name (the player = persona name).
 export function scheduleInjectionLines(d, owners, esc) {
     const c = d?.chrono;
     if (!c?.clock || !c.schedules_on || !c.inject_schedules) return [];
     return owners
         .map(o => ({ o, entries: scheduleFor(d, o.key, c.clock.date) }))
         .filter(x => x.entries.length)
-        .map(x => scheduleLine(x.o.name, c.clock.date, x.entries, esc));
+        .map(x => {
+            const tag = `${nameTag(x.o.name)}_chronogram`;
+            return `<${tag}>Plan for ${esc(c.clock.date)}: ${esc(x.entries.map(e => `${e.time} ${e.activity}`).join("; "))}</${tag}>`;
+        });
 }
 
 // Low-priority (cache-first): active objectives only change when the
@@ -381,9 +395,9 @@ export function objectiveInjectionLines(d, esc, ownerNameOf = o => o.ownerName) 
     const c = d?.chrono;
     if (!c?.objectives_on || !c.inject_objectives) return [];
     return (c.objectives || []).filter(o => o.status === "active").map(o => {
-        const attrs = [`owner="${esc(ownerNameOf(o))}"`, `title="${esc(o.title)}"`];
-        if (o.deadline) attrs.push(`deadline="${esc(o.deadline)}"`);
-        if (o.progress) attrs.push(`progress="${esc(o.progress)}"`);
-        return `<objective ${attrs.join(" ")}>${esc(o.description)}</objective>`;
+        const tag = `${nameTag(ownerNameOf(o))}_objective`;
+        const meta = [o.deadline && `deadline ${o.deadline}`, o.progress && `progress: ${o.progress}`].filter(Boolean).join("; ");
+        const desc = String(o.description || "").trim();
+        return `<${tag}>${esc(o.title)}${meta ? ` (${esc(meta)})` : ""}${desc ? `: ${esc(desc)}` : ""}</${tag}>`;
     });
 }

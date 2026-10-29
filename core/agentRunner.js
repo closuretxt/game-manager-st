@@ -391,7 +391,7 @@ function buildUserPrompt(exchange, history = [], present = []) {
         '- <transaction> — ALREADY APPLIED: deducted before the story ran. NEVER re-report, never re-deduct.',
         '- <roll> / <combat_round> — OWED: the snapshot predates the round. Apply EVERY damage, cost, status and kill the outcome lines commit — even when a shown value coincidentally equals the snapshot.',
         '- <skill_use> — cost OWED: the snapshot still shows the pre-payment value. Report the use (<use_skills>) and pay its cost ONCE; a clash-committed number replaces the sheet-generic cost.',
-        '- <resource> / <character_stat> / <skill_cooldown> / <skill_ready> (source="readout"), and <note> — READOUTS mirroring the snapshot for names and availability only. NEVER a payment record; they neither satisfy nor cancel a debt.',
+        '- <resource> / <character_stat> / <skill_cooldown> / <skill_ready> (source="readout"), and "Note:" lines — READOUTS mirroring the snapshot for names and availability only. NEVER a payment record; they neither satisfy nor cancel a debt.',
         '- <action_rewrite> — context only: the player action the story actually ran with.',
         // Only when it applies: the system prompt stays identical turn to turn.
         ...(present.length ? ['- <char roster="present"> — a benched character who appears in this exchange: account their changes exactly like a party character\'s (same <char> scoping).'] : []),

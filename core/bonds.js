@@ -295,18 +295,17 @@ export function bondBand(v) {
     return "very high";
 }
 
-// One line per bonded character: label, banded bars, active feelings.
-// `esc` is the caller's XML escaper.
-export function bondInjectionLine(d, c, esc) {
+// One short prose line per bonded character: the relationship label and the
+// banded bars, in words (no numbers — the story engine echoed them back).
+// Feelings stay tracker-side: they already move the bars and the label, and
+// listing them every turn bloated the prompt. `esc` = the caller's body
+// escaper; `tag` = the element name (the character's name tag).
+export function bondInjectionLine(d, c, esc, tag = "bond") {
     const defs = bondDefs(d);
     if (!defs.length || !c.bond) return "";
-    const bars = defs.map(x => {
-        const v = Number(c.bond.values?.[x.id]) || 0;
-        return `${x.name}: ${bondBand(v)} (${v}/${BOND_MAX})`;
-    }).join(", ");
-    const feelings = [...c.bond.statuses].sort((a, b) => String(a.name).localeCompare(String(b.name)))
-        .map(s => `<feeling name="${esc(s.name)}"${s.note ? ` why="${esc(s.note)}"` : ""}/>`).join("");
-    return `<bond char="${esc(c.name)}"${c.bond.label ? ` label="${esc(c.bond.label)}"` : ""} toward="player">${esc(bars)}${feelings}</bond>`;
+    const bars = defs.map(x => `${x.name} ${bondBand(c.bond.values?.[x.id])}`).join(", ");
+    const label = String(c.bond.label || "").trim().replace(/[.\s]+$/, "");
+    return `<${tag}>${esc(`${label ? `${label}. ` : ""}${bars}.`)}</${tag}>`;
 }
 
 // Whether the latest pass's changes still describe "last turn" at chat index
@@ -320,6 +319,7 @@ export function bondShiftFresh(c, last) {
 }
 
 // One-turn note of what moved: "started feeling X (Trust +6); ended Y".
+// No longer injected (bondInjectionLine folds the marks in); kept for UI/tests.
 export function bondShiftLine(d, c, last, esc) {
     if (!bondShiftFresh(c, last)) return "";
     const defs = bondDefs(d);

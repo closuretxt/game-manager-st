@@ -378,6 +378,16 @@ export const stateManager = {
         this.emitChange("clear_avatar");
     },
 
+    // Vertical crop of the party-row banner, as a background-position-y
+    // percentage. null clears it back to the CSS default.
+    setCharacterBannerY(id, y) {
+        const c = this.getCharacter(id);
+        if (!c) return;
+        if (y == null) delete c.bannerY;
+        else c.bannerY = Math.max(0, Math.min(100, Math.round(y)));
+        this.emitChange("set_banner_y");
+    },
+
     // ---------- per-character entries ----------
     addEntry(characterId, type, overrides = {}) {
         const char = this.getSheet(characterId);

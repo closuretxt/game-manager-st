@@ -552,13 +552,39 @@
     inset: 0;
     background-image: var(--gm-row-img, none);
     background-size: cover;
-    background-position: center 15%;
+    /* --gm-row-pos-y: per-character crop set in edit mode. */
+    background-position: center var(--gm-row-pos-y, 15%);
     filter: brightness(0.5) saturate(1.1);
     transition: filter 0.15s;
 }
 
-.gm_party_row:hover::before {
+.gm_party_row:hover::before,
+.gm_party_row.gm_banner_cropping::before {
     filter: brightness(0.68) saturate(1.15);
+}
+
+/* Edit-mode crop grip; touch-action:none so a touch drag pans the crop
+   instead of scrolling the list. */
+.gm_banner_crop_handle {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin-left: 6px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    cursor: ns-resize;
+    touch-action: none;
+    opacity: 0.8;
+}
+
+.gm_banner_crop_handle:hover,
+.gm_banner_cropping .gm_banner_crop_handle {
+    opacity: 1;
+    border-color: var(--gm-accent);
 }
 
 .gm_party_row:hover {
