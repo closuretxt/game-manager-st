@@ -26,7 +26,7 @@ import { extensionName } from "./constants.js";
 import { gmSettings } from "./features.js";
 import { storeActionData } from "../util/chatStore.js";
 import { logDebug } from "./debug.js";
-import { stateManager, playerLabel, charLabel } from "./stateManager.js";
+import { stateManager, playerLabel, charLabel, playerNames } from "./stateManager.js";
 import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connectionService.js";
 import { buildDeepContext } from "../util/loreContext.js";
 import { scenarioBriefBlock } from "./scenarioBrief.js";
@@ -34,6 +34,7 @@ import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
 import { itemXml, sharedXml, skillXml } from "./sheetXml.js";
 import { resolveResourceMax } from "./resourceScaler.js";
 import { valueGuidelines } from "./valueGuidelines.js";
+import { parseActs } from "./contest/parse.js";
 
 import { recentMessages, sceneContextBlock } from "../util/chatStore.js";
 
@@ -98,6 +99,14 @@ const SYSTEM_PROMPT = [
     "- \"I charge the ogre with everything I have\" (Kira has Power Attack) -> <skill char=\"Kira\" name=\"Power Attack\"/>",
     "- \"I grab the coins in my pocket and I hand it to the seller. Here you go, friend.\" -> <transaction resource=\"Dinheiro\" delta=\"0\" comparison=\"\"/> <rewrite text=\"I count out a handful of coins from my pocket and hand them to the seller as payment\"/>",
     "- \"I do a backflip and I kill the wolf\" -> <roll needed=\"true\" title=\"Backflip Strike at the Wolf\"/> <rewrite text=\"I try to do a backflip and strike at the wolf\"/>",
+].join("\n");
+
+const ACT_RULES = [
+    "ALLY ACTS (only together with <combat>):",
+    '<act actor="<party member name>" speed="<initiative, 0 if unknown>" title="<short action title>"><intent line under 20 words: what they attempt and at whom></act>',
+    "- One <act> for each party member (never the player's own character) whose behavior the player's action does NOT already cover. Members the player commanded, named or protected get NOTHING: never override the player's orders. Allies are friendly: they may coordinate with the player's move, cover them or follow their lead.",
+    "- Skip allies who cannot act (dazed, unconscious, state=\"ko\"/\"dead\") or have nothing sensible to do. Prefer a fitting READY skill (no * marker) over a plain attack and name it in the intent; never a skill on cooldown, never one they can't afford, never one not on their sheet.",
+    "- No <skill> suggestion together with <combat>: the combat round adjudicates skill uses itself.",
 ].join("\n");
 
 //
@@ -187,7 +196,7 @@ async function collectContext(playerAction) {
 // fast path. Returns a raw plan or null when no recognizable tag is present.
 function parseReply(text) {
     if (!text) return null;
-    const plan = { roll: null, combat: null, transactions: [], warnings: [], relevant: [], notes: [], skills: [], rewrite: null, nothing: /<nothing\b/i.test(text) };
+    const plan = { roll: null, combat: null, acts: [], transactions: [], warnings: [], relevant: [], notes: [], skills: [], rewrite: null, nothing: /<nothing\b/i.test(text) };
     let m;
 
     const rollM = text.match(/<roll\b([^>]*?)(?:\/>|>[\s\S]*?<\/roll>)/i);
@@ -210,6 +219,9 @@ function parseReply(text) {
             };
         }
     }
+
+    // Uncommanded allies' acts for the contest round (only kept with <combat>).
+    plan.acts = parseActs(text);
 
     const txRe = /<transaction\b([^>]*?)(?:\/>|>[\s\S]*?<\/transaction>)/gi;
     while ((m = txRe.exec(text)) !== null) {
@@ -269,7 +281,7 @@ function parseReply(text) {
 function sanitizePlan(parsed) {
     if (!parsed || typeof parsed !== "object") return null;
     if (parsed.nothing === true) {
-        return { roll: null, combat: null, transactions: [], warnings: [], relevant: [], notes: [], skills: [], rewrite: null, nothing: true };
+        return { roll: null, combat: null, acts: [], transactions: [], warnings: [], relevant: [], notes: [], skills: [], rewrite: null, nothing: true };
     }
 
     const d = stateManager.getData();
@@ -367,8 +379,23 @@ function sanitizePlan(parsed) {
 
     const rewrite = parsed.rewrite ? String(parsed.rewrite).trim().slice(0, 300) : null;
 
+    // Ally acts ride only with a combat round, for tracked party members who
+    // can act; the player's own character never gets one (their message IS
+    // their act).
+    const players = new Set(playerNames().map(n => String(n).toLowerCase()));
+    const acts = combat && gmSettings().feature_ally_ai
+        ? (Array.isArray(parsed.acts) ? parsed.acts : [])
+            .map(a => {
+                const char = findChar(a?.actor);
+                if (!char || char.state?.mode || players.has(String(char.name).toLowerCase())) return null;
+                return { actor: char.name, speed: Math.max(0, Math.trunc(Number(a.speed) || 0)), title: String(a.title || "").slice(0, 80), text: String(a.text || "").slice(0, 200), target: String(a.target || "").slice(0, 80) };
+            })
+            .filter(Boolean)
+            .slice(0, 8)
+        : [];
+
     const nothing = !roll && !combat && !transactions.length && !warnings.length && !relevant.length && !notes.length && !skills.length && !rewrite;
-    return { roll, combat, transactions, warnings, relevant, notes, skills, rewrite, nothing };
+    return { roll, combat, acts, transactions, warnings, relevant, notes, skills, rewrite, nothing };
 }
 
 //
@@ -380,6 +407,10 @@ function sanitizePlan(parsed) {
 async function buildSystemContent(playerAction) {
     const s = gmSettings();
     let content = SYSTEM_PROMPT;
+    // Contest rounds take the uncommanded allies' acts from here (the router
+    // already sees the player's action and the party sheets) instead of a
+    // separate ally call. The Legacy pipeline keeps its own ALLY AI.
+    if (s.feature_combat && s.feature_ally_ai && !s.combat_legacy) content += `\n\n${ACT_RULES}`;
     // Scenario brief: stable, so it sits before the per-turn deep context.
     const brief = scenarioBriefBlock();
     if (brief) content += `\n\n${brief}`;

@@ -36,12 +36,13 @@ import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { rollDice, requeueRollResult } from "./diceRoller.js";
 import { runCombatTurn, requeueCombatRound } from "./combatEngine.js";
+import { runContestTurn, replayContestRound, contestRuleset } from "./contest/contest.js";
 import { runTransaction } from "./transactions.js";
 import { runPrePass, planFromRaw } from "./prePass.js";
 import { restoreSnapshot } from "./snapshots.js";
 import { attachRollToMessage } from "../ui/diceBubble.js";
 import { attachCombatToMessage } from "../ui/combatBubble.js";
-import { queueLowOnce, queueLowNote, queueRewrite, queueSkillUse, replayHigh, stashHigh, resetInjectionRecord, discardPending } from "./injection.js";
+import { queueHigh, queueLowOnce, queueLowNote, queueRewrite, queueSkillUse, replayHigh, stashHigh, resetInjectionRecord, discardPending } from "./injection.js";
 import { escAttr } from "./toolParser.js";
 import { attachRewriteToMessage } from "../ui/rewriteTag.js";
 import { statusBubble } from "../ui/statusBubble.js";
@@ -164,11 +165,25 @@ async function recoverSwipePlan(targetMsgId) {
     // re-attach the chips and re-queue the round; a swipe never re-runs the
     // opposed resolution (no ally/enemy/clash API calls).
     let combatReplayed = false;
-    if (s.feature_combat && Array.isArray(prev.gm_combat?.groups) && prev.gm_combat.groups.length) {
+    if (s.feature_combat && prev.gm_contest?.story) {
+        // Contest round: its deltas are already in the state the swipe
+        // restored (the AI baseline postdates the commit) — replay only.
+        console.info(`[GM DIAG] recoverSwipePlan: replaying stored contest round ${prev.gm_contest.round}`);
+        replayContestRound(prev.gm_contest, userMsgId);
+        combatReplayed = true;
+    } else if (s.feature_combat && Array.isArray(prev.gm_combat?.groups) && prev.gm_combat.groups.length) {
         console.info(`[GM DIAG] recoverSwipePlan: replaying stored combat round (${prev.gm_combat.groups.length} group(s))`);
         attachCombatToMessage(userMsgId, prev.gm_combat.groups, prev.gm_combat.winners);
         requeueCombatRound(prev.gm_combat);
         combatReplayed = true;
+    }
+
+    // Same transactions as the first generation: already paid (the swipe
+    // restored a post-payment state) — re-queue the reports, never re-spend.
+    let txReplayed = false;
+    if (s.feature_transactions && Array.isArray(prev.gm_tx) && prev.gm_tx.length) {
+        for (const line of prev.gm_tx) queueHigh(String(line));
+        txReplayed = true;
     }
 
     // Fast path: reuse the persisted pre-pass judgment — zero API calls.
@@ -179,6 +194,7 @@ async function recoverSwipePlan(targetMsgId) {
         if (!plan || plan.nothing) return { plan: null, action, reused: true };
         if (rollReplayed) plan.roll = null; // the outcome already exists — never re-roll
         if (combatReplayed) plan.combat = null; // the round already exists — never re-resolve
+        if (txReplayed) plan.transactions = []; // already paid — never re-spend
         return { plan, action, reused: true };
     }
 
@@ -189,6 +205,7 @@ async function recoverSwipePlan(targetMsgId) {
     if (!plan || plan.nothing) return { plan: null, action, reused: false };
     if (rollReplayed) plan.roll = null; // the outcome already exists — never re-roll
     if (combatReplayed) plan.combat = null; // the round already exists — never re-resolve
+    if (txReplayed) plan.transactions = []; // already paid — never re-spend
     return { plan, action, reused: false };
 }
 
@@ -248,7 +265,13 @@ export async function handlePreTurn(type = "normal") {
         // after the reply lands, when restoring would wipe the NEW tracker
         // pass instead of the old one). "continue" is excluded: it extends
         // the existing reply and never re-runs the tracker.
-        if (type === "swipe" || type === "regenerate") {
+        // Never when the last message is the USER's (a regenerate with no
+        // reply yet): its baseline predates this turn's committed contest
+        // round / transactions, and restoring it would undo them while
+        // their reports replay.
+        if ((type === "swipe" || type === "regenerate") && playerMsg?.is_user) {
+            console.info(`[GM DIAG] handlePreTurn: last message is the user's — no rollback for ${type}`);
+        } else if (type === "swipe" || type === "regenerate") {
             if (restoreSnapshot(snapshotId)) {
                 console.info(`[GM DIAG] handlePreTurn: rolled back state for message ${snapshotId} before swipe/regenerate`);
             } else {
@@ -320,14 +343,21 @@ export async function handlePreTurn(type = "normal") {
             // assistant message: a re-judged swipe roll must look identical
             // to the original turn's roll placement.
             const actionMsgId = isPlayerAction ? targetMsgId : Math.max(0, targetMsgId - 1);
-            // Combat Mode — the pre-pass judged the action ENGAGES tracked
-            // enemies: the opposed resolution (ally AI + enemy AI + clash +
-            // dice) replaces the plain dice path entirely. Requires the
-            // enemies feature and at least one tracked enemy.
+            // Combat — the pre-pass judged the action ENGAGES tracked enemies:
+            // a contest round (opposition + oracle + seeded dice, effects
+            // committed before the story runs) replaces the plain dice path
+            // entirely. Requires at least one tracked enemy. Legacy runs the
+            // pre-rework pipeline (the tracker reads damage from the story).
+            let contestRan = false;
             if (s.feature_combat && plan.combat?.engaged && (stateManager.getData().enemies || []).length) {
-                logDebug("pre-turn: combat planned — running opposed resolution");
                 statusBubble.close(true); // the combat bubble takes over visually
-                await runCombatTurn(action, plan, actionMsgId);
+                if (contestRuleset("clash").legacy) {
+                    logDebug("pre-turn: combat planned — legacy opposed resolution");
+                    await runCombatTurn(action, plan, actionMsgId);
+                } else {
+                    logDebug("pre-turn: combat planned — contest round");
+                    contestRan = await runContestTurn(action, plan, actionMsgId);
+                }
             } else if (s.feature_dice && plan.roll?.needed) {
                 // Dice — the pre-pass decided IF, the roller decides HOW.
                 logDebug(`pre-turn: roll planned "${plan.roll.title}"`);
@@ -339,13 +369,15 @@ export async function handlePreTurn(type = "normal") {
 
             // Transactions — plan entries carry a pre-judged delta when the
             // router provided one; otherwise the specialist judges the amount.
-            // Snapshot keyed to the upcoming AI message so delete/swipe
-            // rollback finds it.
+            // Baseline keyed to the USER message (like contest rounds): a
+            // swipe restores the AI reply's baseline, which postdates the
+            // payment, and replays the report — so the spend survives the
+            // swipe; deleting the user message refunds it.
             if (s.feature_transactions && plan.transactions.length) {
                 for (const tx of plan.transactions) {
                     logDebug(`pre-turn: transaction planned for "${tx.entry.name}"`);
                     statusBubble.update(`Checking ${tx.entry.name}...`);
-                    await runTransaction(tx.entry, action, snapshotId, tx);
+                    await runTransaction(tx.entry, action, actionMsgId, tx);
                 }
             }
 
@@ -413,7 +445,9 @@ export async function handlePreTurn(type = "normal") {
             // fits the action (ally-AI-style autonomy, outside combat).
             // High-priority so the story engine narrates the use; the cooldown
             // itself is still applied by the post-pass <use_skills> report.
-            if (s.feature_skill_suggest && plan.skills?.length) {
+            // Never on a contest turn: the round's effects already decided
+            // (and paid for) every skill use in it.
+            if (s.feature_skill_suggest && plan.skills?.length && !contestRan) {
                 for (const sk of plan.skills) {
                     logDebug(`pre-turn: skill suggested "${sk.char}" -> "${sk.name}"`);
                     queueSkillUse(sk.char, sk.name, sk.cost);

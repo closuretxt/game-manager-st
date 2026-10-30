@@ -324,12 +324,33 @@ export function attachCombatToMessage(mesId, groups, winners) {
     });
 }
 
+// Contest rounds (core/contest/contest.js): one chip per group, in resolution
+// order, with the committed numbers — the results message is where numbers
+// live; the story LLM never sees them. `rows` = ledger.chipRows().
+export function attachContestToMessage(mesId, rows) {
+    if (!rollAttachment()) return;
+    onMessageRendered(mesId, (mesEl) => {
+        if (mesEl.querySelector(".gm_roll_file")) return; // already rendered
+        for (const r of rows || []) {
+            if (!r?.title) continue;
+            appendResultChip(mesEl, { icon: "fa-hand-fist", title: r.title, tier: r.tier, outcome: r.outcome });
+        }
+    });
+}
+
 export const combatBubble = new CombatBubble();
 
-// Re-attaches the combat chips from the persisted gm_combat record after ST
-// re-renders the message (swipes, edits, chat reload).
+// Re-attaches the combat chips from the persisted gm_contest / gm_combat
+// record after ST re-renders the message (swipes, edits, chat reload).
 registerAttachmentRestorer((mesEl, msg) => {
     if (!msg?.is_user) return; // chips belong to the player's action only
+    if (Array.isArray(msg?.gm_contest?.chips) && msg.gm_contest.chips.length) {
+        if (!rollAttachment() || mesEl.querySelector(".gm_roll_file")) return;
+        for (const r of msg.gm_contest.chips) {
+            if (r?.title) appendResultChip(mesEl, { icon: "fa-hand-fist", title: r.title, tier: r.tier, outcome: r.outcome });
+        }
+        return;
+    }
     const stored = msg?.gm_combat;
     if (!rollAttachment() || !Array.isArray(stored?.groups) || !stored.groups.length) return;
     if (mesEl.querySelector(".gm_roll_file")) return; // already rendered

@@ -122,7 +122,7 @@ export function cleanAliases(value, ownName = "") {
     return out.slice(0, 12);
 }
 
-function matchName(entries, name) {
+export function matchName(entries, name) {
     const list = Array.isArray(entries) ? entries : [];
     if (!list.length || name == null || String(name).trim() === "") return null;
     const raw = String(name).trim().toLowerCase();

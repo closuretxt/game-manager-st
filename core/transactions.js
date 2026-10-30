@@ -23,7 +23,10 @@ import { sendRequestViaProfile, resolvePremasterProfile } from "../util/connecti
 import { buildDeepContext } from "../util/loreContext.js";
 import { scenarioBriefBlock } from "./scenarioBrief.js";
 import { statusBubble } from "../ui/statusBubble.js";
-import { recentMessages, sceneContextBlock } from "../util/chatStore.js";
+import { recentMessages, sceneContextBlock, storeMessageData } from "../util/chatStore.js";
+
+// This turn's transaction reports, keyed by the user message they belong to.
+let _txLines = { mesId: null, lines: [], ts: 0 };
 
 const SYSTEM_PROMPT = [
     "You are the game master's accountant for a tabletop-style roleplay session.",
@@ -117,13 +120,23 @@ export async function runTransaction(resource, playerAction, mesId = null, plan 
         const remaining = Math.max(0, current + tx);
         const net = current - remaining;
 
-        // Baseline snapshot so delete/swipe rolls the resource back too.
+        // Baseline on the USER message (the caller passes its id): deleting
+        // it refunds the spend, while a swipe of the reply keeps it — the
+        // reply's own baseline is captured later, after the payment.
         captureSnapshot(mesId);
         resource.qty = remaining;
         stateManager.emitChange("transaction");
 
         // Signed like the docs and the tracker prompt: negative = spent.
-        queueHigh(`<transaction resource="${escAttr(resource.name)}" current="${current}" transaction="${remaining - current}" remaining="${remaining}">${escAttr(comparison)}</transaction>`);
+        const report = `<transaction resource="${escAttr(resource.name)}" current="${current}" transaction="${remaining - current}" remaining="${remaining}">${escAttr(comparison)}</transaction>`;
+        queueHigh(report);
+        // Persisted on the user message: a swipe after a reload replays the
+        // report instead of paying again (triggerWatcher recoverSwipePlan).
+        // A turn's transactions run back to back; an older list under the same
+        // id belongs to a deleted-and-resent message.
+        if (_txLines.mesId !== mesId || Date.now() - _txLines.ts > 120_000) _txLines = { mesId, lines: [], ts: Date.now() };
+        _txLines.lines.push(report);
+        if (mesId !== null && mesId !== undefined) storeMessageData(mesId, "gm_tx", [..._txLines.lines]);
         statusBubble.result(`${resource.name}: ${net >= 0 ? "-" : "+"}${Math.abs(net)} → ${remaining}${comparison ? ` · ${comparison}` : ""}`);
         logDebug(`transactions: ${resource.name} ${current} -> ${remaining} (${comparison})`);
         return true;

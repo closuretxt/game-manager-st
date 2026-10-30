@@ -226,7 +226,11 @@
                             <input id="gm_setting_rich_clash" type="checkbox" />
                             <span>Rich Clash UI</span>
                         </label>
-                        <label class="checkbox_label" for="gm_setting_deterministic_clashes" title="NOT RECOMMENDED: the clash resolver commits sheet-derived damage expressions, resource costs and status effects into the tier outcome lines aiming to help the post-pass agent. This is overkill and may actually make things worse.">
+                        <label class="checkbox_label" for="gm_setting_combat_legacy" title="Runs the old combat pipeline (ally AI + enemy AI + clash resolver) where the tracker reads damage from the narration. Off = combat rounds commit their effects (damage, costs, knockouts) before the story is written, so the narration always matches the round.">
+                            <input id="gm_setting_combat_legacy" type="checkbox" />
+                            <span>Legacy combat</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_deterministic_clashes" title="Legacy combat only. NOT RECOMMENDED: the clash resolver commits sheet-derived damage expressions, resource costs and status effects into the tier outcome lines aiming to help the post-pass agent. This is overkill and may actually make things worse.">
                             <input id="gm_setting_deterministic_clashes" type="checkbox" />
                             <span>Deterministic Clashes</span>
                         </label>

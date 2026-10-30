@@ -13,7 +13,9 @@ import { getContext } from "../../../../extensions.js";
 import { stateManager } from "./stateManager.js";
 import { logDebug } from "./debug.js";
 
-export const MAX_SNAPSHOTS = 5;
+// Contest rounds and transactions keep their baseline on the USER message and
+// the post-pass on the AI reply, so a turn can hold two entries.
+export const MAX_SNAPSHOTS = 8;
 
 // Swipe versions kept per message (the newest wins).
 const MAX_SWIPE_VERSIONS = 10;

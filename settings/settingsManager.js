@@ -46,6 +46,7 @@ const CHECKBOXES = {
     tab_custom: "gm_setting_tab_custom",
     combat_rich_clash_ui: "gm_setting_rich_clash",
     deterministic_clashes: "gm_setting_deterministic_clashes",
+    combat_legacy: "gm_setting_combat_legacy",
     roll_attachment: "gm_setting_roll_attachment",
     value_guidelines: "gm_setting_value_guidelines",
     notify_enabled: "gm_setting_notify",
@@ -109,11 +110,12 @@ export const defaultSettings = {
     feature_skill_suggest: true,  // Pre-pass suggests a tracked skill that fits the action (high-priority narration hint).
     feature_progression: true,    // EXP/levels/skill points (per-scenario curve, <grant_exp> tool tag).
     feature_skill_tree: true,     // Per-character skill trees (LLM-generated segments, unlocked with skill points).
-    feature_combat: true,         // Combat Mode (Text): opposed resolution (ally AI + enemy AI + clash + dice).
-    feature_ally_ai: true,        // ALLY AI invents actions for party members the player didn't command.
+    feature_combat: true,         // Combat rounds: opposition + oracle + seeded dice, effects committed before the story runs (core/contest/).
+    feature_ally_ai: true,        // Uncommanded party members act in combat rounds (decided by the pre-pass; Legacy: the ALLY AI call).
+    combat_legacy: false,         // Legacy combat pipeline (ally AI + enemy AI + clash resolver; the tracker reads damage from the narration). Transition only.
     combat_max_enemy_actions: 6,  // Sanity cap on enemy actions per combat round.
     combat_rich_clash_ui: false,  // Rich clash bubble: face-off title, role chips, VS badge. Off = simple layout.
-    deterministic_clashes: false, // Clash resolver commits sheet-derived damage expressions, costs and statuses into the tier outcome lines (tracker applies them exactly). Off = descriptive outcomes only.
+    deterministic_clashes: false, // Legacy combat only. Clash resolver commits sheet-derived damage expressions, costs and statuses into the tier outcome lines (tracker applies them exactly). Off = descriptive outcomes only.
     roll_attachment: true,        // Roll/combat results render as file-style chips under the player's message.
     roll_duration: 1600,          // Dice roll animation length in ms (a random ±200ms variation is added per roll).
     feature_death: true,          // Permadeath: the post-pass may kill characters (<deaths> tag); only the user revives.

@@ -32,6 +32,7 @@ import { sendRequestViaProfile, resolveConnectionProfile, getProfileNameById } f
 import { swapProfile } from "../util/profileSwapper.js";
 import { buildDeepContext } from "../util/loreContext.js";
 import { scenarioBriefBlock } from "./scenarioBrief.js";
+import { contestLedgerFor } from "./contest/contest.js";
 
 const MAX_CONTEXT_MESSAGES = 4;
 // The tracker only reports changes from the LAST exchange (player action +
@@ -174,7 +175,7 @@ function collectRecentMessages() {
 // agent knows who and where the scene is before reading state or history.
 // The latest exchange text participates in WI activation, like the player
 // action does in the pre-pass.
-async function buildSystemPrompt(exchange = []) {
+async function buildSystemPrompt(exchange = [], { contest = "" } = {}) {
     const s = gmSettings();
     const prog = progression.isEnabled();
     // Spawn review: new characters/enemies are reported as briefs for the
@@ -223,9 +224,19 @@ async function buildSystemPrompt(exchange = []) {
         // Short pointer — the full NO SHEET BASIS rule lives in the shared valueGuidelines below.
         "- GENERIC MOVES (punches, kicks, elbows — no tracked skill, no damage term): flowering narration = NO damage; a real hit = ~10–20% of the actor's weakest damaging skill (see NO SHEET BASIS below).",
         "- The NARRATION outranks your estimate: when the exchange clearly shows a target dying or destroyed (\"dies\", \"collapses\", \"is torn apart\"), the numbers must agree — apply damage down to its minimum, then <deaths> for a party character or <enemies action=\"remove\"> for an enemy. Never leave a narratively-dead actor standing because your damage estimate undershot.",
-        // Combat turns get a tightened section: the clash engine already
+        // Contest turns: the engine already committed the round's numbers
+        // (core/contest/) — the tracker must not account them again, and the
+        // ledger outranks the narration for everything inside the round.
+        ...(contest ? [
+            "",
+            "CONTEST ROUND — the game engine resolved and APPLIED a contest round this turn (see <contest_ledger> in GAME SYSTEM RESULTS):",
+            "- Every change listed in <contest_ledger> is ALREADY in the snapshot: damage, costs, skill uses (cooldowns), statuses, consumed items, knockouts, deaths and enemies that left. NEVER report any of them again — no <change_values>, <use_skills>, <set_statuses>, <remove_items>, <knockouts>, <deaths> or <enemies action=\"remove\"> for what the ledger lists.",
+            "- The ledger outranks the narration for the round itself: if the story embellishes a hit, a wound or a death the ledger does not show, do NOT add it. Enemies the ledger took down are already removed — never re-add or update them.",
+            "- Everything OUTSIDE the round is still yours: looting, dialogue consequences, new arrivals, statuses that end after the fight, time, bonds, EXP for a won fight, threads.",
+        ] : []),
+        // Legacy combat turns get a tightened section: the clash engine
         // decided the outcomes, so the tracker's job is exact sheet math.
-        ...(hadCombatThisTurn() ? [
+        ...(!contest && hadCombatThisTurn() ? [
             "",
             "COMBAT ROUND ACCOUNTING — the game system resolved an opposed combat round this turn (see <combat_round> in GAME SYSTEM RESULTS):",
             "- The clash tiers and dice are GROUND TRUTH: they already decided who hits and how well. Never re-roll, re-decide a winner or contradict an outcome line — your job is translating the decided outcomes into sheet numbers.",
@@ -376,7 +387,7 @@ async function buildSystemPrompt(exchange = []) {
     return lines.join("\n");
 }
 
-function buildUserPrompt(exchange, history = [], present = []) {
+function buildUserPrompt(exchange, history = [], present = [], contest = "") {
     // What the pre-master injected into this turn's story prompt (dice rolls,
     // transactions, action rewrites, one-shot notes) — placed BEFORE the
     // exchange so the tracker reads the raw results with the narration that
@@ -404,7 +415,12 @@ function buildUserPrompt(exchange, history = [], present = []) {
     blocks.push(
         'STATE SNAPSHOT (XML) — PRE-TURN GROUND TRUTH. Each GAME SYSTEM RESULTS block carries a FIXED ledger meaning — payment status comes from the BLOCK TYPE, never from comparing values against the snapshot (a readout can coincidentally equal the snapshot and still leave a payment owed):',
         '- <transaction> — ALREADY APPLIED: deducted before the story ran. NEVER re-report, never re-deduct.',
-        '- <roll> / <combat_round> — OWED: the snapshot predates the round. Apply EVERY damage, cost, status and kill the outcome lines commit — even when a shown value coincidentally equals the snapshot.',
+        ...(contest ? [
+            '- <roll> — OWED: the snapshot predates the roll. Apply EVERY damage, cost, status and kill the outcome commits — even when a shown value coincidentally equals the snapshot.',
+            '- <combat_round> / <contest_ledger> — ALREADY APPLIED: the engine committed the round before the story ran. NEVER re-report anything the ledger lists.',
+        ] : [
+            '- <roll> / <combat_round> — OWED: the snapshot predates the round. Apply EVERY damage, cost, status and kill the outcome lines commit — even when a shown value coincidentally equals the snapshot.',
+        ]),
         '- <skill_use> — cost OWED: the snapshot still shows the pre-payment value. Report the use (<use_skills>) and pay its cost ONCE; a clash-committed number replaces the sheet-generic cost.',
         '- <resource> / <character_stat> / <skill_cooldown> / <skill_ready> (source="readout"), and "Note:" lines — READOUTS mirroring the snapshot for names and availability only. NEVER a payment record; they neither satisfy nor cancel a debt.',
         '- <action_rewrite> — context only: the player action the story actually ran with.',
@@ -418,8 +434,8 @@ function buildUserPrompt(exchange, history = [], present = []) {
     // narration that follows them describes, so keeping them adjacent to the
     // CURRENT EXCHANGE makes the tier/dice numbers the freshest context when
     // the model translates them into sheet deltas.
-    if (injections) {
-        blocks.push("GAME SYSTEM RESULTS (injected into this turn's story prompt):", injections, "");
+    if (injections || contest) {
+        blocks.push("GAME SYSTEM RESULTS (injected into this turn's story prompt):", ...(injections ? [injections] : []), ...(contest ? [contest] : []), "");
     }
     blocks.push(
         "CURRENT EXCHANGE (the ONLY source of changes — report exactly what happens here, nothing else):",
@@ -462,9 +478,11 @@ export async function runAgentPass(reason = "manual", mesId = null) {
         }
         // Benched characters named in the exchange get their full sheets in.
         const present = presentRoster(stateManager.getData(), exchange.map(m => `${m.role}\n${m.text}`).join("\n"));
+        // The contest round this exchange answers, already committed.
+        const contest = gmSettings().feature_combat ? contestLedgerFor(now) : "";
         const messages = [
-            { role: "system", content: await buildSystemPrompt(exchange) },
-            { role: "user", content: buildUserPrompt(exchange, history, present) },
+            { role: "system", content: await buildSystemPrompt(exchange, { contest }) },
+            { role: "user", content: buildUserPrompt(exchange, history, present, contest) },
         ];
 
         let reply = "";
