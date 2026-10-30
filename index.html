@@ -16,6 +16,8 @@
         <div id="gm_window_actions">
             <!-- Per-chat mode + feature/tab toggles (ui/chatModeDialog.js). -->
             <div id="gm_btn_mode" class="gm_window_btn" title="Chat mode — features and tabs for this chat"><i class="fa-solid fa-sliders"></i></div>
+            <!-- Action hotbar above the input bar on/off (mirrors the Action Hotbar checkbox in settings). -->
+            <div id="gm_btn_hotbar" class="gm_window_btn" title="Action hotbar above the chat input on/off"><i class="fa-solid fa-table-cells-large"></i></div>
             <!-- Master on/off switch (mirrors the Enabled checkbox in settings). -->
             <div id="gm_btn_power" class="gm_window_btn" title="Extension on/off"><i class="fa-solid fa-power-off"></i></div>
             <div id="gm_btn_edit" class="gm_window_btn" title="Edit mode"><i class="fa-solid fa-pen"></i></div>
@@ -188,7 +190,7 @@
                             <input id="gm_setting_feat_death" type="checkbox" />
                             <span>Permadeath</span>
                         </label>
-                        <label class="checkbox_label" for="gm_setting_feat_roster_rotation" title="Roster rotation: party characters nobody names for 20 messages move to the roster (full sheet kept); benched characters with a sheet who reappear come back, up to the party cap. Pinned characters and your persona's character never leave.">
+                        <label class="checkbox_label" for="gm_setting_feat_roster_rotation" title="Roster rotation: the post-pass tracker moves party characters who are no longer in the scene with your character to the roster (full sheet kept) and brings benched characters with a sheet back when they rejoin, up to the party cap. Pinned characters and your persona's character never leave.">
                             <input id="gm_setting_feat_roster_rotation" type="checkbox" />
                             <span>Roster rotation</span>
                         </label>

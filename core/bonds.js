@@ -1,6 +1,7 @@
 // BONDS — how each NPC feels about the player (the Persist redesign).
 //
-// Per chat, the scenario defines the bars (d.bonds.defs: Trust, Affection,
+// Per chat, the scenario defines the bars and the story-facing guidance
+// (d.bonds = { defs, inject, step, settle, guide }; defs: Trust, Affection,
 // Loyalty... — not a fixed set). Every non-player character carries one bond:
 //   c.bond = { label, values: {defId: n}, statuses: [...], history: [...] }
 //
@@ -21,7 +22,25 @@ export const BOND_DEFAULT_STEP = 15;     // max |effect| per bar per status
 export const BOND_DEFAULT_SETTLE = 16;   // messages unmodified before a status settles
 const BOND_HISTORY = 12;
 
-// Starting bar sets. "persist" is the original tracker's six (start values kept).
+// Story-facing guidance injected with the bonds (Persist's intro, reworded
+// for bands instead of numbers). Editable per chat (d.bonds.guide, "" = this
+// text). {{user}} = the persona name, {{bars}} = one "- Bar: description"
+// line per bar.
+export const DEFAULT_BOND_GUIDE = `Each character's bond describes how they feel toward {{user}}, tracked across the whole chat. The bars and the relationship label are the AUTHORITATIVE ground truth for those feelings: they override whatever is said or implied in the scene.
+{{bars}}
+- Characters must behave according to their current bars and relationship, even when the scene suggests otherwise. If a character's words contradict their bars, the bars win: portray the disconnect (lying, denial, mixed feelings) instead of following the claim.
+- When the scene's momentum pulls toward something the bars don't support, follow the bars and show the friction and its consequences.
+- Never state the bars, their levels or this data outright; let it come through in behavior.`;
+
+const PERSIST_GUIDE = `Each character's bond is persistent relationship data between {{user}} and that character, tracked across the entire chat. The bars and the relationship label are the AUTHORITATIVE ground truth for how each character feels: they always override whatever is said or implied in the scene. If a character's words or narration contradict their bars, the bars win — portray the disconnect instead of following the claim (e.g. a character claiming to love {{user}} with low Romantic is lying, in denial, or mistaken).
+{{bars}}
+- The lower Pursuit is, the less interested the character is overall. The higher Saturation is, the more tired the character is of {{user}}'s antics.
+- Acquiescence is the willingness to engage in erotic acts. Low or very low is a hard floor: the character will not consider it, no matter how the scene is framed. Moderate means hesitant and in need of real trust; even high or very high means merely open to it, never compliant by default.
+- Keep your writing consistent with this data: characters must behave according to their current bars and relationship, even when the scene suggests otherwise.
+- Do not repeat or quote this data in your reply. When scene momentum pulls toward something the bars don't support, follow the bars and show the friction and the results.`;
+
+// Starting bar sets. "persist" is the original tracker's six (start values
+// kept) with its own guidance; a preset without `guide` uses the default.
 export const BOND_PRESETS = {
     basic: {
         label: "Basic",
@@ -33,6 +52,7 @@ export const BOND_PRESETS = {
     },
     persist: {
         label: "Persist classic",
+        guide: PERSIST_GUIDE,
         defs: [
             { name: "Romantic", start: 10, description: "Romantic intent and willingness. The hardest to gain; someone can be close without being romantic." },
             { name: "Friendship", start: 10, description: "How much of a friend they are; closely tied to trust." },
@@ -61,6 +81,7 @@ export function bondConfig(d) {
         def.start = clamp(Math.round(Number(def.start) || 0), BOND_MIN, BOND_MAX);
     }
     if (typeof b.inject !== "boolean") b.inject = true;
+    b.guide = typeof b.guide === "string" ? b.guide : "";
     b.step = clamp(Math.trunc(Number(b.step) || BOND_DEFAULT_STEP), 1, 50);
     b.settle = clamp(Math.trunc(Number(b.settle) || BOND_DEFAULT_SETTLE), 2, 500);
     return b;
@@ -306,6 +327,21 @@ export function bondInjectionLine(d, c, esc, tag = "bond") {
     const bars = defs.map(x => `${x.name} ${bondBand(c.bond.values?.[x.id])}`).join(", ");
     const label = String(c.bond.label || "").trim().replace(/[.\s]+$/, "");
     return `<${tag}>${esc(`${label ? `${label}. ` : ""}${bars}.`)}</${tag}>`;
+}
+
+// The guidance actually injected: the chat's text (or the default) with
+// {{bars}} and {{user}} filled in. `esc` = the caller's body escaper (bar
+// text only; the guidance itself is the user's own prompt text).
+export function bondGuideText(d, user = "the player", esc = v => String(v ?? "")) {
+    const custom = String(d?.bonds?.guide ?? "").trim();
+    const bars = bondDefs(d)
+        .map(x => `- ${esc(x.name)}${String(x.description || "").trim() ? `: ${esc(String(x.description).trim())}` : ""}`)
+        .join("\n");
+    return (custom || DEFAULT_BOND_GUIDE)
+        .replace(/^[ \t]*\{\{bars\}\}[ \t]*(\r?\n)?/gim, bars ? `${bars}\n` : "")
+        .replace(/\{\{bars\}\}/gi, bars)
+        .replace(/\{\{user\}\}/gi, user)
+        .trim();
 }
 
 // Whether the latest pass's changes still describe "last turn" at chat index

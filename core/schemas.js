@@ -10,7 +10,7 @@ export function genId() {
 
 // Per-entry "always inject" flag — any tracked entry can opt into the
 // persistent {{gamemaster-low-priority}} block (core/injection.js).
-const ALWAYS_INJECT = { key: "always_inject", label: "Always inject into context", type: "checkbox", default: false };
+const ALWAYS_INJECT = { key: "always_inject", label: "Always inject into context", short: "Inject", type: "checkbox", default: false };
 
 export const GM_SCHEMA = {
     resource: {
@@ -51,7 +51,10 @@ export const GM_SCHEMA = {
         fields: [
             { key: "name", label: "Name", type: "text", default: "New Detail" },
             { key: "value", label: "Value", type: "textarea", default: "" },
+            // What the field tracks / how to keep it. Tracker-only by default.
+            { key: "description", label: "Explanation (sent to the GM)", type: "textarea", default: "" },
             ALWAYS_INJECT,
+            { key: "inject_description", label: "Also inject the explanation (with Always inject)", short: "+ explanation", type: "checkbox", default: false },
         ],
     },
     item: {

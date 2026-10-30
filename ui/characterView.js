@@ -97,6 +97,16 @@ export function buildEntryRow(type, entry, handlers = {}) {
     row.append(top);
     const bodyText = handlers.bodyText ? handlers.bodyText(entry) : entry.description;
     if (bodyText) row.append($("<div>").addClass("gm_entry_desc").text(bodyText));
+    // Details: the explanation (GM-side) as the name's tooltip, and spelled
+    // out under the value while editing.
+    if (type === "trait" && String(entry.description || "").trim()) {
+        const explain = String(entry.description).trim();
+        main.find(".gm_entry_name").attr("title", explain);
+        if (handlers.showActions !== false) {
+            row.append($("<div>").addClass("gm_entry_desc gm_trait_explain")
+                .text(`${entry.inject_description ? "Explanation (injected)" : "Explanation (GM only)"}: ${explain}`));
+        }
+    }
     return row;
 }
 

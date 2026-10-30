@@ -68,7 +68,14 @@ export const attributeXml = (a, descriptions = true) => entryEl(a?.name, String(
 
 // Text fields: the free text IS the value, so it travels as the body even in
 // compact (descriptions off) renders — <Clothing>Black leather jacket</Clothing>.
-export const traitXml = t => entryEl(t?.name, "", body(t?.value ?? "", true));
+// With an explanation (what the field tracks, how to keep it) the value moves
+// to the attribute like every other entry and the explanation becomes the
+// body: <Mood="Anxious">How she feels right now; shifts with events</Mood>.
+export const traitXml = (t, descriptions = true) => {
+    const explain = String(t?.description ?? "").trim();
+    if (explain && descriptions) return entryEl(t?.name, oneLine(t?.value ?? ""), body(explain, true));
+    return entryEl(t?.name, "", body(t?.value ?? "", true));
+};
 
 // qty travels only when it differs from the default 1 — a stack of one item
 // never needs the token.

@@ -20,9 +20,9 @@ import { gmSettings, containerEnabled } from "./features.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerNames } from "./stateManager.js";
 import { resolveResourceMax } from "./resourceScaler.js";
-import { bondConfig, bondInjectionLine, isPlayerSheet } from "./bonds.js";
+import { bondConfig, bondInjectionLine, bondGuideText, isPlayerSheet } from "./bonds.js";
 import { isMentioned } from "./rosterRotation.js";
-import { clockInjectionText, scheduleInjectionLines, objectiveInjectionLines, nameTag } from "./chrono.js";
+import { clockInjectionText, scheduleInjectionLines, objectiveInjectionLines, nameTag, chronoGuideText } from "./chrono.js";
 import { CHARACTER_CONTAINERS } from "./schemas.js";
 import { scenarioBriefInjection } from "./scenarioBrief.js";
 
@@ -80,7 +80,11 @@ function entryText(section, e, c) {
             return Number.isFinite(max) ? `${e.value ?? 0}/${max}` : String(e.value ?? 0);
         }
         case "attributes": return String(e.value ?? 0);
-        case "traits": return String(e.value ?? "");
+        case "traits": {
+            // The explanation is tracker-side unless the entry opts in.
+            const explain = e.inject_description ? oneLine(e.description) : "";
+            return `${String(e.value ?? "")}${explain ? ` (${explain})` : ""}`;
+        }
         case "inventory": return (e.qty ?? 1) !== 1 ? `carrying ${e.qty}` : "carrying";
         case "skills": return (Number(e.cooldown_left) || 0) > 0 ? "on cooldown" : "ready";
         case "statuses": return String(e.modifiers || "").trim() || "active";
@@ -237,13 +241,24 @@ function bondLines(d, s) {
     const chat = getContext()?.chat || [];
     const recent = chat.slice(-3).map(m => `${m?.name ?? ""}\n${m?.mes ?? ""}`).join("\n");
     const players = playerNames();
-    const benched = (d.roster || []).map(r => r.sheet).filter(c => c && isMentioned(recent, c.name));
+    const benched = (d.roster || []).map(r => r.sheet).filter(c => c && isMentioned(recent, c.name, c.aliases));
     const holders = [...(d.characters || []), ...benched]
         .filter(c => c.bond && c.state?.mode !== "dead" && !isPlayerSheet(c, players))
         .sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? "")));
     const lines = holders.map(c => bondInjectionLine(d, c, txt, nameTag(c.name))).filter(Boolean);
     if (!lines.length) return [];
-    return [block("bonds", `How each character feels toward ${txt(personaName())}. Let it color their behavior; never state it outright.`, lines)];
+    return [block("bonds", `How each character feels toward ${txt(personaName())} right now${bondGuideOn(d, s) ? " (read with <bond_rules>)" : ""}. Let it color their behavior; never state it outright.`, lines)];
+}
+
+// The bonds guidance is static text, so it sits in the cached low block
+// (like the chronogram guidance) instead of riding in every turn context.
+// Shown while some living party NPC carries a bond, so it does not flicker
+// with benched characters walking in and out of the last messages.
+function bondGuideOn(d, s) {
+    const cfg = s.feature_bonds ? bondConfig(d) : null;
+    if (!cfg?.inject || !cfg.defs.length) return false;
+    const players = playerNames();
+    return (d.characters || []).some(c => c.bond && c.state?.mode !== "dead" && !isPlayerSheet(c, players));
 }
 
 // Per-turn context: world clock, live enemy state, bonds + the pre-pass's
@@ -365,18 +380,13 @@ export function buildLowPriority() {
         const scheds = scheduleInjectionLines(d, stateManager.chronoOwners(playerNames()), txt);
         const objs = objectiveInjectionLines(d, txt, o => stateManager.objectiveOwnerName(o));
         if (scheds.length || objs.length) {
-            const guide = [];
-            if (d.chrono?.inject_clock) guide.push("The current in-fiction date and time are in <clock>; keep the narration consistent with them.");
-            if (scheds.length) {
-                guide.push(
-                    `- Each plan covers the whole day: work out what each character is doing right now from the time. Someone mid-task isn't instantly free, and ${txt(personaName())} has plans that may pull them away too.`,
-                    "- Plans are a loose reference, not a script. If an activity runs long, stay in it: don't rush, skip ahead, or have characters bring up later items (like dinner) before the current scene ends. If the narration is mid another scene, ignore the plan for this beat; the timeline catches up afterward.",
-                );
-            }
-            if (objs.length) guide.push("- Objectives are slower-burning goals that keep unfolding in the background, even when nobody mentions them for a while.");
-            parts.push(block("chronogram", guide.join("\n"), [...scheds, ...objs]));
+            // Editable per chat (Time tab); the built-in text otherwise.
+            const guide = chronoGuideText(d, { clock: !!d.chrono?.inject_clock, schedules: scheds.length > 0, objectives: objs.length > 0 }, txt(personaName()));
+            parts.push(block("chronogram", guide, [...scheds, ...objs]));
         }
     }
+
+    if (bondGuideOn(d, s)) parts.push(block("bond_rules", bondGuideText(d, txt(personaName()), txt), []));
 
     // Legacy layout: per-turn context shares this block (cache-first off).
     if (!cacheFirst()) parts.push(...buildTurnContext());

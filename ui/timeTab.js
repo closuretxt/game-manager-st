@@ -6,8 +6,9 @@
 // Manual edits pass silent: true so they never pop notifications.
 
 import { stateManager, playerNames } from "../core/stateManager.js";
-import { chronoConfig, scheduleFor, nowNext, weekday, parseTimeHM } from "../core/chrono.js";
+import { chronoConfig, scheduleFor, nowNext, weekday, parseTimeHM, defaultChronoGuide } from "../core/chrono.js";
 import { iconBtn } from "./characterView.js";
+import { openPromptEditor } from "./promptEditor.js";
 
 const SILENT = { silent: true };
 let _optsOpen = false;
@@ -36,7 +37,22 @@ function smallBtn(icon, text, title) {
 
 function renderClock(container, cfg, edit) {
     const wrap = $("<div>").addClass("gm_list gm_time_clock");
-    wrap.append(header("fa-solid fa-clock", "Clock", "The post-pass only adds the time that passed"));
+    const head = header("fa-solid fa-clock", "Clock", "The post-pass only adds the time that passed");
+    if (edit) {
+        const prompt = iconBtn("fa-solid fa-file-pen").addClass("gm_prompt_btn")
+            .toggleClass("gm_prompt_custom", !!cfg.guide)
+            .attr("title", `Edit the time guidance injected with the schedule/objectives${cfg.guide ? " (custom)" : ""}`);
+        prompt.on("click", () => openPromptEditor({
+            title: "Time guidance",
+            hint: "Instructions the story model reads at the top of the <chronogram> block (low priority, cached), above the day's plans and objectives. Shown only when a plan or objective is injected. A custom text is used as-is whichever modules are on.",
+            placeholders: ["{{user}} = your persona's name"],
+            value: cfg.guide,
+            defaultText: defaultChronoGuide({ clock: cfg.inject_clock, schedules: cfg.schedules_on && cfg.inject_schedules, objectives: cfg.objectives_on && cfg.inject_objectives }),
+            onSave: text => stateManager.setChronoGuide(text),
+        }));
+        head.append(prompt);
+    }
+    wrap.append(head);
     if (cfg.clock) {
         wrap.append($("<div>").addClass("gm_time_now").append(
             $("<span>").addClass("gm_time_day").text(weekday(cfg.clock)),

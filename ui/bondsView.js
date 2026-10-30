@@ -6,9 +6,10 @@
 import { getContext } from "../../../../extensions.js";
 import { stateManager, playerNames } from "../core/stateManager.js";
 import { gmSettings } from "../core/features.js";
-import { BOND_PRESETS, bondConfig, bondDefs, bondBand, formatEffects, isPlayerSheet } from "../core/bonds.js";
+import { BOND_PRESETS, DEFAULT_BOND_GUIDE, bondConfig, bondDefs, bondBand, formatEffects, isPlayerSheet } from "../core/bonds.js";
 import { fadeOutRemove } from "../util/fx.js";
 import { confirmAction } from "./confirmModal.js";
+import { openPromptEditor } from "./promptEditor.js";
 import { iconBtn } from "./characterView.js";
 
 const nowIdx = () => Math.max(0, (getContext()?.chat?.length || 1) - 1);
@@ -100,7 +101,7 @@ export function renderBondSection(container, char, edit) {
 export function openBondsDialog() {
     const cfg = bondConfig(stateManager.getData());
     const draft = cfg.defs.map(x => ({ ...x }));
-    const opts = { inject: cfg.inject, settle: cfg.settle, step: cfg.step };
+    const opts = { inject: cfg.inject, settle: cfg.settle, step: cfg.step, guide: cfg.guide };
     const overlay = $("<div>").addClass("gm_modal_overlay");
     const dialog = $("<div>").addClass("gm_modal gm_bonds_modal");
     const close = () => fadeOutRemove(overlay);
@@ -133,10 +134,29 @@ export function openBondsDialog() {
         const btn = $("<div>").addClass("menu_button gm_small_btn").text(p.label).attr("title", `Replace the list with: ${p.defs.map(x => x.name).join(", ")}`);
         btn.on("click", () => {
             draft.splice(0, draft.length, ...structuredClone(BOND_PRESETS[key].defs));
+            // A preset brings its own guidance, unless the chat wrote its own.
+            if (!opts.guide.trim() || presetGuides.includes(opts.guide.trim())) opts.guide = BOND_PRESETS[key].guide || "";
             renderList();
+            refreshGuide();
         });
         presets.append(btn);
     }
+    const presetGuides = Object.values(BOND_PRESETS).map(p => String(p.guide || "").trim()).filter(Boolean);
+
+    const guideBtn = $("<div>").addClass("menu_button gm_small_btn")
+        .append($("<i>").addClass("fa-solid fa-file-pen"), $("<span>"));
+    const refreshGuide = () => guideBtn.attr("title", "How the story model is told to use the bonds (injected once, low priority)")
+        .toggleClass("gm_prompt_custom", !!opts.guide.trim())
+        .find("span").text(` Story guidance${!opts.guide.trim() ? "" : presetGuides.includes(opts.guide.trim()) ? " (preset)" : " (custom)"}`);
+    refreshGuide();
+    guideBtn.on("click", () => openPromptEditor({
+        title: "Bonds guidance",
+        hint: "Instructions the story model reads in <bond_rules> (low priority, cached) while a party character has a bond; the per-character bonds themselves ride in the turn context as words (very low … very high), never numbers. Saved with this dialog.",
+        placeholders: ["{{user}} = your persona's name", "{{bars}} = one line per bar with its description"],
+        value: opts.guide,
+        defaultText: DEFAULT_BOND_GUIDE,
+        onSave: text => { opts.guide = text; refreshGuide(); },
+    }));
 
     const injectBox = $("<input>").attr("type", "checkbox").prop("checked", !!opts.inject);
     const settle = $("<input>").addClass("gm_input gm_cap_input").attr({ type: "number", min: 2, max: 500 }).val(opts.settle);
@@ -147,6 +167,7 @@ export function openBondsDialog() {
         $("<div>").addClass("gm_modal_hint").text("How each NPC feels about the player. The bars only move through feelings the post-pass reports; a feeling left alone settles into the bars for good, an ended one is taken back."),
         list,
         presets,
+        $("<div>").addClass("gm_bond_presets").append(guideBtn),
         $("<label>").addClass("checkbox_label").append(injectBox, $("<span>").text("Inject bonds of the characters in the scene into the story prompt (each turn, with what changed last turn)")),
         $("<label>").addClass("gm_cap_wrap").attr("title", "Messages a feeling must stay unchanged before it settles").append($("<span>").text("Settle after (messages)"), settle),
         $("<label>").addClass("gm_cap_wrap").attr("title", "Largest change one feeling may make to one bar").append($("<span>").text("Max change per feeling"), step),
@@ -159,7 +180,7 @@ export function openBondsDialog() {
             title: "Remove bars?",
             message: `${removed.map(x => x.name).join(", ")} will be removed from every character's bond.`,
         }))) return;
-        stateManager.setBondOptions({ inject: injectBox.prop("checked"), settle: Number(settle.val()), step: Number(step.val()) });
+        stateManager.setBondOptions({ inject: injectBox.prop("checked"), settle: Number(settle.val()), step: Number(step.val()), guide: opts.guide });
         stateManager.setBondDefs(next);
         close();
     };

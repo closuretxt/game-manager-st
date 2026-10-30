@@ -3934,3 +3934,52 @@ body > #gm_spawn_chip {
 .gm_time_past_obj > span {
     flex: 1;
 }
+
+/* ---------- Injected-guidance editor (ui/promptEditor.js) ---------- */
+.gm_prompt_head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.gm_prompt_text {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 220px;
+    resize: vertical;
+    font-family: var(--monoFontFamily, monospace);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.gm_prompt_ph {
+    font-size: 11px;
+}
+
+.gm_prompt_btn {
+    margin-left: auto;
+}
+
+.gm_prompt_custom {
+    color: var(--gm-accent);
+}
+
+.gm_sheet_check {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 11px;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.gm_sheet_aka {
+    opacity: var(--gm-muted);
+    font-size: 11px;
+    font-style: italic;
+}
+
+.gm_trait_explain {
+    opacity: var(--gm-muted);
+    font-style: italic;
+}

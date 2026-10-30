@@ -24,6 +24,12 @@ export const TEMPLATE_CONTAINERS = ["resources", "attributes", "traits"];
 // Per-character keys: never propagated by a card edit.
 const VALUE_KEYS = new Set(["id", "tid", "value"]);
 
+// Injection flags are the card's call on every linked copy, on every
+// conform: a sheet built by the wizard/generator/tracker never carries them
+// (the LLM is not asked for them), so a per-copy value would silently stay
+// off while the card says "inject".
+const CARD_FLAGS = ["always_inject", "inject_description"];
+
 function structureKeys(type) {
     return GM_SCHEMA[type].fields.map(f => f.key).filter(k => !VALUE_KEYS.has(k));
 }
@@ -122,8 +128,16 @@ export function conformSheet(sheet, tpl) {
             let e = list.find(x => x.tid === f.id)
                 || list.find(x => !x.tid && normName(x.name) === normName(f.name));
             if (e) {
-                // Adopted entries take the card's exact spelling.
-                if (!e.tid) e.name = f.name;
+                // Adopted entries take the card's exact spelling and fill an
+                // empty description from it; their own range survives (a
+                // tank's bigger max), like a per-character tweak would.
+                if (!e.tid) {
+                    e.name = f.name;
+                    if (!String(e.description ?? "").trim() && String(f.description ?? "").trim()) e.description = f.description;
+                }
+                for (const k of CARD_FLAGS) {
+                    if (f[k] !== undefined) e[k] = !!f[k];
+                }
                 e.tid = f.id;
             } else {
                 const { id, ...structure } = structuredClone(f);
@@ -204,7 +218,7 @@ export function templatePromptBlock(d, escAttr) {
         const type = CONTAINER_TYPES[container];
         for (const f of tpl[container] || []) {
             const attrs = structureKeys(type)
-                .filter(k => k !== "always_inject" && f[k] !== undefined && f[k] !== null && f[k] !== "")
+                .filter(k => !CARD_FLAGS.includes(k) && f[k] !== undefined && f[k] !== null && f[k] !== "")
                 .map(k => `${k}="${escAttr(String(f[k]).replace(/\s+/g, " ").trim())}"`);
             lines.push(`<${type} ${attrs.join(" ")}/>`);
         }

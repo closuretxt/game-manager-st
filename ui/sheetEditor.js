@@ -43,7 +43,11 @@ export function entryInputs(type, entry, onDelete, onChange = () => {}) {
             }
             onChange();
         });
-        row.append(input);
+        // Checkboxes carry a short caption: a trait has two of them, and two
+        // bare boxes side by side can't be told apart.
+        row.append(field.type === "checkbox"
+            ? $("<label>").addClass("gm_sheet_check").attr("title", field.label).append(input, $("<span>").text(field.short || field.label))
+            : input);
     }
     const del = iconBtn("fa-solid fa-trash");
     del.on("click", onDelete);
@@ -53,7 +57,9 @@ export function entryInputs(type, entry, onDelete, onChange = () => {}) {
     if (!GM_SCHEMA[type].fields.some(f => f.key === "description")) return box;
     const desc = $("<input>").attr("type", "text")
         .addClass("gm_input gm_wizard_sheet_desc")
-        .attr("placeholder", "Description — what this tracks / why it matters")
+        .attr("placeholder", type === "trait"
+            ? "Explanation — what this detail tracks (sent to the GM; injected only if ticked)"
+            : "Description — what this tracks / why it matters")
         .val(entry.description ?? "");
     desc.on("input", () => {
         entry.description = String(desc.val() ?? "");

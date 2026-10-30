@@ -52,8 +52,8 @@ export function shapeLines(lines) {
 }
 
 // Proposed standard card — only asked for when the chat has none yet.
-const CARD_SHAPE_LINE = '<card><resource name="Health" min="0" max="100" description="..."/><attribute name="Strength" description="..."/><trait name="Mood"/></card> <!-- STANDARD CARD: the entries EVERY party character carries (no values here) -->';
-const CARD_RULE = "\n- STANDARD CARD: list ONCE in <card> the resources, attributes and details that EVERY party character shares (the scenario's stat block: Health, Stamina, Mood...), with names, ranges and descriptions. Every <char> then carries all of them with its own values; role-specific extras (a gunner's Ammo) stay on that character only. Omit <card> when the characters share nothing.";
+const CARD_SHAPE_LINE = '<card><resource name="Health" min="0" max="100" description="..."/><attribute name="Strength" description="..."/><trait name="Mood" description="How they feel right now; shifts with events" always_inject="true"/></card> <!-- STANDARD CARD: the entries EVERY party character carries (no values here) -->';
+const CARD_RULE = "\n- STANDARD CARD: list ONCE in <card> the resources, attributes and details that EVERY party character shares (the scenario's stat block: Health, Stamina, Mood...), with names, ranges and descriptions (for a detail: what it tracks). Mark always_inject=\"true\" on the entries the story must see every turn — usually the details (clothing, mood, appearance). Every <char> then carries all of them with its own values; role-specific extras (a gunner's Ammo) stay on that character only. Omit <card> when the characters share nothing.";
 
 const RESPONSE_SHAPE_LINES = [
     '<setup name="<short scenario title>">',
@@ -615,7 +615,7 @@ const PROMPT_CONTAINER_TAGS = Object.fromEntries(CHARACTER_CONTAINERS.map(c => [
 // Wire attributes of one entry: internal ids (entry + card field) and unset
 // inject flags stay out of the prompt (always_inject="false" is pure noise).
 const wireAttrs = e => Object.entries(e)
-    .filter(([k, v]) => k !== "id" && k !== "tid" && !(k === "always_inject" && !v));
+    .filter(([k, v]) => k !== "id" && k !== "tid" && !((k === "always_inject" || k === "inject_description") && !v) && !(k === "description" && !v));
 
 // Container entries of one sheet as wire tags (tracked containers only).
 function sheetWireLines(c, oneLine = false) {

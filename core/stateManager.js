@@ -96,6 +96,32 @@ function normalizeName(v) {
     return String(v ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 }
 
+// Actor whose "also known as" list holds `name` (normalized), accepted only
+// when exactly one actor claims it. `aliasesOf` picks the list (roster
+// entries keep it on their sheet).
+function _byAlias(list, name, aliasesOf = x => x.aliases) {
+    const n = normalizeName(name);
+    if (!n) return null;
+    const hits = list.filter(x => (aliasesOf(x) || []).some(a => normalizeName(a) === n));
+    return hits.length === 1 ? hits[0] : null;
+}
+
+// Comma/newline separated text or a list -> trimmed, de-duplicated aliases
+// (never the character's own name).
+export function cleanAliases(value, ownName = "") {
+    const raw = Array.isArray(value) ? value : String(value ?? "").split(/[,;\n]/);
+    const seen = new Set([normalizeName(ownName)]);
+    const out = [];
+    for (const a of raw) {
+        const t = String(a ?? "").trim().slice(0, 60);
+        const n = normalizeName(t);
+        if (!n || seen.has(n)) continue;
+        seen.add(n);
+        out.push(t);
+    }
+    return out.slice(0, 12);
+}
+
 function matchName(entries, name) {
     const list = Array.isArray(entries) ? entries : [];
     if (!list.length || name == null || String(name).trim() === "") return null;
@@ -297,7 +323,21 @@ export const stateManager = {
         const needle = String(idOrName ?? "").toLowerCase();
         return list.find(c => c.id === idOrName)
             || list.find(c => c.name.toLowerCase() === needle)
+            || _byAlias(list, idOrName)
             || null;
+    },
+
+    // "Also known as": other names the story uses for a character (titles,
+    // nicknames). Presence checks and LLM name lookups accept them; the
+    // tracked name stays the one tool tags must report.
+    setAliases(id, aliases) {
+        const c = this.getSheet(id);
+        if (!c) return false;
+        const list = cleanAliases(aliases, c.name);
+        if (list.length) c.aliases = list;
+        else delete c.aliases;
+        this.emitChange("aliases");
+        return true;
     },
 
     getActiveCharacter() {
@@ -519,13 +559,9 @@ export const stateManager = {
         return char;
     },
 
-    // Roster rotation (core/rosterRotation.js plan): one change for the whole
-    // batch. Returns { out: [names], in: [names] }.
-    applyRotation(plan, now) {
-        const d = this.getData();
-        for (const c of d.characters) {
-            if (Number.isFinite(plan.seen?.[c.id])) c.last_seen = plan.seen[c.id];
-        }
+    // Roster rotation (core/rosterRotation.js plan from the tracker's
+    // <scene_cast>): one change for the whole batch. Returns { out: [names], in: [names] }.
+    applyRotation(plan) {
         const names = { out: [], in: [] };
         for (const id of plan.out || []) {
             const entry = this._bench(id);
@@ -536,12 +572,9 @@ export const stateManager = {
         }
         for (const id of plan.in || []) {
             const char = this._unbench(id, false);
-            if (char) {
-                char.last_seen = now;
-                names.in.push(char.name);
-            }
+            if (char) names.in.push(char.name);
         }
-        this.emitChange(names.out.length || names.in.length ? "roster_rotation" : "roster_seen");
+        if (names.out.length || names.in.length) this.emitChange("roster_rotation");
         return names;
     },
 
@@ -566,9 +599,10 @@ export const stateManager = {
         this.emitChange("bond_defs");
     },
 
-    setBondOptions({ inject, step, settle } = {}) {
+    setBondOptions({ inject, step, settle, guide } = {}) {
         const cfg = bondConfig(this.getData());
         if (inject !== undefined) cfg.inject = !!inject;
+        if (guide !== undefined) cfg.guide = String(guide ?? "").trim();
         if (step !== undefined) cfg.step = step;
         if (settle !== undefined) cfg.settle = settle;
         bondConfig(this.getData());
@@ -669,6 +703,12 @@ export const stateManager = {
         this.emitChange("chrono_options");
     },
 
+    // Story-facing guidance of the <chronogram> block ("" = built-in).
+    setChronoGuide(text) {
+        chronoConfig(this.getData()).guide = String(text ?? "").trim();
+        this.emitChange("chrono_options");
+    },
+
     // Absolute set (anchor or manual). opts.silent = the user's own edit.
     setClock(date, time, opts = {}) {
         const res = chronoSetClock(this.getData(), date, time);
@@ -746,6 +786,7 @@ export const stateManager = {
         const roster = this.getData().roster;
         return roster.find(r => r.id === idOrName || (r.sheet && r.sheet.id === idOrName))
             || roster.find(r => String(r.name).toLowerCase() === needle)
+            || _byAlias(roster, idOrName, r => r.sheet?.aliases)
             || null;
     },
 
@@ -871,6 +912,7 @@ export const stateManager = {
         const needle = String(idOrName ?? "").toLowerCase();
         return list.find(c => c.id === idOrName)
             || list.find(c => c.name.toLowerCase() === needle)
+            || _byAlias(list, idOrName)
             || null;
     },
 

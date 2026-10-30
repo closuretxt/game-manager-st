@@ -23,6 +23,8 @@
 //                       are archived, not deleted, and restored on return)
 //   <transfer>        — move a tracked actor between party, roster bench and
 //                       enemy side, keeping their full sheet in every direction
+//   <scene_cast>      — roster rotation: <leave/> benches party characters no
+//                       longer in the scene, <join/> recalls benched ones
 //   <renames>         — rename a tracked actor (party, enemy or roster) in
 //                       place; name-only change, the full sheet survives
 //   <new_characters>  — report NEW characters/enemies entering the scene as
@@ -50,8 +52,10 @@ import { logDebug } from "./debug.js";
 import { characterSpawner, spawnReviewEnabled } from "./characterSpawner.js";
 import { bondDefs, isPlayerSheet } from "./bonds.js";
 import { PLAYER_OWNER, chronoConfig, parseDelta, parseScheduleLines } from "./chrono.js";
+import { planRotation } from "./rosterRotation.js";
 
-const BLOCK_TAGS = ["change_values", "set_attributes", "set_traits", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies", "transfer", "renames", "deaths", "knockouts", "new_characters", "bonds", "chrono"];
+const BLOCK_TAGS = ["change_values", "set_attributes", "set_traits", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies", "transfer", "renames", "deaths", "knockouts", "new_characters", "bonds", "chrono", "scene_cast"];
+const CAST_RE = /<(leave|join)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const BOND_RE = /<(bond_label|bond_status|bond_end)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const CHRONO_RE = /<(clock_update|new_schedule|objective_new|objective_update|objective_done|objective_drop)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const BLOCK_RE = new RegExp(`<(${BLOCK_TAGS.join("|")})>([\\s\\S]*?)<\\/\\1>`, "gi");
@@ -500,6 +504,34 @@ function applyChronoBlock(raw) {
     return applied;
 }
 
+// <scene_cast> (roster rotation): <leave name/> benches a party character,
+// <join name/> recalls a benched sheet. Returns { leave: [names], join: [names] }.
+export function parseSceneCast(raw) {
+    const report = { leave: [], join: [] };
+    CAST_RE.lastIndex = 0;
+    let m;
+    while ((m = CAST_RE.exec(raw || "")) !== null) {
+        const attrs = parseAttrs(m[2] || "");
+        const name = String(attrs.name ?? decodeEntities(m[3] ?? "")).trim();
+        if (name) report[m[1].toLowerCase()].push(name);
+    }
+    return report;
+}
+
+// Applied after every other block: the tracker may update a character's
+// sheet and bench them in the same report. Limits (pins, the player, the
+// cap, a never-empty party) are enforced by planRotation.
+function applySceneCast(report) {
+    const plan = planRotation(stateManager.getData(), report, {
+        cap: Math.max(1, Math.trunc(Number(gmSettings().max_party_size) || 6)),
+        keepNames: playerNames(),
+    });
+    // Moves are announced by ui/notifications.js (wraps applyRotation).
+    const moved = stateManager.applyRotation(plan);
+    logDebug(`toolParser: scene cast — out [${moved.out.join(", ")}], in [${moved.in.join(", ")}] (reported leave [${report.leave.join(", ")}], join [${report.join.join(", ")}])`);
+    return moved.out.length + moved.in.length;
+}
+
 // Tool blocks that only touch one tab-toggleable container (core/features.js).
 const BLOCK_CONTAINERS = {
     add_items: "inventory",
@@ -513,7 +545,15 @@ const BLOCK_CONTAINERS = {
 // Applies parsed blocks to the state. Returns the number of applied actions.
 export function applyToolBlocks(blocks, { autoCreateChars = false, now = null } = {}) {
     let applied = 0;
+    const cast = { leave: [], join: [] };
     for (const block of blocks) {
+        if (block.type === "scene_cast") {
+            if (!gmSettings().feature_roster_rotation) continue;
+            const r = parseSceneCast(block.raw);
+            cast.leave.push(...r.leave);
+            cast.join.push(...r.join);
+            continue;
+        }
         // Bonds: feature-gated and only once the chat defines bars.
         if (block.type === "bonds") {
             if (!gmSettings().feature_bonds || !bondDefs(stateManager.getData()).length) continue;
@@ -639,6 +679,7 @@ export function applyToolBlocks(blocks, { autoCreateChars = false, now = null } 
             if (applyAction(block.type, char, action)) applied++;
         }
     }
+    if (cast.leave.length || cast.join.length) applied += applySceneCast(cast);
     if (applied > 0) stateManager.emitChange("tool_parser");
     return applied;
 }

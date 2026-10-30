@@ -107,6 +107,8 @@ class MainPanel {
         $("#gm_btn_close").on("click", () => this.close());
         $("#gm_btn_edit").on("click", () => this.toggleEditMode());
         $("#gm_btn_power").on("click", () => this.toggleEnabled());
+        $("#gm_btn_hotbar").on("click", () => this.toggleHotbar());
+        $("#gm_setting_hotbar").on("change.gmpanel", () => this._refreshPowerButton());
         $("#gm_btn_mode").on("click", () => openChatModeDialog());
         $("#gm_btn_rerun").on("click", async () => {
             gmNotify("Running agent pass...", "info");
@@ -252,6 +254,15 @@ class MainPanel {
         gmNotify(s.enabled ? "Game Manager enabled." : "Game Manager disabled.", s.enabled ? "success" : "info");
     }
 
+    // Global like the drawer checkbox it mirrors; that checkbox's change
+    // event saves the setting and refreshes the hotbar.
+    toggleHotbar() {
+        const s = extension_settings[extensionName];
+        s.feature_hotbar = !s.feature_hotbar;
+        $("#gm_setting_hotbar").prop("checked", s.feature_hotbar).trigger("change");
+        this._refreshPowerButton();
+    }
+
     // ---------- geometry ----------
     _saveGeometry() {
         const win = this._window;
@@ -368,6 +379,7 @@ class MainPanel {
 
     _refreshPowerButton() {
         $("#gm_btn_power").toggleClass("gm_btn_off", !extension_settings[extensionName].enabled);
+        $("#gm_btn_hotbar").toggleClass("gm_btn_off", !extension_settings[extensionName].feature_hotbar);
     }
 
     _renderTabs() {
@@ -754,7 +766,7 @@ class MainPanel {
         const chips = $("<div>").addClass("gm_roster_chips");
         for (const ally of roster) {
             const hint = [ally.note || ally.name];
-            if (ally.rotated) hint.push("Benched by roster rotation — comes back when named in the story.");
+            if (ally.rotated) hint.push("Benched by roster rotation — comes back when the tracker sees them rejoin the scene.");
             const chip = $("<div>").addClass("gm_roster_chip").attr("title", hint.join("\n"));
             chip.append($("<span>").text(ally.name));
             if (edit) {
@@ -1051,6 +1063,11 @@ class MainPanel {
                 if (!name || name.trim() === char.name) return;
                 stateManager.renameCharacter(char.id, name.trim());
             } },
+            { icon: "fa-solid fa-masks-theater", label: "Also known as...", action: () => {
+                const text = window.prompt(`Other names the story uses for ${char.name} (comma-separated):`, (char.aliases || []).join(", "));
+                if (text === null) return;
+                stateManager.setAliases(char.id, text);
+            } },
             { icon: "fa-solid fa-arrows-rotate", label: "Refine...", action: () => this._openRefine(char, kind) },
         ];
         popoverMenu(anchor, items);
@@ -1178,6 +1195,9 @@ class MainPanel {
         if (edit) avatar.addClass("gm_avatar_editable").append(this._avatarEditButtons(char));
         header.append(avatar);
         header.append($("<b>").addClass("gm_sheet_name").text(char.name));
+        if (char.aliases?.length) {
+            header.append($("<span>").addClass("gm_sheet_aka").attr("title", "Also known as").text(`aka ${char.aliases.join(", ")}`));
+        }
         if (progression.isEnabled()) header.append(this._progBadges(char));
         content.append(header);
 

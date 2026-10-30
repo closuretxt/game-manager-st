@@ -10,6 +10,7 @@
 //   schedules_on, objectives_on,  // tracking modules (objectives off by default)
 //   schedules_party,              // false (default) = only the player keeps a schedule
 //   inject_clock, inject_schedules, inject_objectives,
+//   guide,                        // custom story-facing guidance ("" = built-in)
 // }
 // The clock is set ONCE (wizard, first post-pass or by hand) with absolute
 // values; after that the tracker only reports how much time PASSED, which
@@ -160,6 +161,7 @@ export function chronoConfig(d) {
     c.inject_clock = bool(c.inject_clock, true);
     c.inject_schedules = bool(c.inject_schedules, true);
     c.inject_objectives = bool(c.inject_objectives, true);
+    c.guide = typeof c.guide === "string" ? c.guide : "";
     return c;
 }
 
@@ -387,6 +389,28 @@ export function scheduleInjectionLines(d, owners, esc) {
             const tag = `${nameTag(x.o.name)}_chronogram`;
             return `<${tag}>Plan for ${esc(c.clock.date)}: ${esc(x.entries.map(e => `${e.time} ${e.activity}`).join("; "))}</${tag}>`;
         });
+}
+
+// Built-in story-facing guidance of the <chronogram> block, for the parts
+// that are injected ({{user}} = the persona name, filled at injection).
+export function defaultChronoGuide({ clock = true, schedules = true, objectives = true } = {}) {
+    const guide = [];
+    if (clock) guide.push("The current in-fiction date and time are in <clock>; keep the narration consistent with them.");
+    if (schedules) {
+        guide.push(
+            "- Each plan covers the whole day: work out what each character is doing right now from the time. Someone mid-task isn't instantly free, and {{user}} has plans that may pull them away too.",
+            "- Plans are a loose reference, not a script. If an activity runs long, stay in it: don't rush, skip ahead, or have characters bring up later items (like dinner) before the current scene ends. If the narration is mid another scene, ignore the plan for this beat; the timeline catches up afterward.",
+        );
+    }
+    if (objectives) guide.push("- Objectives are slower-burning goals that keep unfolding in the background, even when nobody mentions them for a while.");
+    return guide.join("\n");
+}
+
+// The guidance actually injected: the chat's own text when set (used as-is,
+// whatever modules are on), else the built-in one for what is injected.
+export function chronoGuideText(d, parts, user = "the player") {
+    const custom = String(d?.chrono?.guide ?? "").trim();
+    return (custom || defaultChronoGuide(parts)).replace(/\{\{user\}\}/gi, user);
 }
 
 // Low-priority (cache-first): active objectives only change when the

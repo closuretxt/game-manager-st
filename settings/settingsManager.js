@@ -117,7 +117,7 @@ export const defaultSettings = {
     roll_attachment: true,        // Roll/combat results render as file-style chips under the player's message.
     roll_duration: 1600,          // Dice roll animation length in ms (a random ±200ms variation is added per roll).
     feature_death: true,          // Permadeath: the post-pass may kill characters (<deaths> tag); only the user revives.
-    feature_roster_rotation: false, // Post-pass benches party characters unnamed for 20 messages and recalls benched ones who reappear (up to the party cap).
+    feature_roster_rotation: false, // The post-pass tracker benches party characters no longer in the scene with the player and recalls benched ones who rejoin (up to the party cap).
     feature_bonds: false,         // Bonds: NPC feelings toward the player (scenario-defined bars moved only by bond statuses). On in the Romance / Slice of life modes.
     feature_chrono: false,        // Time: world clock (deltas after the anchor), daily schedules of the present cast, long-term objectives — kept by the post-pass. On in every mode preset.
 

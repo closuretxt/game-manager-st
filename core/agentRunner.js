@@ -17,7 +17,7 @@ import { generateRaw, substituteParams } from "../../../../../script.js";
 import { extensionName, CHARACTER_STATES } from "./constants.js";
 import { gmSettings, containerEnabled } from "./features.js";
 import { logDebug } from "./debug.js";
-import { ROTATION_LOOKBACK, planRotation, presentRoster } from "./rosterRotation.js";
+import { presentRoster } from "./rosterRotation.js";
 import { stateManager, playerLabel, charLabel, playerNames } from "./stateManager.js";
 import { bondDefs, isPlayerSheet, formatEffects } from "./bonds.js";
 import { chronoConfig, chronoStateXml } from "./chrono.js";
@@ -97,6 +97,8 @@ function buildStateSummaryXml(present = []) {
             return xmlEl(tag, { name: c.name, ...extra, state: c.state.mode, reason: c.state.reason });
         }
         const attrs = { ...extra };
+        // Other names the story uses for them — recognition only.
+        if (c.aliases?.length) attrs.aka = c.aliases.join(", ");
         if (c.state) attrs.state = c.state.mode;
         if (prog) {
             const track = progression.trackOf(c);
@@ -110,7 +112,10 @@ function buildStateSummaryXml(present = []) {
     };
 
     const parts = ['<state note="one-line elements: SECTION wrappers hold name-keyed entries, e.g. <resources><HP=30/30>Vitality</HP><Mana=12/12>Arcane energy</Mana></resources>, <skills><Fireball*=cost: 5 MP, cd: 3>2d6 fire</Fireball></skills>, <statuses><Dazed=Aim -2>Vision blurred</Dazed></statuses>; skills marked * are on cooldown; values are the PRE-TURN snapshot — but tool-tag REPORTS keep the name=... syntax; <transaction> payments are ALREADY deducted; skill costs and combat spends are OWED (report each exactly once)">'];
-    for (const c of d.characters) parts.push(actorXml(c, "char"));
+    // Rotation: pinned characters are marked so the tracker never reports
+    // them in <scene_cast> (the parser ignores them anyway).
+    const rotation = !!s.feature_roster_rotation;
+    for (const c of d.characters) parts.push(actorXml(c, "char", rotation && c.pinned ? { pinned: "true" } : {}));
     // Enemies only when the feature is on AND some exist — otherwise the
     // agent never sees (and never invents) enemy state.
     if (s.feature_enemies) {
@@ -123,7 +128,7 @@ function buildStateSummaryXml(present = []) {
     // moves; bench allies are never rolled for or injected into the story.
     const bench = (d.roster || []).filter(r => !present.includes(r));
     if (bench.length) {
-        parts.push(`<roster>${bench.map(r => escAttr(r.name)).join(", ")}</roster>`);
+        parts.push(`<roster>${bench.map(r => escAttr(r.name) + (r.sheet?.aliases?.length ? ` (aka ${escAttr(r.sheet.aliases.join(", "))})` : "")).join(", ")}</roster>`);
     }
     if (bondsOn()) {
         const players = playerNames();
@@ -186,6 +191,8 @@ async function buildSystemPrompt(exchange = []) {
     };
     // Rules only (static per chat) — the bars themselves ride in the snapshot.
     const bonds = bondsOn();
+    const rotation = !!s.feature_roster_rotation;
+    const cap = Math.max(1, Math.trunc(Number(s.max_party_size) || 6));
     // Time modules are per-chat options that rarely change, like the flags.
     const chrono = chronoOn() ? chronoConfig(stateManager.getData()) : null;
     let deep = "";
@@ -204,6 +211,7 @@ async function buildSystemPrompt(exchange = []) {
         // the parser matches names exactly, so a paraphrased name is silently
         // dropped — spell the rule out.
         "COPY NAMES EXACTLY: every <char>, resource, attribute, item, skill and status name in your report must match the snapshot VERBATIM, as printed (e.g. report 'Health' or 'Chassis Health' — never a generic 'HP'). A name that does not exactly match a tracked entry is silently dropped and that change is lost.",
+        "ALSO KNOWN AS: aka=\"...\" (and \"aka\" in <roster>) lists other names the story uses for a character (titles, nicknames). Use it to recognize who the exchange is talking about, but always report the character's main name.",
         "",
         "DAMAGE ACCOUNTING — apply it to EVERYONE, humans included:",
         "- When the exchange shows a character being hit, wounded, burned, poisoned, falling, starving or otherwise harmed, report the resource loss with <change_values> — regardless of whether the victim is an enemy, a monster, the player character, an ally or a human NPC. A sword through a villager costs HP exactly like a sword through a goblin.",
@@ -276,6 +284,7 @@ async function buildSystemPrompt(exchange = []) {
         '<enemies><enemy action="add" name="Goblin"><resource name="HP" value="30" max="30"/><passive name="Brutal" description="+2 damage below half HP"/></enemy><enemy action="update" name="Goblin"><resource name="HP" delta="-7"/><status name="Wounded" modifiers="Aim -2"/></enemy><enemy action="remove" name="Goblin" reason="defeated"/></enemies>',
         '<transfer><move name="Kael" to="enemy" reason="betrayed the party"/><move name="Goblin Scout" to="party" reason="swore loyalty after being spared"/></transfer>',
         '<renames><rename from="Kael" to="Sir Kaelen" reason="knighted by the baron"/></renames>',
+        ...(rotation ? ['<scene_cast><leave name="Kael" reason="stayed behind at the camp"/><join name="Mara" reason="caught up with the group at the gate"/></scene_cast>'] : []),
         ...(spawnReview ? ['<new_characters><char name="Kael" kind="party" details="wounded knight the party rescued, stoic and dry-humored" level="3"/><char name="Goblin Chief" kind="enemy" details="scarred veteran leading the warband, brutal close-quarters fighter"/></new_characters>'] : []),
         ...(s.feature_death !== false ? ['<deaths><death char="Name" reason="short cause of death"/></deaths>'] : []),
         '<knockouts><ko char="Name" reason="short cause"/><ko_clear char="Name"/></knockouts>',
@@ -296,6 +305,12 @@ async function buildSystemPrompt(exchange = []) {
         "Use <threads> to leave notes to yourself about UNTRACKED or UNFINISHED things the formal containers cannot hold: ongoing trips (fuel/money spent so far), half-done actions, unresolved behavior, or secrets that must stay hidden from the player. ALWAYS record where/when it started (ref) so you can compare progress later (\"started when leaving town\", \"day 2 of the siege\"). Update the thread as things progress; clear it (thread_clear) as soon as it is finished or irrelevant. Threads are invisible to the player and never injected into the story prompt — the pre-pass decides what the story needs to know.",
         "Use <enemies> when enemies or threats appear in the scene: action=\"add\" to introduce one (with its HP resource and notable passives/skills), nested <resource>/<status> tags or hp_delta to update it, and action=\"remove\" AS SOON AS an enemy stops being relevant (defeated, fled, scene moved on) — removed enemies are archived and automatically restored with their last state if they return. An enemy at 0 HP or clearly destroyed/slain in the exchange MUST be removed in this same reply — never leave a dead enemy tracked. CLEANUP RULE: if the SNAPSHOT ITSELF already shows an enemy at 0 HP on its lethal resource, remove it with reason=\"cleanup — already at 0 HP\" — report no damage for it and grant no EXP: it died in a previous turn and only the removal was missed. You may also damage enemies with <change_values><char>EnemyName</char>.",
         "Use <transfer> ONLY when a tracked actor CHANGES SIDES OR TRACKING STATUS in the exchange: <move name=\"...\" to=\"enemy|party|roster\"/> moves them with their full sheet (party member defects to the enemy side, enemy is recruited or spared and joins the party, active character benched to the roster, roster ally joins the party). One <move> per change, with a short reason. Never use it for deaths (<deaths>) or temporary knockouts (<knockouts>) — and only for names already in the snapshot.",
+        ...(rotation ? [
+            `SCENE CAST — the party (<char> entries) is the cast physically present in the scene WITH the player's character; the bench (<roster>, <char roster="present">) holds everyone else, full sheets kept. Keep it current with <scene_cast>:`,
+            "- <leave name=\"...\"/> for every party character who is NOT with the player's character at the end of the CURRENT EXCHANGE: they left, stayed behind, were sent elsewhere, or the player moved on to a place/scene without them. Judge presence, not dialogue: someone silent but still in the room stays; someone only talked ABOUT, remembered or contacted from afar is not present.",
+            `- <join name="..."/> for every benched character who is now physically with the player's character (arrived, was met, came along). The party holds at most ${cap}; when it is full, add a <leave> for whoever is least involved before a <join>.`,
+            "- Never for the player's own character, for characters marked pinned=\"true\", or for deaths/knockouts/defections (<deaths>, <knockouts>, <transfer>). Report only changes — omit <scene_cast> when the cast did not change. Names exactly as in the snapshot.",
+        ] : []),
         "Use <renames> when the exchange shows a tracked actor's NAME actually changing (a title granted, a cover dropped, an alias becomes their real name): <rename from=\"...\" to=\"...\"/> — The new name must NOT already be tracked, and only for names already in the snapshot. Do NOT rename for passing nicknames or pronoun shifts — only when the story makes the new name the actor's actual tracked name.",
         ...(spawnReview ? [
             "Use <new_characters> when a NEW named character or enemy clearly enters the scene and matters beyond this exchange: one <char> per newcomer with kind=\"party\" (a potential companion or recurring NPC) or kind=\"enemy\" (a hostile threat), a short details brief (role, appearance, combat style, what makes them different) and their level when progression is active. Never re-emit names already in the state snapshot. When you report a new enemy here, skip the <enemies> add — the player reviews and builds the full sheet from your brief; keep <enemies> for updates and removals.",
@@ -415,28 +430,6 @@ function buildUserPrompt(exchange, history = [], present = []) {
     return blocks.join("\n");
 }
 
-// Roster rotation (per-chat feature): bench / recall BEFORE the tracker reads
-// the state, so it accounts the scene's actual cast. The baseline snapshot is
-// taken first, so a swipe or delete rolls the rotation back with everything
-// else and the rerun decides again from the new text.
-function rotateRoster(chat, now) {
-    const messages = [];
-    for (let i = Math.max(0, now - ROTATION_LOOKBACK + 1); i <= now; i++) {
-        const m = chat[i];
-        if (!m || m.is_system === true || m.is_system === "true") continue;
-        messages.push({ idx: i, text: `${m.name ?? ""}\n${m.mes ?? ""}` });
-    }
-    const st = getContext();
-    const plan = planRotation(stateManager.getData(), messages, now, {
-        cap: Math.max(1, Math.trunc(Number(gmSettings().max_party_size) || 6)),
-        // The player's own character is the scene's constant.
-        keepNames: [playerLabel(), st?.name1].filter(Boolean),
-    });
-    captureSnapshot(now);
-    // Moves are announced by ui/notifications.js (wraps applyRotation).
-    stateManager.applyRotation(plan, now);
-}
-
 // Runs one agentic analysis pass for the message `mesId`. Returns the number
 // of applied changes.
 export async function runAgentPass(reason = "manual", mesId = null) {
@@ -459,9 +452,8 @@ export async function runAgentPass(reason = "manual", mesId = null) {
         // everything before it is read-only context.
         const exchange = recent.slice(-CURRENT_EXCHANGE_MESSAGES);
         const history = recent.slice(0, -CURRENT_EXCHANGE_MESSAGES);
-        if (s.feature_roster_rotation && Array.isArray(st.chat) && st.chat.length) {
-            rotateRoster(st.chat, now);
-        }
+        // Roster rotation is the tracker's call now (<scene_cast>, applied
+        // with the other tool tags after the baseline snapshot).
         // Bonds: every NPC gets their bars, feelings past the settle window
         // settle — after the baseline, so a swipe rolls this back too.
         if (bondsOn()) {
