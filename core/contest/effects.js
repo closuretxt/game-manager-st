@@ -106,6 +106,12 @@ export function stripEffects(text) {
     return String(text ?? "").replace(/<effect\b[^>]*?\/?>(?:\s*<\/effect>)?/gi, " ").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
 
+// "party" | "enemy" | null — from the sheet, never the oracle's who= (the
+// oracle can mislabel a side; the sheets cannot).
+export function contestSide(ctx, name) {
+    return ctx.ops.sheet(name)?.side || null;
+}
+
 // The actor's out-state this round: set earlier in the round, carried by the
 // contest (party members who fled), or the sheet's own state slot.
 export function outStateOf(ctx, name) {

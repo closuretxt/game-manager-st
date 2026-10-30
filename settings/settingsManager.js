@@ -4,6 +4,7 @@ import { defaultPresets } from "./defaultPresets.js";
 import { extensionName } from "../core/constants.js";
 import { stateManager } from "../core/stateManager.js";
 import { OVERRIDABLE_KEYS, FEATURE_MODES } from "../core/features.js";
+import { CONTEST_PRESETS } from "../core/contest/registry.js";
 
 // Checkbox wiring: setting key -> element id in index.html. Load, save and
 // listeners all iterate this table, so a new toggle is one line here.
@@ -113,6 +114,7 @@ export const defaultSettings = {
     feature_combat: true,         // Combat rounds: opposition + oracle + seeded dice, effects committed before the story runs (core/contest/).
     feature_ally_ai: true,        // Uncommanded party members act in combat rounds (decided by the pre-pass; Legacy: the ALLY AI call).
     combat_legacy: false,         // Legacy combat pipeline (ally AI + enemy AI + clash resolver; the tracker reads damage from the narration). Transition only.
+    contest_preset: "universal",  // Combat rules for chats without their own ruleset (core/contest/registry.js CONTEST_PRESETS.clash).
     combat_max_enemy_actions: 6,  // Sanity cap on enemy actions per combat round.
     combat_rich_clash_ui: false,  // Rich clash bubble: face-off title, role chips, VS badge. Off = simple layout.
     deterministic_clashes: false, // Legacy combat only. Clash resolver commits sheet-derived damage expressions, costs and statuses into the tier outcome lines (tracker applies them exactly). Off = descriptive outcomes only.
@@ -257,6 +259,12 @@ export function refreshFeatureUI() {
         sel.append($("<option>").val(id).text(mode.label));
     }
     sel.val(FEATURE_MODES[s.default_mode] ? s.default_mode : "custom");
+    // Legacy has its own checkbox; the select lists the contest presets.
+    const presetSel = $("#gm_setting_contest_preset").empty();
+    for (const [id, preset] of Object.entries(CONTEST_PRESETS.clash)) {
+        if (!preset.legacy) presetSel.append($("<option>").val(id).text(preset.label));
+    }
+    presetSel.val(CONTEST_PRESETS.clash[s.contest_preset] && !CONTEST_PRESETS.clash[s.contest_preset].legacy ? s.contest_preset : "universal");
     for (const key of OVERRIDABLE_KEYS) {
         const id = CHECKBOXES[key];
         if (id) $(`#${id}`).prop("checked", s[key] !== false);
@@ -271,6 +279,10 @@ export function initSettingsListeners() {
         extension_settings[extensionName].default_mode = $("#gm_setting_default_mode").val() || "custom";
         saveSettingsDebounced();
         stateManager.emitChange("features");
+    });
+    $("#gm_setting_contest_preset").off("change.gm").on("change.gm", () => {
+        extension_settings[extensionName].contest_preset = $("#gm_setting_contest_preset").val() || "universal";
+        saveSettingsDebounced();
     });
     // Volume slider: live label + persist on input (same feel as the opacity slider).
     $("#gm_setting_sound_volume").off("input.gm").on("input.gm", () => {

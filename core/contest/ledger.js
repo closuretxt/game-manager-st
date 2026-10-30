@@ -74,11 +74,18 @@ export function effectShort(r) {
     return effectSummary(r);
 }
 
+// How the outcome was rolled: the dice module's own words (d20 14 +5 = 19 vs
+// DC 15) or the oracle's tier odds.
+function outcomeDetail(o, long) {
+    if (o.detail) return o.detail;
+    return long ? `${o.chance}% tier, roll ${o.roll}` : `${o.chance}%, roll ${o.roll}`;
+}
+
 function groupHeading(g) {
     const who = (g.sides || []).map(sd => `${sd.actor} (${sd.action})`).join(" vs ");
     if (g.status === "interrupted") return `${who}: Interrupted`;
     const o = g.outcome;
-    return `${who}: ${o.name} (${o.chance}% tier, roll ${o.roll})`;
+    return `${who}: ${o.name} (${outcomeDetail(o, true)})`;
 }
 
 export function postPassBlock(round, { degraded = false, roundNo = 0 } = {}) {
@@ -105,16 +112,19 @@ export function postPassBlock(round, { degraded = false, roundNo = 0 } = {}) {
     return out.join("\n");
 }
 
-// One chip per group: { title, tier, outcome }.
+// One chip per group: { title, tier, outcome }. Round notes (initiative...)
+// lead as their own chip; group notes (escalation, momentum) follow the tier.
 export function chipRows(round) {
-    return (round?.groups || []).map(g => {
+    const lead = (round?.notes || []).length ? [{ title: "Round", tier: "Turn order", outcome: round.notes.join(" · ") }] : [];
+    return [...lead, ...(round?.groups || []).map(g => {
         const title = g.title || (g.sides || []).map(sd => sd.actor).join(" vs ");
-        const tier = g.status === "interrupted" ? "Interrupted" : `${g.outcome.name} (${g.outcome.chance}%, roll ${g.outcome.roll})`;
+        const notes = (g.notes || []).length ? ` · ${g.notes.join(" · ")}` : "";
+        const tier = g.status === "interrupted" ? "Interrupted" : `${g.outcome.name} (${outcomeDetail(g.outcome, false)})${notes}`;
         const text = (g.lines || []).map(l => l.text).join(" ");
         const fx = (g.records || []).filter(r => r.status === "applied").map(effectShort);
         for (const f of g.fell || []) {
             if (!(g.records || []).some(r => r.kind === "state" && r.status === "applied" && r.target === f.name)) fx.push(`${f.name} ${f.word}`);
         }
         return { title, tier, outcome: fx.length ? `${text} [${fx.join(" · ")}]` : text };
-    });
+    })];
 }

@@ -75,15 +75,27 @@ function resolveGroup(ctx, g, index) {
         const mode = outStateOf(ctx, sd.actor);
         if (mode) invalid.push({ actor: sd.actor, action: sd.action, mode });
     }
-    const res = { index, title: g.title, sides, status: "resolved", outcome: null, invalid, records: [], dropped: [], fell: [], lines: [] };
+    const res = { index, title: g.title, sides, status: "resolved", outcome: null, invalid, records: [], dropped: [], fell: [], lines: [], notes: [] };
     if (!sides.length || invalid.length === sides.length) {
         res.status = "interrupted";
         res.lines = groupLines(ctx, g, res);
         return res;
     }
-    callMutators(ctx, "beforeRoll", g);
-    res.outcome = ctx.dice.resolve(ctx, g);
-    callMutators(ctx, "afterRoll", g, res.outcome);
+    // Per-group roll adjustments: mutators add a bonus / advantage before the
+    // roll and may ask for ONE reroll after it (momentum). Notes go to the
+    // results message only.
+    const roll = { bonus: 0, adv: 0, notes: res.notes, reroll: false, rerolled: false };
+    callMutators(ctx, "beforeRoll", g, roll);
+    res.outcome = ctx.dice.resolve(ctx, g, roll);
+    callMutators(ctx, "afterRoll", g, res.outcome, roll);
+    if (roll.reroll && !roll.rerolled) {
+        roll.reroll = false;
+        roll.rerolled = true;
+        const first = res.outcome;
+        res.outcome = ctx.dice.resolve(ctx, g, roll);
+        res.outcome.rerolledFrom = { name: first.name, key: first.key, detail: first.detail || "" };
+        callMutators(ctx, "afterRoll", g, res.outcome, roll);
+    }
     let effects = ctx.consequence.effects(ctx, g, res.outcome) || [];
     for (const e of effects) if (!e.by) e.by = sides[0].actor;
     callMutators(ctx, "beforeApply", g, res.outcome, effects);
@@ -107,9 +119,11 @@ function resolveGroup(ctx, g, index) {
 }
 
 // Resolves a whole round. Returns { order, groups (resolution order),
-// standing, over, out }.
+// standing, over, out, notes }. `notes` = round-level mechanics for the
+// results message (initiative rolls...), never the story.
 export function runRound(ctx, groups) {
     ctx.out = ctx.out || {};
+    ctx.notes = ctx.notes || [];
     const list = Array.isArray(groups) ? groups : [];
     const order = ctx.turn.queue(ctx, list);
     const results = order.map(i => resolveGroup(ctx, list[i], i));
@@ -120,5 +134,6 @@ export function runRound(ctx, groups) {
         standing: ctx.shape.standing(ctx),
         over: !!ctx.shape.isOver(ctx),
         out: ctx.out,
+        notes: ctx.notes,
     };
 }

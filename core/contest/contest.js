@@ -32,16 +32,17 @@ import { runRound } from "./engine.js";
 import { resolveRuleset } from "./registry.js";
 import { storyBlock, postPassBlock, chipRows } from "./ledger.js";
 import { adjudicateRound } from "./oracle.js";
+import { brainActions } from "./brains.js";
 
 // ---------- configuration ----------
 
-// The chat's rulesets (chat configuration, outside `data`). The global
-// Legacy toggle forces the pre-rework pipeline everywhere during the
-// transition.
+// The chat's rulesets (chat configuration, outside `data`); a chat without
+// one follows the drawer's global preset. The global Legacy toggle forces the
+// pre-rework pipeline everywhere during the transition.
 export function contestRuleset(kind = "clash") {
     const s = gmSettings();
     const rulesets = getContext()?.chatMetadata?.game_manager?.features?.contest || null;
-    const rs = resolveRuleset(rulesets, kind);
+    const rs = resolveRuleset(rulesets, kind, s.contest_preset);
     if (s.combat_legacy) return { ...rs, legacy: true, preset: "legacy" };
     return rs;
 }
@@ -58,13 +59,21 @@ function contestState() {
         party: Array.isArray(c.party) ? c.party.map(String) : [],
         out: c.out && typeof c.out === "object" ? c.out : {},
         tracks: c.tracks && typeof c.tracks === "object" ? c.tracks : {},
+        // turn.initiative: name key -> initiative total, rolled once.
+        initiative: c.initiative && typeof c.initiative === "object" ? c.initiative : {},
+        // Mutator meters (momentum...).
+        meters: c.meters && typeof c.meters === "object" ? c.meters : {},
     };
     return d.contest;
 }
 
+function emptyContest(kind, active, round = 0) {
+    return { active, kind, round, party: [], out: {}, tracks: {}, initiative: {}, meters: {} };
+}
+
 function startContest(kind) {
     const d = stateManager.getData();
-    d.contest = { active: true, kind, round: 0, party: [], out: {}, tracks: {} };
+    d.contest = emptyContest(kind, true);
     return d.contest;
 }
 
@@ -145,19 +154,39 @@ export function buildPartyActions(action, plan, contest) {
     return out;
 }
 
-// Enemy side. An EMPTY array is a deliberate no-op round; only null (the
-// call failed) degrades to plain attacks.
-function buildEnemyActions(raw) {
+// Stakes left, 0..1, for the scripted brains; null when the sheet has none.
+function stakesRatio(stakesName) {
+    return (sheet) => {
+        const entry = matchName(sheet?.resources || [], stakesName);
+        if (!entry) return null;
+        const max = resolveResourceMax(sheet, entry);
+        const min = Number.isFinite(+entry.min) ? +entry.min : 0;
+        if (!Number.isFinite(max) || max <= min) return null;
+        return Math.max(0, Math.min(1, ((Number(entry.value) || 0) - min) / (max - min)));
+    };
+}
+
+// Scripted enemy actions (core/contest/brains.js): 0 calls.
+function brainEnemyRaw(contest, stakes, max) {
     const d = stateManager.getData();
-    if (Array.isArray(raw)) {
-        return raw.map(a => {
-            const title = cleanText(a.title);
-            const text = cleanText(a.text);
-            return { who: "enemy", actor: a.enemy, speed: a.speed || speedHintOf(a.enemy), action: [title, text !== title ? text : ""].filter(Boolean).join(" — ").slice(0, 140) };
-        });
+    const enemies = (d.enemies || []).filter(e => !e.state);
+    const party = (d.characters || []).filter(c => !c.state && !contest.out[contestKey(c.name)]);
+    return brainActions(enemies, party, stakesRatio(stakes), max);
+}
+
+// Enemy side. An EMPTY array is a deliberate no-op round; only null (the
+// call failed) degrades to the scripted brains.
+function buildEnemyActions(raw, fallback) {
+    let list = raw;
+    if (!Array.isArray(list)) {
+        logDebug("contest: opposition unavailable — scripted brains");
+        list = fallback();
     }
-    logDebug("contest: opposition unavailable — plain attacks");
-    return (d.enemies || []).map(e => ({ who: "enemy", actor: e.name, speed: speedHintOf(e.name), action: "Attack" }));
+    return list.map(a => {
+        const title = cleanText(a.title);
+        const text = cleanText(a.text);
+        return { who: "enemy", actor: a.enemy, speed: a.speed || speedHintOf(a.enemy), action: [title, text !== title ? text : ""].filter(Boolean).join(" — ").slice(0, 140) || "Attack" };
+    });
 }
 
 // Degraded path (oracle failed): single-sided generic tiers, NO effects —
@@ -247,27 +276,36 @@ export async function runContestTurn(action, plan, userMsgId) {
         bubble.showActions(partyActions);
 
         // Blind by default; a reactive pre-pass judgment hands the enemies the
-        // player's move so they answer it.
+        // player's move so they answer it. opts.opposition = "brains" skips
+        // the call for scripted behaviors (3.7).
+        const stakes = String(ruleset.opts?.stakes || "Health");
+        const maxActions = Math.max(1, Number(s.combat_max_enemy_actions) || 6);
         const reactive = plan?.combat?.reactive === true;
-        const enemyRaw = await runEnemyAI({
-            maxActions: Math.max(1, Number(s.combat_max_enemy_actions) || 6),
+        const enemyRaw = ruleset.opts?.opposition === "brains" ? brainEnemyRaw(contest, stakes, maxActions) : await runEnemyAI({
+            maxActions,
             ...(reactive ? { playerAction: action } : {}),
         });
-        const enemyActions = buildEnemyActions(enemyRaw);
+        const enemyActions = buildEnemyActions(enemyRaw, () => brainEnemyRaw(contest, stakes, maxActions));
         bubble.addEnemyActions(enemyActions);
         bubble.update("Adjudicating...");
 
-        const stakes = String(ruleset.opts?.stakes || "Health");
+        // Dice modules that roll from oracle inputs (d20...) turn them into
+        // display odds, so the bubble's bars mean something.
+        const annotate = (gs) => {
+            if (typeof ruleset.dice?.annotate === "function") for (const g of gs || []) ruleset.dice.annotate(g, ruleset.opts);
+            return gs;
+        };
         let groups = await adjudicateRound({
             playerAction: action,
             partyActions,
             enemyActions,
             stakes,
-            onStream: (partial) => bubble.syncGroups(partial),
+            dice: ruleset.dice,
+            onStream: (partial) => bubble.syncGroups(annotate(partial)),
         });
         const degraded = !groups;
         if (!groups) groups = fallbackGroups(partyActions, enemyActions);
-        bubble.syncGroups(groups);
+        bubble.syncGroups(annotate(groups));
 
         // COMMIT — baseline first, on the USER message (see header).
         captureSnapshot(userMsgId);
@@ -304,7 +342,7 @@ export async function runContestTurn(action, plan, userMsgId) {
             if (p.side === "party" && !contest.party.some(n => contestKey(n) === contestKey(p.name))) contest.party.push(p.name);
         }
         if (round.over) {
-            stateManager.getData().contest = { active: false, kind: contest.kind, round: roundNo, party: [], out: {}, tracks: {} };
+            stateManager.getData().contest = emptyContest(contest.kind, false, roundNo);
         }
         stateManager.emitChange("contest_round");
 
@@ -319,8 +357,9 @@ export async function runContestTurn(action, plan, userMsgId) {
             round: roundNo,
             degraded,
             over: round.over,
-            groups: groups.map(g => ({ title: g.title, sides: g.sides, tiers: g.tiers.map(t => ({ name: t.name, chance: t.chance, outcome: t.outcome, effects: t.effects })) })),
-            results: round.groups.map(g => ({ index: g.index, status: g.status, outcome: g.outcome, records: g.records, fell: g.fell, lines: g.lines })),
+            groups: groups.map(g => ({ title: g.title, sides: g.sides, roll: g.roll || null, tiers: g.tiers.map(t => ({ name: t.name, chance: t.chance, outcome: t.outcome, effects: t.effects })) })),
+            results: round.groups.map(g => ({ index: g.index, status: g.status, outcome: g.outcome, records: g.records, fell: g.fell, lines: g.lines, notes: g.notes })),
+            notes: round.notes,
             standing: round.standing,
             story,
             post,

@@ -161,7 +161,9 @@ class CombatBubble {
         if (!this.el || !Array.isArray(groups)) return;
         for (let i = 0; i < groups.length; i++) {
             const g = groups[i];
-            const sig = `${g.title}|${g.tiers.length}`;
+            // Chances are part of the signature: d20 groups recompute their
+            // display odds as more tiers stream in.
+            const sig = `${g.title}|${g.tiers.map(t => Math.round(Number(t.chance) || 0)).join(",")}`;
             let entry = this._groupEls[i];
             if (!entry) {
                 const card = $("<div>").addClass("gm_combat_group");
@@ -183,8 +185,16 @@ class CombatBubble {
             // rebuilding rows would flicker and stale the slot-machine sweep.
             this.stopGroupRoll(i);
             for (const tier of g.tiers) {
-                if (entry.tierEls.has(tier.name)) continue;
                 const pct = Math.max(0, Math.min(100, Math.round(Number(tier.chance) || 0)));
+                const known = entry.tierEls.get(tier.name);
+                if (known) {
+                    if (known.pct !== pct) {
+                        known.pct = pct;
+                        known.bar.css("width", pct + "%");
+                        known.row.find(".gm_dice_tier_chance").text(`${pct}%`);
+                    }
+                    continue;
+                }
                 const row = $("<div>").addClass("gm_dice_tier gm_tier_in");
                 const bar = $("<div>").addClass("gm_dice_tier_bar").css("width", "0%");
                 row.append(

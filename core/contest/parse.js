@@ -15,6 +15,26 @@ function contestAttrs(raw) {
     return out;
 }
 
+// A group's <roll> (dice modules that take mod/DC inputs, 3.5): numbers
+// clamped to sane d20-scale bounds, dc null when missing or unreadable.
+export function contestRoll(a, text) {
+    const num = v => Number(String(v ?? "").replace(/\s+/g, ""));
+    const mod = Math.max(-30, Math.min(30, Math.trunc(num(a.mod)) || 0));
+    const dcRaw = num(a.dc);
+    const dc = String(a.dc ?? "").trim() !== "" && Number.isFinite(dcRaw) ? Math.max(1, Math.min(40, Math.trunc(dcRaw))) : null;
+    const advRaw = String(a.adv ?? a.advantage ?? "").trim();
+    const adv = /^(true|yes|adv|advantage|1)$/i.test(advRaw) ? 1 : /^(dis|disadvantage|-1)$/i.test(advRaw) ? -1 : 0;
+    const impossible = /^(true|yes|1)$/i.test(String(a.impossible ?? "").trim()) || /impossible/i.test(String(a.dc ?? ""));
+    return {
+        actor: String(a.actor || "").trim(),
+        mod,
+        dc,
+        adv,
+        impossible,
+        reason: String(text ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 200),
+    };
+}
+
 // Oracle reply (possibly partial, while streaming) -> groups. An unterminated
 // <clash> is included with the tiers closed so far, so the bubble renders
 // groups live; incomplete tiers are skipped.
@@ -51,7 +71,9 @@ export function parseOracleGroups(text) {
                 effects: parseEffects(t[2]),
             });
         }
-        groups.push({ title: String(attrs.title || "Clash").slice(0, 100), sides, tiers });
+        const rollM = /<roll\b([^>]*?)(?:\/>|>([\s\S]*?)<\/roll>)/i.exec(body);
+        const roll = rollM ? contestRoll(contestAttrs(rollM[1]), rollM[2]) : null;
+        groups.push({ title: String(attrs.title || "Clash").slice(0, 100), sides, tiers, roll });
     }
     return groups;
 }
@@ -63,6 +85,7 @@ export function sanitizeOracleGroups(groups) {
             title: String(g?.title || "Clash").slice(0, 100),
             sides: (g?.sides || []).filter(sd => sd?.actor),
             tiers: (g?.tiers || []).filter(t => t?.name && t.outcome),
+            roll: g?.roll || null,
         }))
         .filter(g => g.sides.length && g.tiers.length >= 2);
 }

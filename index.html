@@ -230,6 +230,12 @@
                             <input id="gm_setting_combat_legacy" type="checkbox" />
                             <span>Legacy combat</span>
                         </label>
+                    </div>
+                    <div class="gm_field gm_field_inline gm_mode_row">
+                        <label for="gm_setting_contest_preset" title="How combat rounds are rolled when Legacy combat is off. Universal: the oracle sets each group's odds, one weighted pick. Heroic: d20 + modifier vs DC (the oracle reads the sheets for the numbers), initiative rolled once, escalation (+1 to party rolls per round), crit/fumble statuses and a momentum meter that buys a reroll.">Combat rules</label>
+                        <select id="gm_setting_contest_preset" class="text_pole"></select>
+                    </div>
+                    <div class="gm_settings_grid">
                         <label class="checkbox_label" for="gm_setting_deterministic_clashes" title="Legacy combat only. NOT RECOMMENDED: the clash resolver commits sheet-derived damage expressions, resource costs and status effects into the tier outcome lines aiming to help the post-pass agent. This is overkill and may actually make things worse.">
                             <input id="gm_setting_deterministic_clashes" type="checkbox" />
                             <span>Deterministic Clashes</span>
