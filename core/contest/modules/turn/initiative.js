@@ -40,5 +40,6 @@ export function initiativeQueue(ctx, groups) {
 export const turnInitiative = {
     id: "turn.initiative",
     label: "Initiative (fixed order)",
+    hint: "Everyone rolls d20 + speed once when the fight starts and keeps that order.",
     queue: initiativeQueue,
 };

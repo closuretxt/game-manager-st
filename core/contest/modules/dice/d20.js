@@ -148,6 +148,10 @@ function d20OracleExample(stakes) {
 export const diceD20 = {
     id: "dice.d20",
     label: "d20 vs DC",
+    hint: "The oracle sets a modifier and DC from the sheets; code rolls d20.",
+    icon: "fa-dice-d20",
+    sides: 20,
+    options: [{ key: "graze", label: "Partial success margin", type: "number", min: 0, max: 5, default: 2 }],
     resolve: d20Resolve,
     annotate: d20Annotate,
     oracle: { rules: D20_ORACLE_RULES, tierRule: D20_ORACLE_TIER_RULE, example: d20OracleExample },

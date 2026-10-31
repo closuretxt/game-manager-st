@@ -13,5 +13,6 @@ export function simultaneousQueue(ctx, groups) {
 export const turnSimultaneous = {
     id: "turn.simultaneous",
     label: "Simultaneous",
+    hint: "Everyone declares; actions resolve fastest first, and a fallen actor's action is interrupted.",
     queue: simultaneousQueue,
 };

@@ -9,5 +9,6 @@ export function oracleEffects(ctx, group, outcome) {
 export const consOracle = {
     id: "cons.oracle",
     label: "As adjudicated",
+    hint: "Effects land exactly as the oracle wrote them for the rolled tier.",
     effects: oracleEffects,
 };

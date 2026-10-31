@@ -209,6 +209,22 @@ export function resetChatFeatures() {
     saveChat();
 }
 
+// Contest rulesets (core/contest/registry.js): chat configuration next to the
+// mode, so rollbacks never revert a rules change. null = none set.
+export function getContestRulesets() {
+    const r = chatBucket()?.contest;
+    return r && typeof r === "object" ? r : null;
+}
+
+export function setContestRulesets(rulesets) {
+    const b = chatBucket(true);
+    if (!b) return false;
+    if (rulesets && typeof rulesets === "object" && Object.keys(rulesets).length) b.contest = rulesets;
+    else delete b.contest;
+    saveChat();
+    return true;
+}
+
 // Container gate shared by the UI, the snapshot renderers and the parser.
 // Containers no tab toggle covers (resources, attributes, traits) are always on.
 export function containerEnabled(container) {

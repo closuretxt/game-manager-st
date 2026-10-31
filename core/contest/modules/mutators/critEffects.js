@@ -58,5 +58,6 @@ export function critBeforeApply(ctx, group, outcome, effects) {
 export const mutCritEffects = {
     id: "mut.crit_effects",
     label: "Crit effects",
+    hint: "Critical hits stagger the target and fumbles the attacker, for one turn.",
     beforeApply: critBeforeApply,
 };

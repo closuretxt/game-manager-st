@@ -210,20 +210,52 @@ class CombatBubble {
         this._position();
     }
 
+    // Round-level notes (initiative order...) as one line above the groups.
+    setNotes(notes) {
+        if (!this.el) return;
+        this.el.find(".gm_combat_notes").remove();
+        if (!Array.isArray(notes) || !notes.length) return;
+        this.groupsEl.before($("<div>").addClass("gm_combat_notes").text(notes.join(" · ")));
+        this._position();
+    }
+
+    // The group's roll line under its tiers: the dice module's icon + a
+    // number spinning through the die's faces while it rolls.
+    _rollLine(entry, icon) {
+        if (!entry.rollLine) {
+            entry.rollIcon = $("<i>").addClass("fa-solid gm_combat_roll_icon");
+            entry.rollFace = $("<span>").addClass("gm_combat_roll_face");
+            entry.rollText = $("<span>").addClass("gm_combat_roll_text");
+            entry.rollLine = $("<div>").addClass("gm_combat_roll").append(entry.rollIcon, entry.rollFace, entry.rollText);
+            entry.fxEl = $("<div>").addClass("gm_combat_fx");
+            entry.card.append(entry.rollLine, entry.fxEl);
+        }
+        entry.rollIcon.attr("class", `fa-solid gm_combat_roll_icon ${icon || "fa-dice"}`);
+        return entry.rollLine;
+    }
+
     // Slot-machine phase for one group: a highlight sweeps the tier rows
-    // until resolveGroup lands on the winner.
-    startGroupRoll(index) {
+    // until resolveGroup lands on the winner. `die.sides` (20 for d20) also
+    // spins a face number on the roll line.
+    startGroupRoll(index, die = null) {
         const entry = this._groupEls[index];
         if (!entry || !entry.tierEls.size) return;
         this.stopGroupRoll(index);
         // First spin: swap the assessment fist for cycling dice faces.
         if (!this._faceTimer) this._startDiceCycle();
+        const sides = Math.trunc(Number(die?.sides) || 0);
+        if (sides > 1) {
+            this._rollLine(entry, die.icon);
+            entry.rollLine.addClass("gm_combat_roll_spinning");
+            entry.rollText.text("");
+        }
         const names = [...entry.tierEls.keys()];
         let i = 0;
         const timer = setInterval(() => {
             for (const [name, info] of entry.tierEls) {
                 info.row.toggleClass("gm_dice_tier_rolling", name === names[i % names.length]);
             }
+            if (sides > 1) entry.rollFace.text(String(1 + Math.floor(Math.random() * sides)));
             i++;
         }, 130);
         this._rollTimers.set(index, timer);
@@ -241,6 +273,9 @@ class CombatBubble {
     }
 
     // Stops the sweep and highlights the winning tier of one group with a pop.
+    // winner: { name, face?, detail?, effects?, icon? } — detail is the dice
+    // module's roll ("d20 14 +5 = 19 vs DC 15"), effects the committed
+    // numbers ("Goblin A Health -9").
     resolveGroup(index, winner) {
         this.stopGroupRoll(index);
         const entry = this._groupEls[index];
@@ -249,6 +284,14 @@ class CombatBubble {
             const isWinner = name === winner.name;
             info.row.toggleClass("gm_dice_tier_win", isWinner);
             if (isWinner) info.bar.addClass("gm_dice_tier_bar_win");
+        }
+        if (winner.detail || entry.rollLine) {
+            this._rollLine(entry, winner.icon);
+            entry.rollLine.removeClass("gm_combat_roll_spinning");
+            entry.rollFace.text(Number.isFinite(winner.face) ? String(winner.face) : "").toggle(Number.isFinite(winner.face));
+            entry.rollText.text(winner.detail || "");
+            entry.fxEl.empty();
+            for (const fx of winner.effects || []) entry.fxEl.append($("<span>").addClass("gm_combat_fx_chip").text(fx));
         }
         entry.card.addClass("gm_combat_group_resolved");
         this._position();
@@ -343,7 +386,7 @@ export function attachContestToMessage(mesId, rows) {
         if (mesEl.querySelector(".gm_roll_file")) return; // already rendered
         for (const r of rows || []) {
             if (!r?.title) continue;
-            appendResultChip(mesEl, { icon: "fa-hand-fist", title: r.title, tier: r.tier, outcome: r.outcome });
+            appendResultChip(mesEl, { icon: r.icon || "fa-hand-fist", title: r.title, tier: r.tier, outcome: r.outcome });
         }
     });
 }
@@ -357,7 +400,7 @@ registerAttachmentRestorer((mesEl, msg) => {
     if (Array.isArray(msg?.gm_contest?.chips) && msg.gm_contest.chips.length) {
         if (!rollAttachment() || mesEl.querySelector(".gm_roll_file")) return;
         for (const r of msg.gm_contest.chips) {
-            if (r?.title) appendResultChip(mesEl, { icon: "fa-hand-fist", title: r.title, tier: r.tier, outcome: r.outcome });
+            if (r?.title) appendResultChip(mesEl, { icon: r.icon || "fa-hand-fist", title: r.title, tier: r.tier, outcome: r.outcome });
         }
         return;
     }

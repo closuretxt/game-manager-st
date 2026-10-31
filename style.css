@@ -3983,3 +3983,169 @@ body > #gm_spawn_chip {
     opacity: var(--gm-muted);
     font-style: italic;
 }
+
+/* ---------- Contest (core/contest/): bubble roll lines, HUD, builder ---------- */
+.gm_combat_notes {
+    margin-top: 8px;
+    font-size: 11px;
+    opacity: 0.8;
+    font-variant-numeric: tabular-nums;
+}
+
+.gm_combat_roll {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+.gm_combat_roll_icon {
+    color: var(--gm-accent);
+}
+
+.gm_combat_roll_face {
+    min-width: 1.6em;
+    text-align: center;
+    font-weight: 700;
+    border-radius: 4px;
+    padding: 0 4px;
+    background: color-mix(in srgb, var(--gm-accent) 20%, transparent);
+}
+
+.gm_combat_roll_spinning .gm_combat_roll_face {
+    opacity: 0.7;
+}
+
+.gm_combat_roll_text {
+    opacity: 0.85;
+}
+
+.gm_combat_fx {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.gm_combat_fx:empty {
+    display: none;
+}
+
+.gm_combat_fx_chip {
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    border: 1px solid var(--gm-line);
+    font-variant-numeric: tabular-nums;
+}
+
+.gm_contest_hud {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 8px;
+    border: 1px solid color-mix(in srgb, var(--gm-accent) 45%, transparent);
+    border-radius: var(--gm-radius);
+    background: color-mix(in srgb, var(--gm-accent) 6%, transparent);
+}
+
+.gm_contest_head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.gm_contest_head b {
+    flex: 1 1 auto;
+}
+
+.gm_contest_order {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+}
+
+.gm_contest_bars {
+    display: grid;
+    grid-template-columns: minmax(70px, max-content) 1fr max-content;
+    gap: 4px 8px;
+    align-items: center;
+    font-size: 12px;
+}
+
+.gm_contest_bar {
+    height: 6px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--SmartThemeBodyColor, #ccc) 15%, transparent);
+    overflow: hidden;
+}
+
+.gm_contest_bar_fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--gm-ok, #4caf7d);
+    transition: width 0.3s ease;
+}
+
+.gm_contest_enemy .gm_contest_bar_fill {
+    background: #e5484d;
+}
+
+.gm_contest_out {
+    opacity: var(--gm-muted);
+    text-decoration: line-through;
+}
+
+.gm_contest_num {
+    font-variant-numeric: tabular-nums;
+    opacity: 0.8;
+}
+
+.gm_contest_log_round {
+    font-size: 12px;
+    border-top: 1px solid var(--gm-line);
+    padding-top: 4px;
+}
+
+.gm_contest_log_row {
+    margin: 2px 0 0 8px;
+}
+
+.gm_contest_log_row .gm_contest_num {
+    margin-left: 4px;
+}
+
+.gm_ruleset_tabs {
+    display: flex;
+    gap: 4px;
+    margin: 4px 0 6px;
+}
+
+.gm_ruleset_opts {
+    margin: 2px 0 6px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.gm_ruleset_opts input[type="number"] {
+    width: 70px;
+}
+
+.gm_hotbar_pill .gm_quick_badge {
+    margin-left: 4px;
+    padding: 0 5px;
+    border-radius: 999px;
+    font-size: 10px;
+    background: var(--gm-accent);
+    color: #000;
+}
+
+.gm_hotbar_row.gm_quick_set .gm_hotbar_name {
+    color: var(--gm-accent);
+    font-weight: 700;
+}

@@ -27,8 +27,18 @@ export function escalationBeforeRoll(ctx, group, roll) {
     }
 }
 
+// Contest HUD meter: the bonus the NEXT round's party rolls get.
+export function escalationHud(ctx) {
+    const cap = Number(ctx?.opts?.["mut.escalation"]?.max);
+    const max = Number.isFinite(cap) && cap >= 0 ? Math.trunc(cap) : 6;
+    return { label: "Escalation", value: escalationBonus(ctx), max, text: `+${escalationBonus(ctx)}` };
+}
+
 export const mutEscalation = {
     id: "mut.escalation",
     label: "Escalation",
+    hint: "+1 to party rolls per round fought (d20 rules only).",
+    options: [{ key: "max", label: "Max bonus", type: "number", min: 0, max: 20, default: 6 }],
     beforeRoll: escalationBeforeRoll,
+    hud: escalationHud,
 };

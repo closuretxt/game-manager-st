@@ -36,6 +36,8 @@ import { popoverMenu } from "./popoverMenu.js";
 import { renderBondSection, openBondsDialog, bondsVisible } from "./bondsView.js";
 import { renderTimeTab } from "./timeTab.js";
 import { chronoHasData } from "../core/chrono.js";
+import { contestHud, endContest } from "../core/contest/contest.js";
+import { CONTEST_PRESETS } from "../core/contest/registry.js";
 
 // `toggle` = the per-chat tab toggle (core/features.js) that hides the tab.
 // `hasData` = the tab is hidden outside edit mode while it has nothing to show.
@@ -812,7 +814,70 @@ class MainPanel {
         return parts.join(", ") || "No details yet";
     }
 
+    // ---------- Enemies tab: contest HUD (core/contest/hud.js) ----------
+    // While a contest is active it leads the tab: round + rules, turn order,
+    // condition bars, mutator meters, the round log and the End button.
+    // Numbers are fine here: the HUD is the player's screen, never a prompt.
+    _renderContestHud(content) {
+        if (!gmSettings().feature_combat) return;
+        const hud = contestHud();
+        if (!hud || hud.legacy) return;
+        const box = $("<div>").addClass("gm_contest_hud");
+        const label = CONTEST_PRESETS[hud.kind]?.[hud.preset]?.label || hud.preset;
+        const end = $("<div>").addClass("menu_button").attr("title", "End the contest (the enemies stay in the scene)")
+            .append($("<i>").addClass("fa-solid fa-flag-checkered"), $("<span>").text(" End"));
+        end.on("click", () => {
+            if (window.confirm("End this contest? The enemies stay in the scene.")) endContest();
+        });
+        box.append($("<div>").addClass("gm_contest_head").append(
+            $("<i>").addClass("fa-solid fa-hand-fist"),
+            $("<b>").text(`${hud.shape?.label || "Contest"} — round ${hud.round}`),
+            $("<span>").addClass("gm_section_hint").text(label),
+            end,
+        ));
+
+        if (hud.order.length) {
+            const order = $("<div>").addClass("gm_contest_order")
+                .append($("<span>").addClass("gm_section_hint").text("Turn order"));
+            for (const o of hud.order) order.append($("<span>").addClass("gm_party_chip").text(`${o.name} ${o.value}`));
+            box.append(order);
+        }
+
+        const bars = $("<div>").addClass("gm_contest_bars");
+        for (const f of hud.fighters) {
+            const cls = f.side === "enemy" ? "gm_contest_enemy" : "gm_contest_party";
+            const name = $("<span>").addClass(cls).text(f.name).toggleClass("gm_contest_out", !!f.out);
+            const bar = $("<div>").addClass(`gm_contest_bar ${cls}`);
+            bar.append($("<div>").addClass("gm_contest_bar_fill").css("width", `${Math.round((f.ratio ?? 1) * 100)}%`));
+            const num = f.out ? f.out : f.value !== null ? `${f.value}/${f.max}` : "—";
+            bars.append(name, bar, $("<span>").addClass("gm_contest_num").text(num));
+        }
+        if (hud.fighters.length) box.append(bars);
+
+        if (hud.meters.length) {
+            const meters = $("<div>").addClass("gm_contest_order");
+            for (const mt of hud.meters) meters.append($("<span>").addClass("gm_party_chip").attr("title", mt.label).text(`${mt.label} ${mt.text}`));
+            box.append(meters);
+        }
+
+        // Newest round first, the older ones collapsed.
+        [...hud.log].reverse().forEach((entry, i) => {
+            const round = $("<details>").addClass("gm_contest_log_round").prop("open", i === 0);
+            round.append($("<summary>").text(`Round ${entry.round}`));
+            for (const r of entry.rows) {
+                round.append($("<div>").addClass("gm_contest_log_row").append(
+                    $("<b>").text(r.title),
+                    $("<span>").addClass("gm_contest_num").text(r.tier),
+                    $("<div>").addClass("gm_section_hint").text(r.outcome),
+                ));
+            }
+            box.append(round);
+        });
+        content.append(box);
+    }
+
     _renderEnemyList(content, edit) {
+        this._renderContestHud(content);
         const enemies = stateManager.getEnemies();
         const wrap = $("<div>").addClass("gm_list");
         const header = $("<div>").addClass("gm_section_header").append(

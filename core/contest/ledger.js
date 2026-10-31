@@ -76,7 +76,8 @@ export function effectShort(r) {
 
 // How the outcome was rolled: the dice module's own words (d20 14 +5 = 19 vs
 // DC 15) or the oracle's tier odds.
-function outcomeDetail(o, long) {
+export function outcomeDetail(o, long) {
+    if (!o) return "";
     if (o.detail) return o.detail;
     return long ? `${o.chance}% tier, roll ${o.roll}` : `${o.chance}%, roll ${o.roll}`;
 }
@@ -112,19 +113,28 @@ export function postPassBlock(round, { degraded = false, roundNo = 0 } = {}) {
     return out.join("\n");
 }
 
-// One chip per group: { title, tier, outcome }. Round notes (initiative...)
-// lead as their own chip; group notes (escalation, momentum) follow the tier.
-export function chipRows(round) {
+// A group's applied effects in short form, plus falls no state effect named.
+export function groupEffectShorts(g) {
+    const fx = (g?.records || []).filter(r => r.status === "applied").map(effectShort);
+    for (const f of g?.fell || []) {
+        if (!(g.records || []).some(r => r.kind === "state" && r.status === "applied" && r.target === f.name)) fx.push(`${f.name} ${f.word}`);
+    }
+    return fx;
+}
+
+// One chip per group: { title, tier, outcome, icon? }. Round notes
+// (initiative...) lead as their own chip; group notes (escalation, momentum)
+// follow the tier. `icon` = the dice module's chip icon.
+export function chipRows(round, icon = "") {
     const lead = (round?.notes || []).length ? [{ title: "Round", tier: "Turn order", outcome: round.notes.join(" · ") }] : [];
     return [...lead, ...(round?.groups || []).map(g => {
         const title = g.title || (g.sides || []).map(sd => sd.actor).join(" vs ");
         const notes = (g.notes || []).length ? ` · ${g.notes.join(" · ")}` : "";
         const tier = g.status === "interrupted" ? "Interrupted" : `${g.outcome.name} (${outcomeDetail(g.outcome, false)})${notes}`;
         const text = (g.lines || []).map(l => l.text).join(" ");
-        const fx = (g.records || []).filter(r => r.status === "applied").map(effectShort);
-        for (const f of g.fell || []) {
-            if (!(g.records || []).some(r => r.kind === "state" && r.status === "applied" && r.target === f.name)) fx.push(`${f.name} ${f.word}`);
-        }
-        return { title, tier, outcome: fx.length ? `${text} [${fx.join(" · ")}]` : text };
+        const fx = groupEffectShorts(g);
+        const row = { title, tier, outcome: fx.length ? `${text} [${fx.join(" · ")}]` : text };
+        if (icon && g.status !== "interrupted") row.icon = icon;
+        return row;
     })];
 }

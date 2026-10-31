@@ -76,9 +76,20 @@ export function clashResultLine(actor, action, key, versus) {
     return `${actor}'s ${action || "action"}${versus ? ` against ${versus}` : ""} ${verb}.`;
 }
 
+// The shape's basic actions (3.5): always available, the hotbar's quick
+// actions. `target` = which side the action picks a target from.
+const CLASH_BASIC_ACTIONS = [
+    { id: "strike", label: "Strike", icon: "fa-solid fa-hand-fist", target: "enemy" },
+    { id: "defend", label: "Defend", icon: "fa-solid fa-shield-halved", target: "party" },
+    { id: "move", label: "Move", icon: "fa-solid fa-person-running" },
+    { id: "item", label: "Use Item", icon: "fa-solid fa-flask" },
+    { id: "flee", label: "Flee", icon: "fa-solid fa-person-walking-arrow-right" },
+];
+
 export const shapeClash = {
     id: "shape.clash",
     label: "Clash",
+    basicActions: CLASH_BASIC_ACTIONS,
     storyTag: "combat_round",
     lineTag: "clash",
     rule: "These results are final: narrate them, and add no hits, injuries, deaths or escapes beyond them.",

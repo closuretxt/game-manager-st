@@ -36,7 +36,8 @@ import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { rollDice, requeueRollResult } from "./diceRoller.js";
 import { runCombatTurn, requeueCombatRound } from "./combatEngine.js";
-import { runContestTurn, replayContestRound, contestRuleset } from "./contest/contest.js";
+import { runContestTurn, replayContestRound, contestRuleset, contestActive } from "./contest/contest.js";
+import { takeQuickActions, applyQuickActions } from "./contest/quick.js";
 import { runTransaction } from "./transactions.js";
 import { runPrePass, planFromRaw } from "./prePass.js";
 import { restoreSnapshot } from "./snapshots.js";
@@ -300,6 +301,14 @@ export async function handlePreTurn(type = "normal") {
         plan = await runPrePass(action);
         console.info(`[GM DIAG] pre-pass returned: ${plan ? `roll=${!!plan.roll} tx=${plan.transactions.length} warn=${plan.warnings.length} relevant=${plan.relevant.length} notes=${plan.notes.length} skills=${plan.skills.length} rewrite=${!!plan.rewrite} nothing=${plan.nothing}` : "NULL (fell back to keywords)"}`);
         if (!plan) plan = planFromTriggers(detectTriggers(action));
+        // Hotbar quick actions (core/contest/quick.js): a pending intent
+        // means the player chose a contest action, so the round runs even
+        // when the router judged none. Consumed by this message either way.
+        const quick = takeQuickActions();
+        if (quick.length && s.feature_combat && contestActive() && (stateManager.getData().enemies || []).length) {
+            plan = applyQuickActions(plan, quick);
+            console.info(`[GM DIAG] quick actions: ${quick.length} pending intent(s) — contest round forced`);
+        }
     }
     // Swipes/regenerates never re-run the pre-pass while the stash holds the
     // original turn's results (the previous generation's macro already

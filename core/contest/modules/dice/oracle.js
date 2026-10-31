@@ -65,6 +65,9 @@ function oracleDiceExample(stakes) {
 export const diceOracle = {
     id: "dice.oracle",
     label: "Oracle odds (%)",
+    hint: "The oracle sets each tier's chance from the sheets; code makes the pick.",
+    icon: "fa-dice",
+    sides: 100,
     resolve: oracleResolve,
     oracle: { rules: ORACLE_DICE_RULES, tierRule: ORACLE_DICE_TIER_RULE, example: oracleDiceExample },
 };

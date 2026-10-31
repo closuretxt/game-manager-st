@@ -3,21 +3,31 @@
 // character (the MC first). Each entry expands to show its details; the +
 // button drops its name into the input bar ("Use X to " when empty — for
 // non-MC characters "{Name} uses X to " instead). Enabled from the settings
-// ("Action Hotbar", under Enabled).
+// ("Action Hotbar", under Enabled). While a contest runs, a Fight pill lists
+// the shape's basic actions as quick actions (core/contest/quick.js).
 
 import { extension_settings } from "../../../../extensions.js";
 import { extensionName } from "../core/constants.js";
 import { stateManager } from "../core/stateManager.js";
 import { logDebug } from "../core/debug.js";
-import { containerEnabled } from "../core/features.js";
+import { containerEnabled, gmSettings } from "../core/features.js";
+import { contestActive, contestRuleset } from "../core/contest/contest.js";
+import { quickActions, setQuickAction, clearQuickActions, quickPhrase } from "../core/contest/quick.js";
+import { contestKey } from "../core/contest/effects.js";
+
+// The Fight pill: quick actions while a contest runs (not under Legacy).
+const fightShown = () => !!gmSettings().feature_combat && contestActive()
+    && (stateManager.getData().enemies || []).length > 0 && !contestRuleset("clash").legacy;
 
 // `container` = the tab-toggleable sheet container (core/features.js); a pill
-// whose container is hidden for this chat disappears with it.
+// whose container is hidden for this chat disappears with it. `when` = an
+// extra visibility gate.
 const HOTBAR_TABS = [
     { id: "skills", label: "Skills", icon: "fa-solid fa-bolt", container: "skills" },
     { id: "items", label: "Items", icon: "fa-solid fa-box-open", container: "inventory" },
+    { id: "fight", label: "Fight", icon: "fa-solid fa-hand-fist", when: fightShown },
 ];
-const visibleTabs = () => HOTBAR_TABS.filter(t => containerEnabled(t.container));
+const visibleTabs = () => HOTBAR_TABS.filter(t => (!t.container || containerEnabled(t.container)) && (!t.when || t.when()));
 
 class Hotbar {
     constructor() {
@@ -64,8 +74,11 @@ class Hotbar {
 
         // Re-render on any tracked-state change (skills granted, cooldowns ticked, party swaps).
         // Feature/chat changes may hide pills, so the pill row refreshes too.
+        // Contest start/end shows or hides the Fight pill; a chat switch
+        // forgets unsent quick actions.
         stateManager.onChange((reason) => {
-            if (reason === "features" || reason === "chat_loaded") this.refresh();
+            if (reason === "chat_loaded") clearQuickActions();
+            if (reason === "features" || reason === "chat_loaded" || reason === "contest_round" || reason === "contest_end") this.refresh();
             else if (this._open) this._renderPanel();
         });
 
@@ -94,6 +107,11 @@ class Hotbar {
         this.root.children().each((_, el) => {
             $(el).toggleClass("active", this._open && $(el).attr("data-tab") === this.activeTab);
         });
+        // Pending quick actions show as a count on the Fight pill.
+        const pending = quickActions().length;
+        const fight = this.root.children('[data-tab="fight"]');
+        fight.find(".gm_quick_badge").remove();
+        if (pending) fight.append($("<span>").addClass("gm_quick_badge").text(String(pending)));
         if (this._open) {
             this._renderPanel();
             clearTimeout(this._closeTimer);
@@ -151,6 +169,7 @@ class Hotbar {
         this.panel.empty();
         const tab = HOTBAR_TABS.find(t => t.id === this.activeTab) || HOTBAR_TABS[0];
         this.panel.append($("<div>").addClass("gm_hotbar_head").text(tab.label));
+        if (tab.id === "fight") return this._renderFight();
         const chars = stateManager.getCharacters();
 
         //
@@ -184,6 +203,82 @@ class Hotbar {
             }
             this.panel.append(group.append(body.append(inner)));
         });
+    }
+
+    // Fight panel: the shape's basic actions per party character still in
+    // the fight; targeted actions list one row per target. A click stores
+    // the intent (core/contest/quick.js) — clicking it again clears it.
+    _renderFight() {
+        const shape = contestRuleset("clash").shape;
+        const actions = shape?.basicActions || [];
+        const d = stateManager.getData();
+        const out = d.contest?.out || {};
+        const all = stateManager.getCharacters();
+        const chars = all.filter(c => !c.state && !out[contestKey(c.name)]);
+        const enemies = (d.enemies || []).filter(e => !e.state);
+        const pending = quickActions();
+        if (pending.length) {
+            this.panel.append($("<div>").addClass("gm_hotbar_meta").css({ cursor: "pointer", margin: "0 0 6px" })
+                .attr("title", "Forget the chosen actions")
+                .text(`${pending.length} action(s) ready for your next message — click to clear`)
+                .on("click", () => { clearQuickActions(); this.refresh(); }));
+        }
+        if (!chars.length) {
+            this.panel.append($("<div>").addClass("gm_hotbar_empty").text("Nobody in the party can act."));
+            return;
+        }
+        chars.forEach((char) => {
+            // The MC leads the sheet list (hotbar convention).
+            const isPlayer = char === all[0];
+            const group = $("<div>").addClass("gm_hotbar_group open");
+            group.append($("<div>").addClass("gm_hotbar_group_head")
+                .append(
+                    $("<i>").addClass("fa-solid fa-chevron-down gm_hotbar_chev"),
+                    $("<i>").addClass(isPlayer ? "fa-solid fa-user" : "fa-solid fa-user-group"),
+                    $("<span>").text(char.name || "Unnamed"),
+                )
+                .on("click", () => group.toggleClass("open")));
+            const inner = $("<div>").addClass("gm_hotbar_group_inner");
+            const mine = pending.find(p => p.actor === char.name);
+            for (const a of actions) {
+                const targets = a.target === "enemy" ? enemies.map(e => e.name)
+                    : a.target === "party" ? chars.filter(c => c !== char).map(c => c.name)
+                        : [""];
+                for (const target of targets.length ? targets : [""]) {
+                    const intent = { actor: char.name, action: a.label, target, isPlayer };
+                    const set = !!mine && mine.action === a.label && mine.target === target;
+                    const row = $("<div>").addClass("gm_hotbar_row").toggleClass("gm_quick_set", set)
+                        .attr("title", set ? "Chosen — click to clear" : "Choose this action for the next message")
+                        .append(
+                            $("<i>").addClass(a.icon || "fa-solid fa-hand-fist"),
+                            $("<span>").addClass("gm_hotbar_name").text(target ? `${a.label} ${target}` : a.label),
+                        )
+                        .on("click", () => this._quick(intent, set));
+                    inner.append($("<div>").addClass("gm_hotbar_item").append(row));
+                }
+            }
+            this.panel.append(group.append($("<div>").addClass("gm_hotbar_group_body").append(inner)));
+        });
+    }
+
+    // Stores (or clears) one quick action; the phrase goes into the input
+    // bar only when it is empty, so typed text is never touched.
+    _quick(intent, clear) {
+        if (clear) {
+            const rest = quickActions().filter(p => p.actor !== intent.actor);
+            clearQuickActions();
+            for (const p of rest) setQuickAction(p);
+        } else {
+            setQuickAction(intent);
+            const ta = document.getElementById("send_textarea");
+            if (ta && !String(ta.value ?? "").trim()) {
+                ta.value = quickPhrase(intent);
+                ta.setSelectionRange(ta.value.length, ta.value.length);
+                $("#send_textarea").trigger("input");
+                ta.focus();
+            }
+        }
+        this.refresh();
     }
 
     // One entry row: chevron + name + info chip + insert button. The whole

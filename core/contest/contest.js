@@ -15,7 +15,7 @@
 // so the round's deltas survive; deleting the user message reverts them.
 
 import { getContext } from "../../../../../extensions.js";
-import { gmSettings } from "../features.js";
+import { gmSettings, getContestRulesets } from "../features.js";
 import { logDebug } from "../debug.js";
 import { stateManager, playerNames, playerLabel, matchName } from "../stateManager.js";
 import { resolveResourceMax } from "../resourceScaler.js";
@@ -30,9 +30,10 @@ import { makeRng, newSeed } from "./rng.js";
 import { contestKey } from "./effects.js";
 import { runRound } from "./engine.js";
 import { resolveRuleset } from "./registry.js";
-import { storyBlock, postPassBlock, chipRows } from "./ledger.js";
+import { storyBlock, postPassBlock, chipRows, outcomeDetail, groupEffectShorts } from "./ledger.js";
 import { adjudicateRound } from "./oracle.js";
 import { brainActions } from "./brains.js";
+import { hudFighters, hudTurnOrder, hudMeters, hudPushLog } from "./hud.js";
 
 // ---------- configuration ----------
 
@@ -41,8 +42,7 @@ import { brainActions } from "./brains.js";
 // pre-rework pipeline everywhere during the transition.
 export function contestRuleset(kind = "clash") {
     const s = gmSettings();
-    const rulesets = getContext()?.chatMetadata?.game_manager?.features?.contest || null;
-    const rs = resolveRuleset(rulesets, kind, s.contest_preset);
+    const rs = resolveRuleset(getContestRulesets(), kind, s.contest_preset);
     if (s.combat_legacy) return { ...rs, legacy: true, preset: "legacy" };
     return rs;
 }
@@ -63,12 +63,14 @@ function contestState() {
         initiative: c.initiative && typeof c.initiative === "object" ? c.initiative : {},
         // Mutator meters (momentum...).
         meters: c.meters && typeof c.meters === "object" ? c.meters : {},
+        // HUD round log (core/contest/hud.js): the last rounds' result rows.
+        log: Array.isArray(c.log) ? c.log : [],
     };
     return d.contest;
 }
 
 function emptyContest(kind, active, round = 0) {
-    return { active, kind, round, party: [], out: {}, tracks: {}, initiative: {}, meters: {} };
+    return { active, kind, round, party: [], out: {}, tracks: {}, initiative: {}, meters: {}, log: [] };
 }
 
 function startContest(kind) {
@@ -126,14 +128,19 @@ function speedHintOf(name) {
 }
 
 // Party side: the player first, then the pre-pass's acts for allies who can
-// act (no special state, still in the contest, not the player).
+// act (no special state, still in the contest, not the player). A hotbar
+// quick action (core/contest/quick.js) leads the player's declared action;
+// the message text follows it unless it is just the quick phrase.
 export function buildPartyActions(action, plan, contest) {
     const player = playerActorName();
+    const said = cleanText(action);
+    const quick = cleanText(plan?.quickAction);
+    const declared = quick && said.toLowerCase() !== quick.toLowerCase() ? [quick, said].filter(Boolean).join(" — ") : (said || quick);
     const out = [{
         who: "party",
         actor: player,
         speed: Number(plan?.combat?.speed) || speedHintOf(player),
-        action: cleanText(action).slice(0, 140) || "Hold position",
+        action: declared.slice(0, 140) || "Hold position",
     }];
     const seen = new Set([contestKey(player)]);
     for (const a of plan?.acts || []) {
@@ -257,6 +264,53 @@ export function replayContestRound(stored, userMsgId) {
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
+// ---------- HUD (ui/mainPanel.js, Enemies tab) ----------
+
+export function contestActive() {
+    const c = stateManager.getData().contest;
+    return !!c?.active;
+}
+
+// Ends the contest by hand (HUD End button). The enemies stay in the scene:
+// archiving them is the player's call. A plain state edit like any other
+// manual change; the next message's snapshot covers it.
+export function endContest() {
+    const c = contestState();
+    if (!c.active) return false;
+    stateManager.getData().contest = emptyContest(c.kind, false, c.round);
+    stateManager.emitChange("contest_end");
+    return true;
+}
+
+// Everything the HUD draws, from the live state and the chat's ruleset.
+export function contestHud() {
+    const d = stateManager.getData();
+    const contest = d.contest;
+    if (!contest?.active) return null;
+    const ruleset = contestRuleset(contest.kind || "clash");
+    const stakesName = String(ruleset.opts?.stakes || "Health");
+    const stakesOf = (sheet) => {
+        const entry = matchName(sheet?.resources || [], stakesName);
+        if (!entry) return null;
+        const max = resolveResourceMax(sheet, entry);
+        return { value: Number(entry.value) || 0, min: Number.isFinite(+entry.min) ? +entry.min : 0, max: Number(max) };
+    };
+    const names = {};
+    for (const sh of [...(d.characters || []), ...(d.enemies || [])]) names[contestKey(sh.name)] = sh.name;
+    for (const n of contest.party || []) names[contestKey(n)] = names[contestKey(n)] || n;
+    return {
+        kind: ruleset.kind,
+        round: Math.max(0, Math.trunc(Number(contest.round) || 0)),
+        preset: ruleset.preset,
+        legacy: ruleset.legacy,
+        shape: ruleset.shape,
+        fighters: hudFighters(contest, d.characters || [], d.enemies || [], stakesOf),
+        order: hudTurnOrder(contest, names),
+        meters: hudMeters({ contest, opts: ruleset.opts || {} }, ruleset.mutators),
+        log: Array.isArray(contest.log) ? contest.log : [],
+    };
+}
+
 // One contest round for the player action on user message `userMsgId`.
 // Returns true when a round was committed.
 export async function runContestTurn(action, plan, userMsgId) {
@@ -341,14 +395,15 @@ export async function runContestTurn(action, plan, userMsgId) {
         for (const p of participants) {
             if (p.side === "party" && !contest.party.some(n => contestKey(n) === contestKey(p.name))) contest.party.push(p.name);
         }
+        const story = storyBlock(ruleset.shape, round);
+        const post = postPassBlock(round, { degraded, roundNo });
+        const chips = chipRows(round, ruleset.dice?.icon || "");
+        contest.log = hudPushLog(contest.log, roundNo, chips);
         if (round.over) {
             stateManager.getData().contest = emptyContest(contest.kind, false, roundNo);
         }
         stateManager.emitChange("contest_round");
 
-        const story = storyBlock(ruleset.shape, round);
-        const post = postPassBlock(round, { degraded, roundNo });
-        const chips = chipRows(round);
         storeMessageData(userMsgId, "gm_contest", {
             v: 1,
             kind: ruleset.kind,
@@ -369,16 +424,25 @@ export async function runContestTurn(action, plan, userMsgId) {
         if (story) queueHigh(story);
 
         // The round is already decided and committed; the bubble only plays
-        // it back in resolution order.
+        // it back in resolution order, with the dice module's own numbers
+        // (d20 face + mod vs DC, or the oracle's tier odds) and the effects.
+        bubble.setNotes(round.notes);
+        const die = { icon: ruleset.dice?.icon || "fa-dice", sides: ruleset.dice?.sides || 0 };
         for (const g of round.groups) {
             if (g.status === "interrupted") {
-                bubble.resolveGroup(g.index, { name: "Interrupted" });
+                bubble.resolveGroup(g.index, { name: "Interrupted", detail: "Interrupted", effects: [] });
                 continue;
             }
-            bubble.startGroupRoll(g.index);
+            bubble.startGroupRoll(g.index, die);
             playRoll(900);
             await wait(900);
-            bubble.resolveGroup(g.index, { name: g.outcome.name });
+            bubble.resolveGroup(g.index, {
+                name: g.outcome.name,
+                face: g.outcome.face,
+                detail: [outcomeDetail(g.outcome, false), ...(g.notes || [])].filter(Boolean).join(" · "),
+                effects: groupEffectShorts(g),
+                icon: die.icon,
+            });
             playTierResult(g.outcome.name);
         }
         await wait(1200);
