@@ -14,8 +14,10 @@ import { applyEffect, applyLethality, contestKey, outStateOf } from "./effects.j
 const CONTEST_KEY_LABELS = { crit: "Critical Success", hit: "Success", graze: "Partial Success", miss: "Failure", fumble: "Critical Failure" };
 const CONTEST_KEY_FLIP = { crit: "fumble", hit: "miss", graze: "graze", miss: "hit", fumble: "crit" };
 
+// The turn module may hook the round like a mutator (duel stances, held AP),
+// and runs first so mutators see what it set.
 function callMutators(ctx, hook, ...args) {
-    for (const m of ctx.mutators || []) {
+    for (const m of [ctx.turn, ...(ctx.mutators || [])]) {
         if (typeof m?.[hook] !== "function") continue;
         try {
             m[hook](ctx, ...args);
@@ -125,17 +127,21 @@ export function runRound(ctx, groups) {
     ctx.out = ctx.out || {};
     ctx.notes = ctx.notes || [];
     const list = Array.isArray(groups) ? groups : [];
+    // roundStart sees every group before any resolves (flanking, clocks).
+    callMutators(ctx, "roundStart", list);
     const order = ctx.turn.queue(ctx, list);
     const results = order.map(i => resolveGroup(ctx, list[i], i));
     callMutators(ctx, "roundEnd", results);
-    // Round-tag attributes for the story (race phase...): fiction, never numbers.
+    // Round-tag attributes (race phase...) and event lines (a side clock
+    // filled) for the story: fiction, never numbers.
     const attrs = {};
-    for (const src of [ctx.shape, ...(ctx.mutators || [])]) {
-        if (typeof src?.storyAttrs !== "function") continue;
+    const events = [];
+    for (const src of [ctx.shape, ctx.turn, ...(ctx.mutators || [])]) {
         try {
-            Object.assign(attrs, src.storyAttrs(ctx) || {});
+            if (typeof src?.storyAttrs === "function") Object.assign(attrs, src.storyAttrs(ctx) || {});
+            if (typeof src?.storyEvents === "function") events.push(...(src.storyEvents(ctx) || []));
         } catch (e) {
-            if (ctx.log) ctx.log(`${src.id} storyAttrs failed: ${e?.message || e}`);
+            if (ctx.log) ctx.log(`${src.id} story hooks failed: ${e?.message || e}`);
         }
     }
     return {
@@ -147,5 +153,6 @@ export function runRound(ctx, groups) {
         notes: ctx.notes,
         notesLabel: ctx.shape?.notesLabel || "",
         attrs,
+        events,
     };
 }

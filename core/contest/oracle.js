@@ -37,9 +37,16 @@ function stakesLine(stakes, shape) {
     return `The stakes resource of this contest is "${stakes}" (or the sheet's equivalent): an actor whose ${stakes} reaches its minimum is out of the fight.`;
 }
 
-function systemPrompt(stakes, dice, shape = null) {
+// `rules`: extra lines from the turn module and the mutators (duel stances,
+// range bands...); `hasState`: a <contest_state> block rides in the context
+// (always for races / scores / challenges, for fights only when a mutator
+// adds one — so a plain fight's prompt stays byte-identical).
+function systemPrompt(stakes, dice, shape = null, { rules = [], hasState = false, opts = {} } = {}) {
     const ask = dice?.oracle || diceOracle.oracle;
+    // A module may build its text from the ruleset options (homebrew formula).
+    const read = v => (typeof v === "function" ? v(opts) : v);
     const shapeRules = Array.isArray(shape?.oracleRules) && shape.oracleRules.length ? ["", ...shape.oracleRules] : [];
+    const extraRules = rules.length ? ["", ...rules] : [];
     return [
         "You are the ORACLE of a tabletop-style roleplay game system: you adjudicate one round of a contest. You turn both sides' declared actions into opposed groups, judge each group's odds from the sheets, and write exactly what each tier DOES as structured effects. The game engine then rolls each group in turn order and applies your effects to the sheets — your effects ARE the results, so they must be exact. REALISM FIRST: odds are EARNED from the sheets, never generous by default.",
         "",
@@ -47,10 +54,11 @@ function systemPrompt(stakes, dice, shape = null) {
         "- <scene_context>: the last few messages — PAST context only, already tracked (specific note inside the block). The round you adjudicate is defined ENTIRELY by <party_actions>/<enemy_actions>.",
         "- <party_actions> / <enemy_actions>: what each side does this round, with initiative speeds.",
         `- <sheets>: resources (current values!), attributes, skills (damage terms, costs, cooldown markers), passives, statuses and items of EVERY actor in the round. ${stakesLine(stakes, shape)}`,
-        ...(shapeRules.length ? ["- <contest_state>: the contest's tracks and standings; actors marked untracked have no sheet — judge them from the scene."] : []),
+        ...(shapeRules.length || hasState ? ["- <contest_state>: the contest's tracks and standings; actors marked untracked have no sheet — judge them from the scene."] : []),
         ...shapeRules,
+        ...extraRules,
         "",
-        ...ask.rules,
+        ...read(ask.rules),
         "",
         "OUTPUT FORMAT — ONLY XML, no markdown fences, no prose:",
         "<clashes>",
@@ -60,7 +68,7 @@ function systemPrompt(stakes, dice, shape = null) {
         "GROUPING RULES:",
         "- Pair each party action with the enemy action that opposes or targets it; one enemy action opposes at most one party action. An action with no opponent becomes a SINGLE-SIDED group (one <side>).",
         "- Independent actions stay separate: never force unrelated actions into one group. Every declared action appears in exactly one group.",
-        ask.tierRule,
+        read(ask.tierRule),
         "",
         "OUTCOME LINES:",
         "- One short third-person sentence per tier naming every actor (never \"you\"/\"I\"), stating what happens IN THIS GROUP ONLY — never what other groups do, never a later action or reaction. No hedging (\"may\", \"tries to\"): the tier IS the result.",
@@ -81,13 +89,16 @@ function systemPrompt(stakes, dice, shape = null) {
 
 // stateLines: the shape's and mutators' view of the contest (tracks with
 // numbers); untracked: rival names with no sheet. Both empty for fights.
-function collectContext(partyActions, enemyActions, stateLines = [], untracked = []) {
+// bystanders: opponents with no declared action whose sheets still count
+// (player-facing rounds: the oracle plays them inside the party's groups).
+function collectContext(partyActions, enemyActions, stateLines = [], untracked = [], bystanders = []) {
     const history = recentMessages(MAX_CONTEXT_MESSAGES)
         .map(m => `${m.is_user ? playerLabel() : charLabel(m.name)}: ${String(m.mes ?? "")}`);
     const d = stateManager.getData();
     const actionXml = a => `<action actor="${escAttr(a.actor)}" speed="${Math.max(0, Math.trunc(Number(a.speed) || 0))}">${escAttr(a.action)}</action>`;
     // Only actors in the round pay tokens for a full sheet.
     const names = new Set([...partyActions, ...enemyActions].map(a => String(a.actor).toLowerCase()));
+    for (const n of bystanders) names.add(String(n).toLowerCase());
     const sheets = [
         ...(d.characters || []).filter(c => names.has(String(c.name).toLowerCase())).map(c => renderSheet(c, { tag: "actor", attrs: { side: "party" } })),
         ...(d.enemies || []).filter(e => names.has(String(e.name).toLowerCase())).map(e => renderSheet(e, { tag: "actor", attrs: { side: "enemy" } })),
@@ -114,14 +125,14 @@ function collectContext(partyActions, enemyActions, stateLines = [], untracked =
 // Runs the oracle. `onStream(groups)` fires with partial groups for the
 // bubble. Returns sanitized groups, or null when the call failed — the caller
 // then degrades to effect-less generic tiers.
-export async function adjudicateRound({ playerAction = "", partyActions = [], enemyActions = [], stakes = "Health", dice = null, shape = null, stateLines = [], untracked = [], onStream = null } = {}) {
+export async function adjudicateRound({ playerAction = "", partyActions = [], enemyActions = [], stakes = "Health", dice = null, shape = null, stateLines = [], untracked = [], bystanders = [], rules = [], opts = {}, onStream = null } = {}) {
     const s = gmSettings();
     if (!partyActions.length && !enemyActions.length) return null;
     try {
         const st = getContext();
         // Same routing as the dice roller (Dice Rolls profile -> pre-master chain).
         const profileId = resolveDiceProfile(st, s.dice_profile, s.premaster_profile, s.connection_profile);
-        let systemContent = systemPrompt(stakes, dice, shape);
+        let systemContent = systemPrompt(stakes, dice, shape, { rules, hasState: stateLines.length > 0, opts });
         const brief = scenarioBriefBlock();
         if (brief) systemContent += `\n\n${brief}`;
         if (s.deep_context_engines) {
@@ -141,7 +152,7 @@ export async function adjudicateRound({ playerAction = "", partyActions = [], en
         }
         const messages = [
             { role: "system", content: systemContent },
-            { role: "user", content: collectContext(partyActions, enemyActions, stateLines, untracked) },
+            { role: "user", content: collectContext(partyActions, enemyActions, stateLines, untracked, bystanders) },
         ];
         let streamed = "";
         const reply = await sendRequestViaProfile(profileId, messages, {

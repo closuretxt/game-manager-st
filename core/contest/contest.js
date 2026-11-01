@@ -245,11 +245,12 @@ function contestParticipants(contest, shape, partyActions = []) {
     ].filter(p => findSheet(p.name));
 }
 
-// The shape's and the mutators' view of the contest for the oracle and the
-// rivals' call (numbers allowed: neither is the story).
+// The shape's, the turn module's and the mutators' view of the contest for
+// the oracle and the rivals' call (numbers allowed: neither is the story).
+// A plain fight has none, so its oracle prompt stays as it was.
 function contestStateLines(ctx) {
     const lines = [];
-    for (const src of [ctx.shape, ...(ctx.mutators || [])]) {
+    for (const src of [ctx.shape, ctx.turn, ...(ctx.mutators || [])]) {
         if (typeof src?.oracleState !== "function") continue;
         try {
             lines.push(...(src.oracleState(ctx) || []));
@@ -433,7 +434,8 @@ export function contestHud() {
         shape: ruleset.shape,
         fighters,
         order: hudTurnOrder(contest, names),
-        meters: hudMeters({ contest, opts: ruleset.opts || {} }, ruleset.mutators),
+        // Participants for meters kept per party member (limit gauges).
+        meters: hudMeters({ contest, opts: ruleset.opts || {}, participants: (contest.party || []).map(name => ({ name, side: "party" })) }, ruleset.mutators),
         log: Array.isArray(contest.log) ? contest.log : [],
     };
 }
@@ -481,7 +483,10 @@ export async function runContestTurn(action, plan, userMsgId, kind = "clash") {
             log: msg => logDebug(`contest: ${msg}`),
         };
         ctx.stakes = sheet => shape.stakes(ctx, sheet);
-        const stateLines = fight ? [] : contestStateLines(ctx);
+        const stateLines = contestStateLines(ctx);
+        // Rules the turn module and the mutators add to the oracle prompt
+        // (duel stances, range bands, limit gauges...).
+        const rules = [ruleset.turn, ...(ruleset.mutators || [])].flatMap(m => (Array.isArray(m?.oracleRules) ? m.oracleRules : []));
 
         // Blind by default; a reactive pre-pass judgment hands the enemies the
         // player's move so they answer it. opts.opposition = "brains" skips
@@ -489,8 +494,17 @@ export async function runContestTurn(action, plan, userMsgId, kind = "clash") {
         // ask their rivals instead; a challenge has no opposing side.
         const maxActions = Math.max(1, Number(s.combat_max_enemy_actions) || 6);
         const brains = ruleset.opts?.opposition === "brains";
+        // Player-facing turns: no opposition call; the oracle plays the
+        // opponents from their sheets (bystanders) inside the party's groups.
+        const noOpposition = ruleset.turn?.opposition === false;
+        const bystanders = !noOpposition ? []
+            : fight ? (d.enemies || []).filter(e => !e.state).map(e => e.name)
+                : shape.opposition ? activeRivals(contest).map(r => r.name) : [];
         let enemyRaw, fallback;
-        if (fight) {
+        if (noOpposition) {
+            fallback = () => [];
+            enemyRaw = [];
+        } else if (fight) {
             const reactive = plan?.combat?.reactive === true;
             fallback = () => brainEnemyRaw(contest, stakes, maxActions);
             enemyRaw = brains ? fallback() : await runEnemyAI({
@@ -509,7 +523,7 @@ export async function runContestTurn(action, plan, userMsgId, kind = "clash") {
         // Dice modules that roll from oracle inputs (d20...) turn them into
         // display odds, so the bubble's bars mean something.
         const annotate = (gs) => {
-            if (typeof ruleset.dice?.annotate === "function") for (const g of gs || []) ruleset.dice.annotate(g, ruleset.opts);
+            if (typeof ruleset.dice?.annotate === "function") for (const g of gs || []) ruleset.dice.annotate(g, ruleset.opts, resolveNumericExpr);
             return gs;
         };
         let groups = await adjudicateRound({
@@ -520,6 +534,9 @@ export async function runContestTurn(action, plan, userMsgId, kind = "clash") {
             dice: ruleset.dice,
             shape: fight ? null : shape,
             stateLines,
+            rules,
+            opts: ruleset.opts,
+            bystanders,
             untracked: (contest.rivals || []).filter(n => findSheet(n)?.sheet?.pseudo),
             onStream: (partial) => bubble.syncGroups(annotate(partial)),
         });

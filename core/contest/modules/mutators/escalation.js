@@ -2,7 +2,7 @@
 // capped (default +6) (plans/combat-modules.md 4.5). Long fights tilt toward
 // the heroes. When an enemy rolls against a party member, the bonus works as
 // defense instead (-N on the enemy's roll). Only dice modules that read
-// roll.bonus use it (dice.d20); the oracle's odds ignore it.
+// roll.bonus use it (every one but dice.oracle, whose odds ignore it).
 
 import { contestSide } from "../../effects.js";
 
@@ -37,7 +37,7 @@ export function escalationHud(ctx) {
 export const mutEscalation = {
     id: "mut.escalation",
     label: "Escalation",
-    hint: "+1 to party rolls per round fought (d20 rules only).",
+    hint: "+1 to party rolls per round fought (dice rules, not the oracle's odds).",
     shapes: ["clash", "challenge"],
     options: [{ key: "max", label: "Max bonus", type: "number", min: 0, max: 20, default: 6 }],
     beforeRoll: escalationBeforeRoll,

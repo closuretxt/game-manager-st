@@ -125,7 +125,7 @@ const D20_ORACLE_RULES = [
 
 const D20_ORACLE_TIER_RULE = "- Tiers are read from the FIRST side's point of view. Write all five, WITHOUT chance attributes (the die decides): Critical Failure (natural 1), Failure, Partial Success (missed the DC by 1-2: it half-works, at a cost), Success, Critical Success (natural 20).";
 
-function d20OracleExample(stakes) {
+export function d20OracleExample(stakes) {
     return [
         '<clash title="Kael\'s Cleave vs Goblin A\'s Club">',
         '<side who="party" actor="Kael" speed="3" action="Cleave at Goblin A"/>',

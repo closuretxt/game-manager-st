@@ -21,7 +21,29 @@ import { mutPhases } from "./modules/mutators/phases.js";
 import { mutSpurt } from "./modules/mutators/spurt.js";
 import { mutDrafting } from "./modules/mutators/drafting.js";
 import { mutJudges } from "./modules/mutators/judges.js";
+import { turnPartyPhase } from "./modules/turn/partyPhase.js";
+import { turnTimeline } from "./modules/turn/timeline.js";
+import { turnAp } from "./modules/turn/ap.js";
+import { turnDuel } from "./modules/turn/duel.js";
+import { turnPlayerFacing } from "./modules/turn/playerFacing.js";
+import { diceBands2d6 } from "./modules/dice/bands.js";
+import { dicePool } from "./modules/dice/pool.js";
+import { dicePercentile } from "./modules/dice/percentile.js";
+import { diceStep } from "./modules/dice/step.js";
+import { diceDeck } from "./modules/dice/deck.js";
+import { diceHomebrew } from "./modules/dice/homebrew.js";
+import { consLadder } from "./modules/consequence/ladder.js";
+import { mutBreak } from "./modules/mutators/break.js";
+import { mutExploding } from "./modules/mutators/exploding.js";
+import { mutAdvantage } from "./modules/mutators/advantage.js";
+import { mutMorale } from "./modules/mutators/morale.js";
+import { mutRange } from "./modules/mutators/range.js";
+import { mutChain } from "./modules/mutators/chain.js";
+import { mutLimit } from "./modules/mutators/limit.js";
+import { mutClocks } from "./modules/mutators/clocks.js";
+import { mutDeathsDoor } from "./modules/mutators/deathsDoor.js";
 
+// Registry order is also the order mutators run in (editRuleset sorts by it).
 export const CONTEST_MODULES = {
     "shape.clash": shapeClash,
     "shape.race": shapeRace,
@@ -29,10 +51,22 @@ export const CONTEST_MODULES = {
     "shape.challenge": shapeChallenge,
     "turn.simultaneous": turnSimultaneous,
     "turn.initiative": turnInitiative,
+    "turn.phases": turnPartyPhase,
+    "turn.timeline": turnTimeline,
+    "turn.ap": turnAp,
+    "turn.duel": turnDuel,
+    "turn.player_facing": turnPlayerFacing,
     "dice.oracle": diceOracle,
     "dice.d20": diceD20,
+    "dice.bands_2d6": diceBands2d6,
+    "dice.pool": dicePool,
+    "dice.percentile": dicePercentile,
+    "dice.step": diceStep,
+    "dice.deck": diceDeck,
+    "dice.homebrew": diceHomebrew,
     "cons.oracle": consOracle,
     "cons.track": consTrack,
+    "cons.ladder": consLadder,
     "mut.escalation": mutEscalation,
     "mut.crit_effects": mutCritEffects,
     "mut.momentum": mutMomentum,
@@ -40,6 +74,15 @@ export const CONTEST_MODULES = {
     "mut.spurt": mutSpurt,
     "mut.drafting": mutDrafting,
     "mut.judges": mutJudges,
+    "mut.advantage": mutAdvantage,
+    "mut.exploding": mutExploding,
+    "mut.range": mutRange,
+    "mut.chain": mutChain,
+    "mut.break": mutBreak,
+    "mut.limit": mutLimit,
+    "mut.clocks": mutClocks,
+    "mut.morale": mutMorale,
+    "mut.deaths_door": mutDeathsDoor,
 };
 
 // kind -> preset id -> slots. `legacy` runs the pre-rework pipeline
@@ -48,11 +91,16 @@ export const CONTEST_PRESETS = {
     clash: {
         universal: { label: "Universal", shape: "shape.clash", turn: "turn.simultaneous", dice: "dice.oracle", consequence: "cons.oracle", mutators: [] },
         heroic: { label: "Heroic", shape: "shape.clash", turn: "turn.initiative", dice: "dice.d20", consequence: "cons.oracle", mutators: ["mut.escalation", "mut.crit_effects", "mut.momentum"] },
+        gritty: { label: "Gritty", shape: "shape.clash", turn: "turn.simultaneous", dice: "dice.pool", consequence: "cons.ladder", mutators: ["mut.advantage", "mut.morale"] },
+        story: { label: "Story-first", shape: "shape.clash", turn: "turn.player_facing", dice: "dice.bands_2d6", consequence: "cons.oracle", mutators: ["mut.clocks"] },
+        tactical: { label: "Tactical", shape: "shape.clash", turn: "turn.timeline", dice: "dice.step", consequence: "cons.oracle", mutators: ["mut.range", "mut.chain", "mut.break"] },
+        duelist: { label: "Duelist", shape: "shape.clash", turn: "turn.duel", dice: "dice.step", consequence: "cons.ladder", mutators: ["mut.momentum", "mut.exploding"] },
         legacy: { label: "Legacy", legacy: true, shape: "shape.clash" },
     },
     race: {
         universal: { label: "Universal race", shape: "shape.race", turn: "turn.simultaneous", dice: "dice.oracle", consequence: "cons.track", mutators: ["mut.phases"] },
         classic: { label: "Classic race", shape: "shape.race", turn: "turn.simultaneous", dice: "dice.oracle", consequence: "cons.track", mutators: ["mut.phases", "mut.spurt", "mut.drafting"] },
+        percentile: { label: "Race (percentile)", shape: "shape.race", turn: "turn.simultaneous", dice: "dice.percentile", consequence: "cons.track", mutators: ["mut.phases", "mut.spurt", "mut.drafting", "mut.limit"] },
     },
     scores: {
         universal: { label: "Universal contest", shape: "shape.scores", turn: "turn.simultaneous", dice: "dice.oracle", consequence: "cons.track", mutators: ["mut.judges"] },

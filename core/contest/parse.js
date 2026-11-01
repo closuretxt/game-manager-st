@@ -25,12 +25,27 @@ export function contestRoll(a, text) {
     const advRaw = String(a.adv ?? a.advantage ?? "").trim();
     const adv = /^(true|yes|adv|advantage|1)$/i.test(advRaw) ? 1 : /^(dis|disadvantage|-1)$/i.test(advRaw) ? -1 : 0;
     const impossible = /^(true|yes|1)$/i.test(String(a.impossible ?? "").trim()) || /impossible/i.test(String(a.dc ?? ""));
+    // Inputs of the other dice modules: dice pools (pool vs opp), a
+    // percentile target, step dice sizes (die vs). null = not given.
+    const bounded = (v, lo, hi) => {
+        const n = num(String(v ?? "").replace(/%$/, ""));
+        return String(v ?? "").trim() !== "" && Number.isFinite(n) ? Math.max(lo, Math.min(hi, Math.trunc(n))) : null;
+    };
+    const dieSize = v => {
+        const m = /^\s*d?(\d+)\s*$/i.exec(String(v ?? ""));
+        return m ? Math.max(4, Math.min(20, Number(m[1]))) : null;
+    };
     return {
         actor: String(a.actor || "").trim(),
         mod,
         dc,
         adv,
         impossible,
+        pool: bounded(a.pool, 0, 20),
+        opp: bounded(a.opp ?? a.opposed, 0, 20),
+        target: bounded(a.target ?? a.chance, 1, 99),
+        die: dieSize(a.die),
+        vs: dieSize(a.vs),
         reason: String(text ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 200),
     };
 }

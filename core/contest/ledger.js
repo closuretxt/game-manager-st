@@ -45,6 +45,7 @@ export function storyBlock(shape, round) {
         .map(([k, v]) => ` ${k}="${ledgerAttr(v)}"`).join("");
     const out = [`<${tag}${tagAttrs}>`, shape?.rule || "These results are final: narrate them as they are."];
     out.push(...lines);
+    for (const ev of round.events || []) if (ev) out.push(`<event>${ledgerText(ev)}</event>`);
     if (round.standing) out.push(`<standing>${ledgerText(round.standing)}</standing>`);
     if (round.over) out.push("The contest is over.");
     out.push(`</${tag}>`);

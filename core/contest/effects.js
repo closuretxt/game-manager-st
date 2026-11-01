@@ -180,8 +180,9 @@ function setOut(ctx, found, mode, extra = {}) {
 export function applyEffect(ctx, eff) {
     const rec = { ...eff };
     // Scene clocks (challenge progress / danger) belong to nobody: whatever
-    // target the oracle wrote, they move the scene's own track.
-    if (eff.kind === "track" && (ctx.shape?.sceneTracks || []).includes(contestKey(eff.name))) {
+    // target the oracle wrote, they move the scene's own track. Mutators add
+    // their own (mut.clocks) through ctx.sceneTracks.
+    if (eff.kind === "track" && [...(ctx.shape?.sceneTracks || []), ...(ctx.sceneTracks || [])].includes(contestKey(eff.name))) {
         return applyTrack(ctx, { ...rec, target: "Scene", side: "scene" }, CONTEST_SCENE_KEY, eff);
     }
     const found = ctx.ops.sheet(eff.target);

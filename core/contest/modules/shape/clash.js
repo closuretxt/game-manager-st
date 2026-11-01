@@ -22,6 +22,9 @@ const CLASH_OUT_WORDS = { dead: "dead", ko: "knocked out", down: "down", fled: "
 export function clashCondition(ctx, sheet) {
     const mode = outStateOf(ctx, sheet.name);
     if (mode) return CLASH_OUT_WORDS[mode] || mode;
+    // A consequence module that keeps its own harm (cons.ladder) words it.
+    const own = typeof ctx?.consequence?.condition === "function" ? ctx.consequence.condition(ctx, sheet) : null;
+    if (own) return own;
     const stakes = clashStakes(ctx, sheet);
     if (!stakes) return "in the fight";
     const max = ctx.ops.max(sheet, stakes);
