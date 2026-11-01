@@ -123,7 +123,7 @@ export const defaultSettings = {
     feature_death: true,          // Permadeath: the post-pass may kill characters (<deaths> tag); only the user revives.
     feature_roster_rotation: false, // The post-pass tracker benches party characters no longer in the scene with the player and recalls benched ones who rejoin (up to the party cap).
     feature_bonds: false,         // Bonds: NPC feelings toward the player (scenario-defined bars moved only by bond statuses). On in the Romance / Slice of life modes.
-    feature_chrono: false,        // Time: world clock (deltas after the anchor), daily schedules of the present cast, long-term objectives — kept by the post-pass. On in every mode preset.
+    feature_chrono: false,        // Time: world clock (deltas after the anchor), daily schedules of the present cast, plans made in the story — kept by the post-pass. On in every mode preset.
 
     // Per-chat feature modes (core/features.js). The feature_* flags above and
     // the tab toggles below are the GLOBAL defaults ("Custom" mode); each chat
@@ -186,7 +186,7 @@ export const defaultSettings = {
     notify_enemies: false,    // Also notify for enemy sheets (HP changes, skill use...).
     notify_bonds: true,       // Bond changes (feelings gained/ended/settled, label rewrites).
     notify_attach: true,      // Also log the post-pass notifications under the AI message that caused them.
-    notify_chrono: true,      // Time: new days, time skips of an hour or more, objectives added/updated/done.
+    notify_chrono: true,      // Time: new days, time skips of an hour or more, plans added/moved/resolved.
 
     // Prompt guidance — shared NUMERIC VALUE GUIDELINES (core/valueGuidelines.js)
     // injected into the engine prompts (tracker, combat engines, pre-pass).

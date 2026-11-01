@@ -55,7 +55,7 @@ function bondsOn() {
     return !!gmSettings().feature_bonds && bondDefs(stateManager.getData()).length > 0;
 }
 
-// Time (Chronogram fold-in): clock, schedules of the present cast, objectives.
+// Time (Chronogram fold-in): clock, schedules of the present cast, plans.
 function chronoOn() {
     return !!gmSettings().feature_chrono;
 }
@@ -138,11 +138,11 @@ function buildStateSummaryXml(present = []) {
         if (holders.length) parts.push(bondsXml(holders));
     }
     // Time: the clock (or clock="unset" until anchored), each present
-    // owner's now/next or missing="true", active objectives. Per-turn data,
-    // so it lives here and never in the system prompt.
+    // owner's day or missing="true", active plans. Per-turn data, so it
+    // lives here and never in the system prompt.
     if (chronoOn()) {
         const owners = stateManager.chronoOwners(playerNames(), present.map(r => stateManager.getSheet(r.id)));
-        parts.push(chronoStateXml(d, owners, escAttr, o => stateManager.objectiveOwnerName(o)));
+        parts.push(chronoStateXml(d, owners, escAttr));
     }
     // Shared party resources: visible to the tracker so it can account
     // consumption the pre-pass transaction engine did not already handle.
@@ -304,7 +304,7 @@ async function buildSystemPrompt(exchange = [], { contest = "" } = {}) {
         ...(chrono ? [
             "<chrono><clock_update days=\"0\" hours=\"0\" minutes=\"3\"/>"
             + (chrono.schedules_on ? "<new_schedule owner=\"Name\" date=\"MM/DD/YYYY\">\n07:00 wakes up in the loft above the forge\n07:30 breakfast with Mara at the inn\n</new_schedule>" : "")
-            + (chrono.objectives_on ? "<objective_new owner=\"Name\" title=\"Recover the family sword\" deadline=\"MM/DD/YYYY\" steps=\"Find the thief -> Reach the fort -> Duel\">What must be done and why it matters</objective_new><objective_update title=\"Exact title\" progress=\"What concretely changed\"/><objective_done title=\"Exact title\"/><objective_drop title=\"Exact title\"/>" : "")
+            + (chrono.plans_on ? "<plan_new title=\"Dinner with Mara at the Gilded Goose\" date=\"MM/DD/YYYY\" time=\"19:00\">She invited the player; she is cooking</plan_new><plan_update title=\"Exact title\" date=\"MM/DD/YYYY\" time=\"20:00\"/><plan_resolve title=\"Exact title\" outcome=\"kept\"/>" : "")
             + "</chrono>",
         ] : []),
         "",
@@ -337,15 +337,16 @@ async function buildSystemPrompt(exchange = [], { contest = "" } = {}) {
             "- <bond_label>: a short (under 12 words) description of the relationship as it stands; rewrite it only when the relationship meaningfully shifts.",
         ] : []),
         ...(chrono ? [
-            "TIME — the snapshot's <chrono> holds the world clock" + (chrono.schedules_on ? (chrono.schedules_party ? ", the day's schedule of everyone present" : ", the player's schedule for the day") : "") + (chrono.objectives_on ? " and the long-term objectives" : "") + ". EVERY report contains one <chrono> block with exactly one <clock_update>, even when nothing else changed.",
+            "TIME — the snapshot's <chrono> holds the world clock" + (chrono.schedules_on ? (chrono.schedules_party ? ", the day's schedule of everyone present" : ", the player's schedule for the day") : "") + (chrono.plans_on ? " and the plans already made" : "") + ". EVERY report contains one <chrono> block with exactly one <clock_update>, even when nothing else changed.",
             "- When <chrono clock=\"unset\">, set the clock ONCE with absolute values inferred from the story: <clock_update date=\"MM/DD/YYYY\" time=\"HH:MM\"/> (a real year, 24h time; default 12:00). Otherwise NEVER write date/time: report only the time that PASSED during the CURRENT EXCHANGE as days/hours/minutes (0 is valid).",
             "- MINUTES ARE THE DEFAULT: an exchange of dialogue and small actions takes 1-5 minutes. Hours only when the text explicitly skips time (travel, training, waiting, a scene break); days only for an explicit day change (sleeping, \"the next morning\"). An eventful scene is not a time skip.",
             ...(chrono.schedules_on ? [
-                "- <new_schedule> for every <schedule missing=\"true\"> owner, and for every listed owner when your clock_update crosses into a new calendar date: date = the date AFTER the advance, 8-15 lines \"HH:MM activity\" from waking to sleep, each concrete (task, place, company, purpose) and rooted in the character's role, habits and objectives — never filler like \"busy all day\". Never write schedules for characters not listed.",
+                "- <new_schedule> for every <schedule missing=\"true\"> owner, and for every listed owner when your clock_update crosses into a new calendar date: date = the date AFTER the advance, 8-15 lines \"HH:MM activity\" from waking to sleep, each concrete (task, place, company, purpose) and rooted in the character's role and habits" + (chrono.plans_on ? ", with every <plan> of that date at its time" : "") + " — never filler like \"busy all day\". Never write schedules for characters not listed.",
                 "- An existing day is STABLE: revise it ONLY when the exchange makes the plan clearly impossible or obsolete (a trip, an injury, an arrest, an appointment made or cancelled, a night spent elsewhere). A revision is a full <new_schedule> for the same date that replaces the whole day: keep the past slots and every slot that still holds word for word, change only what the story broke. Never revise to rephrase, reorder, add detail or reflect small deviations — the character is simply running late or improvising.",
             ] : []),
-            ...(chrono.objectives_on ? [
-                "- Objectives are SUBSTANTIAL long-term goals only — real stakes, spanning several scenes or days (quests, debts, rivalries, secrets, careers). None is better than filler; never errands or anything resolved within the scene. owner = a listed character or the player. Update an existing one (<objective_update> with what concretely changed) instead of recreating it; <objective_done> when achieved, <objective_drop> when abandoned or impossible. Titles must match the snapshot EXACTLY.",
+            ...(chrono.plans_on ? [
+                "- <plan_new> for casual arrangements the story makes EXPLICIT: an appointment, a date, a promise to meet, call back or bring something, an event someone expects (dinner on Sunday, sparring at dawn, her birthday on the 12th). Only when it is proposed AND accepted, or announced — never invent plans, never goals, quests or ambitions (those are <threads>), never something that happens within the current scene. title = what, with whom, where, in a few words. date = the actual date counted from the clock (\"Sunday\" = the coming Sunday); omit time when none was set; omit date only when no day was set (\"next time we meet\").",
+                "- <plan_update> when a plan is moved or its details change. <plan_resolve> with outcome=\"kept\" once it happened, \"missed\" when its time passed without it, \"cancelled\" when it was called off — a plan marked overdue=\"true\" must be resolved in this report. Titles must match the snapshot EXACTLY.",
             ] : []),
         ] : []),
         ...(s.feature_death !== false ? [

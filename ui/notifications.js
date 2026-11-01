@@ -22,7 +22,7 @@ import { onDiceRoll } from "../core/valueResolver.js";
 import { statusBubble } from "./statusBubble.js";
 import { logNotification } from "./messageLog.js";
 import { bondDefs } from "../core/bonds.js";
-import { weekday, formatDuration } from "../core/chrono.js";
+import { weekday, formatDuration, planWhenText } from "../core/chrono.js";
 
 // Every popup also lands in the open message log (ui/messageLog.js) — a
 // no-op outside a post-pass or with "Attach to message" off.
@@ -212,7 +212,7 @@ export const notifications = {
             }
         });
 
-        // ---------- time (clock, objectives) ----------
+        // ---------- time (clock, plans) ----------
         // Minute-scale advances stay quiet; only day changes and real skips.
         wrapMethod(stateManager, "setClock", ([date, time, opts = {}], clock) => {
             if (opts?.silent || !clock || !allowed("notify_chrono")) return;
@@ -223,20 +223,20 @@ export const notifications = {
             if (res.dayChanged) emit(`🌅 A new day: ${hl.val(`${weekday(res.to)} ${res.to.date}`)} ${hl.dim(`${res.to.time} (+${formatDuration(res.minutes)})`)}`, 16000, true);
             else if (res.minutes >= 60) emit(`🕑 Time passes: ${hl.pos(`+${formatDuration(res.minutes)}`)} ${hl.dim(`→ ${res.to.time}`)}`, 14000, true);
         });
-        const ownerOf = o => stateManager.objectiveOwnerName(o);
-        wrapMethod(stateManager, "addObjective", ([fields, opts = {}], res) => {
+        const when = p => planWhenText(p) || "no set day";
+        wrapMethod(stateManager, "addPlan", ([fields, opts = {}], res) => {
             if (opts?.silent || !res?.created || !allowed("notify_chrono")) return;
-            const who = ownerOf(res.objective);
-            emit(`New objective${who ? ` for ${hl.name(who)}` : ""}: ${hl.val(res.objective.title)}`, 16000, true);
+            emit(`📅 New plan: ${hl.val(res.plan.title)} ${hl.dim(`(${when(res.plan)})`)}`, 16000, true);
         });
-        wrapMethod(stateManager, "updateObjective", ([title, fields, opts = {}], obj) => {
-            if (opts?.silent || !obj || !allowed("notify_chrono")) return;
-            emit(`Objective ${hl.val(obj.title)}${obj.progress ? hl.dim(` — ${obj.progress}`) : " updated"}`, 14000, true);
+        wrapMethod(stateManager, "updatePlan", ([title, fields, opts = {}], plan) => {
+            if (opts?.silent || !plan || !allowed("notify_chrono")) return;
+            emit(`📅 Plan changed: ${hl.val(plan.title)} ${hl.dim(`(${when(plan)})`)}`, 14000, true);
         });
-        wrapMethod(stateManager, "setObjectiveStatus", ([titleOrId, status, opts = {}], obj) => {
-            if (opts?.silent || !obj || !allowed("notify_chrono")) return;
-            if (obj.status === "completed") emit(`Objective complete: ${hl.pos(obj.title)}`, 16000, true);
-            else if (obj.status === "abandoned") emit(`Objective dropped: ${hl.neg(obj.title)}`, 14000, true);
+        wrapMethod(stateManager, "resolvePlan", ([titleOrId, outcome, opts = {}], plan) => {
+            if (opts?.silent || !plan || !allowed("notify_chrono")) return;
+            if (plan.status === "kept") emit(`📅 Plan kept: ${hl.pos(plan.title)}`, 14000, true);
+            else if (plan.status === "missed") emit(`📅 Plan missed: ${hl.neg(plan.title)}`, 16000, true);
+            else if (plan.status === "cancelled") emit(`📅 Plan cancelled: ${hl.neg(plan.title)}`, 14000, true);
         });
 
         // ---------- roster rotation ----------

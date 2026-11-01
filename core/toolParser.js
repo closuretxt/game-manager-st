@@ -57,7 +57,7 @@ import { planRotation } from "./rosterRotation.js";
 const BLOCK_TAGS = ["change_values", "set_attributes", "set_traits", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies", "transfer", "renames", "deaths", "knockouts", "new_characters", "bonds", "chrono", "scene_cast"];
 const CAST_RE = /<(leave|join)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const BOND_RE = /<(bond_label|bond_status|bond_end)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
-const CHRONO_RE = /<(clock_update|new_schedule|objective_new|objective_update|objective_done|objective_drop)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
+const CHRONO_RE = /<(clock_update|new_schedule|plan_new|plan_update|plan_resolve)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const BLOCK_RE = new RegExp(`<(${BLOCK_TAGS.join("|")})>([\\s\\S]*?)<\\/\\1>`, "gi");
 const INNER_RE = /<(char|target|enemy|shared|resource|item|attribute|trait|entry|status|warning|warning_clear|thread|thread_clear|passive|skill|exp|death|ko|ko_clear)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const ENEMY_RE = /<enemy\b([^>]*?)(?:\/>|>([\s\S]*?)<\/enemy>)/gi;
@@ -446,8 +446,8 @@ function applyBondsBlock(raw, now) {
 }
 
 // <chrono>: the clock first (absolute ONLY while unset — after the anchor
-// the tracker reports elapsed time), then schedules and objectives, so a
-// schedule for "the date after the advance" lands on the advanced clock.
+// the tracker reports elapsed time), then schedules and plans, so a schedule
+// for "the date after the advance" lands on the advanced clock.
 function applyChronoBlock(raw) {
     const d = stateManager.getData();
     const cfg = chronoConfig(d);
@@ -478,28 +478,20 @@ function applyChronoBlock(raw) {
             // revision replaces the whole day (the prompt keeps it rare).
             ok = !!owner && (cfg.schedules_party || owner === PLAYER_OWNER)
                 && !!stateManager.setSchedule(owner, attrs.date || cfg.clock?.date, parseScheduleLines(content));
-        } else if (tag === "objective_new") {
-            if (!cfg.objectives_on) continue;
-            const ownerName = String(attrs.owner ?? attrs.char ?? "").trim();
-            ok = !!stateManager.addObjective({
-                owner: stateManager.resolveChronoOwner(ownerName, players) || "",
-                ownerName,
-                title: attrs.title,
-                description: attrs.description ?? content,
-                deadline: attrs.deadline,
-                steps: attrs.steps,
-            })?.created;
-        } else if (tag === "objective_update") {
-            if (!cfg.objectives_on) continue;
-            ok = !!stateManager.updateObjective(attrs.title ?? content, { progress: attrs.progress, deadline: attrs.deadline });
-        } else if (tag === "objective_done" || tag === "objective_drop") {
-            if (!cfg.objectives_on) continue;
-            ok = !!stateManager.setObjectiveStatus(attrs.title ?? content, tag === "objective_done" ? "completed" : "abandoned");
+        } else if (tag === "plan_new") {
+            if (!cfg.plans_on) continue;
+            ok = !!stateManager.addPlan({ title: attrs.title, date: attrs.date, time: attrs.time, note: attrs.note ?? content })?.created;
+        } else if (tag === "plan_update") {
+            if (!cfg.plans_on) continue;
+            ok = !!stateManager.updatePlan(attrs.title ?? content, { date: attrs.date, time: attrs.time, note: attrs.note });
+        } else if (tag === "plan_resolve") {
+            if (!cfg.plans_on) continue;
+            ok = !!stateManager.resolvePlan(attrs.title ?? content, attrs.outcome ?? attrs.status ?? "kept");
         } else {
             continue;
         }
         if (ok) applied++;
-        else logDebug(`toolParser: NOT applied — <${tag}${attrs.title ? ` title="${attrs.title}"` : ""}${attrs.owner ? ` owner="${attrs.owner}"` : ""}> (unknown owner/title, duplicate or no change)`);
+        else logDebug(`toolParser: NOT applied — <${tag}${attrs.title ? ` title="${attrs.title}"` : ""}${attrs.owner ? ` owner="${attrs.owner}"` : ""}> (unknown owner/title, duplicate, already resolved or no change)`);
     }
     return applied;
 }

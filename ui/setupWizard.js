@@ -354,13 +354,13 @@ export const setupWizard = {
             body.append(bondsWrap);
         }
 
-        // Time — starting clock (only when the chat has none) + objectives.
+        // Time — starting clock (only when the chat has none) + plans.
         const showClock = !!p.clock && !chronoConfig(stateManager.getData()).clock;
-        if (showClock || p.objectives?.length) {
+        if (showClock || p.plans?.length) {
             const timeWrap = $("<div>").addClass("gm_list");
             timeWrap.append($("<div>").addClass("gm_section_header").append(
                 $("<b>").text("Time"),
-                $("<span>").addClass("gm_section_hint").text("Where the story starts and the long-term goals. After this the post-pass only adds elapsed time."),
+                $("<span>").addClass("gm_section_hint").text("Where the story starts and the plans already made. After this the post-pass only adds elapsed time."),
             ));
             const list = $("<div>").addClass("gm_entry_list");
             if (showClock) {
@@ -374,17 +374,18 @@ export const setupWizard = {
                     $("<div>").addClass("gm_entry_actions").append(del),
                 )));
             }
-            (p.objectives || []).forEach((o, i) => {
-                const title = $("<input>").addClass("gm_input").attr("title", "Objective").val(o.title).on("input", () => { o.title = title.val(); this._sessionQueue(); });
-                const owner = $("<input>").addClass("gm_input").attr({ placeholder: "Owner", title: "Owner (character or player)" }).val(o.owner).on("input", () => { o.owner = owner.val(); this._sessionQueue(); });
-                const desc = $("<input>").addClass("gm_input").attr("placeholder", "What and why").val(o.description).on("input", () => { o.description = desc.val(); this._sessionQueue(); });
-                const del = iconBtn("fa-solid fa-trash").on("click", () => { p.objectives.splice(i, 1); this._renderReview(); });
+            (p.plans || []).forEach((pl, i) => {
+                const title = $("<input>").addClass("gm_input").attr({ placeholder: "What, with whom, where", title: "Plan" }).val(pl.title).on("input", () => { pl.title = title.val(); this._sessionQueue(); });
+                const date = $("<input>").addClass("gm_input").attr({ placeholder: "MM/DD/YYYY", title: "Date (empty = no set day)" }).val(pl.date).on("input", () => { pl.date = date.val(); this._sessionQueue(); });
+                const time = $("<input>").addClass("gm_input").attr({ placeholder: "HH:MM", title: "Time (optional)" }).val(pl.time).on("input", () => { pl.time = time.val(); this._sessionQueue(); });
+                const note = $("<input>").addClass("gm_input").attr("placeholder", "Note (optional)").val(pl.note).on("input", () => { pl.note = note.val(); this._sessionQueue(); });
+                const del = iconBtn("fa-solid fa-trash").on("click", () => { p.plans.splice(i, 1); this._renderReview(); });
                 list.append($("<div>").addClass("gm_entry_row").append(
                     $("<div>").addClass("gm_entry_top").append(
-                        $("<div>").addClass("gm_entry_main").append(title, owner),
+                        $("<div>").addClass("gm_entry_main").append(title, date, time),
                         $("<div>").addClass("gm_entry_actions").append(del),
                     ),
-                    desc,
+                    note,
                 ));
             });
             timeWrap.append(list);

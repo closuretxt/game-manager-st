@@ -38,7 +38,7 @@ export function wireTagEnabled(tag) {
     if (tag === "progression") return !!gmSettings().feature_progression;
     if (tag === "bonds" || tag === "bond") return !!gmSettings().feature_bonds;
     if (tag === "clock") return !!gmSettings().feature_chrono;
-    if (tag === "objective") return !!gmSettings().feature_chrono && chronoConfig(stateManager.getData()).objectives_on;
+    if (tag === "plan") return !!gmSettings().feature_chrono && chronoConfig(stateManager.getData()).plans_on;
     const container = TAG_CONTAINERS[tag];
     return container ? containerEnabled(container) : true;
 }
@@ -77,7 +77,7 @@ const RESPONSE_SHAPE_LINES = [
     '<warning name="Food" text="<under 15 words, imminent need>"/>',
     '<bonds><bar name="Trust" start="20" description="..."/><bar name="Affection" start="15" description="..."/></bonds> <!-- the chat\'s relationship bars, 0-100; omit when the input lists BOND BARS -->',
     '<clock date="MM/DD/YYYY" time="HH:MM"/> <!-- the in-fiction date and 24h time where the story stands; omit when the input says CLOCK: SET -->',
-    '<objective owner="<character or player>" title="..." deadline="MM/DD/YYYY" steps="A -> B -> C">what must be done and why it matters</objective> <!-- substantial long-term goals only; deadline/steps optional -->',
+    '<plan title="<what, with whom, where>" date="MM/DD/YYYY" time="HH:MM">short note</plan> <!-- arrangements the scenario already made; time/date optional -->',
     "<brief>2-6 plain sentences: premise, tone, how the world works, what the stakes are</brief>",
     "</setup>",
 ];
@@ -349,16 +349,15 @@ export function sanitizeProposal(parsed) {
         const t = parseTimeHM(parsed.clock.time ?? "12:00");
         if (date && t !== null) clock = { date, time: `${pad2(Math.floor(t / 60))}:${pad2(t % 60)}` };
     }
-    const objectives = (wireTagEnabled("objective") && Array.isArray(parsed.objectives) ? parsed.objectives : [])
-        .map(o => {
-            const title = String(o?.title || "").trim().slice(0, 120);
+    const plans = (wireTagEnabled("plan") && Array.isArray(parsed.plans) ? parsed.plans : [])
+        .map(p => {
+            const title = String(p?.title || "").trim().slice(0, 120);
             if (!title) return null;
             return {
                 title,
-                owner: String(o.owner || "").trim().slice(0, 60),
-                description: String(o.description || "").trim().slice(0, 400),
-                deadline: String(o.deadline || "").replace(/^MM\/DD\/YYYY$/i, "").trim().slice(0, 60),
-                steps: String(o.steps || "").trim().slice(0, 300),
+                date: String(p.date || "").replace(/^MM\/DD\/YYYY$/i, "").trim().slice(0, 20),
+                time: String(p.time || "").replace(/^HH:MM$/i, "").trim().slice(0, 10),
+                note: String(p.note || "").trim().slice(0, 300),
             };
         })
         .filter(Boolean)
@@ -368,7 +367,7 @@ export function sanitizeProposal(parsed) {
         scenarioName: String(parsed.scenario_name || "Scenario").slice(0, 80),
         bonds,
         clock,
-        objectives,
+        plans,
         party,
         roster,
         sharedResources,
@@ -471,13 +470,13 @@ export function parseSetupXml(text) {
     const briefMatch = /<brief>([\s\S]*?)<\/brief>/i.exec(stripped);
     if (briefMatch) parsed.brief = briefMatch[1].trim();
 
-    // Time: the starting clock and long-term objectives.
+    // Time: the starting clock and the plans already made.
     const clockMatch = /<clock\b([^>]*?)\/?>/i.exec(stripped);
     if (clockMatch) parsed.clock = parseAttrs(clockMatch[1]);
-    parsed.objectives = [];
-    const objRe = /<objective\b([^>]*?)(?:\/>|>([\s\S]*?)<\/objective>)/gi;
-    while ((m = objRe.exec(stripped)) !== null) {
-        parsed.objectives.push({ ...parseAttrs(m[1]), description: parseAttrs(m[1]).description ?? decodeEntities((m[2] ?? "").trim()) });
+    parsed.plans = [];
+    const planRe = /<plan\b([^>]*?)(?:\/>|>([\s\S]*?)<\/plan>)/gi;
+    while ((m = planRe.exec(stripped)) !== null) {
+        parsed.plans.push({ ...parseAttrs(m[1]), note: parseAttrs(m[1]).note ?? decodeEntities((m[2] ?? "").trim()) });
     }
 
     return parsed;
@@ -527,13 +526,13 @@ const BONDS_RULE = [
 ].join("\n");
 
 // Time rule: flag only (cache-stable, like BONDS_RULE); whether the clock is
-// already set and which objectives exist go in the user message.
+// already set and which plans exist go in the user message.
 const CHRONO_RULE = [
     "",
-    "- TIME is active: the game keeps a world clock and long-term objectives itself.",
+    "- TIME is active: the game keeps a world clock and the plans characters make itself.",
     "  - <clock>: the in-fiction date (MM/DD/YYYY, a real 4-digit year that fits the setting) and 24h time where the story stands now, inferred from the scenario and chat (default 12:00). Skip it when the input says CLOCK: SET.",
-    "  - <objective>: 0-3 SUBSTANTIAL long-term goals with real stakes that span several scenes or days (a quest, a debt, a rivalry, a career, a secret to uncover), owned by a party character or the player. None is better than filler; never errands. Skip titles the input lists as EXISTING OBJECTIVES.",
-    "  - Clocks, deadlines and objectives go in these tags — NEVER as <custom> entries.",
+    "  - <plan>: 0-3 casual arrangements the scenario or chat ALREADY makes for the coming days (an appointment, a meeting, a dinner, an event someone expects), dated from the clock. None is the norm; never goals, quests or invented errands. Skip titles the input lists as EXISTING PLANS.",
+    "  - Clocks and appointments go in these tags — NEVER as <custom> entries.",
 ].join("\n");
 
 function chronoWizard() {
@@ -545,8 +544,8 @@ function chronoContextLines() {
     const cfg = chronoConfig(stateManager.getData());
     const lines = [];
     if (cfg.clock) lines.push(`CLOCK: SET (${cfg.clock.date} ${cfg.clock.time}) — do NOT propose <clock>.`);
-    const active = cfg.objectives.filter(o => o.status === "active");
-    if (cfg.objectives_on && active.length) lines.push(`EXISTING OBJECTIVES (do not repeat): ${active.map(o => o.title).join("; ")}`);
+    const active = cfg.plans.filter(p => p.status === "active");
+    if (cfg.plans_on && active.length) lines.push(`EXISTING PLANS (do not repeat): ${active.map(p => p.title).join("; ")}`);
     return lines;
 }
 
@@ -679,9 +678,9 @@ function proposalToPromptXml(p) {
     for (const w of p.warnings || []) lines.push(`<warning name="${escAttr(w.name)}" text="${escAttr(w.text)}"/>`);
     if (p.brief) lines.push(`<brief>${escAttr(p.brief)}</brief>`);
     if (p.clock) lines.push(`<clock date="${escAttr(p.clock.date)}" time="${escAttr(p.clock.time)}"/>`);
-    for (const o of p.objectives || []) {
-        const opt = [o.deadline ? ` deadline="${escAttr(o.deadline)}"` : "", o.steps ? ` steps="${escAttr(o.steps)}"` : ""].join("");
-        lines.push(`<objective owner="${escAttr(o.owner)}" title="${escAttr(o.title)}"${opt}>${escAttr(o.description)}</objective>`);
+    for (const pl of p.plans || []) {
+        const opt = [pl.date ? ` date="${escAttr(pl.date)}"` : "", pl.time ? ` time="${escAttr(pl.time)}"` : ""].join("");
+        lines.push(`<plan title="${escAttr(pl.title)}"${opt}>${escAttr(pl.note)}</plan>`);
     }
     if (p.progression) {
         const g = p.progression;
@@ -786,7 +785,7 @@ export function applyProposal(proposal, mode = "replace") {
         // The old cast's days and goals go with it; a proposed clock re-anchors.
         const cc = chronoConfig(d);
         cc.schedules = {};
-        cc.objectives = [];
+        cc.plans = [];
         if (proposal.clock) cc.clock = null;
     }
 
@@ -868,14 +867,12 @@ export function applyProposal(proposal, mode = "replace") {
         setScenarioBrief({ text: briefText });
     }
     // Time: the wizard anchors the clock only when the chat has none (after
-    // that the post-pass reports elapsed time); objectives resolve their
-    // owner against the party just created.
+    // that the post-pass reports elapsed time); plans come after it so their
+    // dates repair against the anchored year.
     if (proposal.clock && !chronoConfig(d).clock) {
         stateManager.setClock(proposal.clock.date, proposal.clock.time, { silent: true });
     }
-    for (const o of proposal.objectives || []) {
-        stateManager.addObjective({ ...o, owner: stateManager.resolveChronoOwner(o.owner, players) || "", ownerName: o.owner }, { silent: true });
-    }
+    for (const pl of proposal.plans || []) stateManager.addPlan(pl, { silent: true });
 
     stateManager.emitChange(mode === "replace" ? "wizard_replace" : "wizard_merge");
     logDebug(`setupWizard: proposal applied (${mode})`);

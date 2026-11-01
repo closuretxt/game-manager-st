@@ -10,7 +10,7 @@ import { CHARACTER_CONTAINERS, GM_SCHEMA, defaultEntry, genId } from "./schemas.
 import { resolveResourceMax } from "./resourceScaler.js";
 import { getTemplate, conformSheet, followsCard } from "./cardTemplates.js";
 import { bondConfig, bondSheets, ensureBond, isPlayerSheet, setBondStatus, endBondStatus, settleBondStatuses, setBondDefs } from "./bonds.js";
-import { PLAYER_OWNER, chronoConfig, setClock as chronoSetClock, advanceClock as chronoAdvance, setSchedule as chronoSetSchedule, addObjective as chronoAddObjective, updateObjective as chronoUpdateObjective, setObjectiveStatus as chronoSetObjectiveStatus } from "./chrono.js";
+import { PLAYER_OWNER, chronoConfig, setClock as chronoSetClock, advanceClock as chronoAdvance, setSchedule as chronoSetSchedule, addPlan as chronoAddPlan, updatePlan as chronoUpdatePlan, resolvePlan as chronoResolvePlan, parseTimeHM, repairDate, clockYear, pad2 } from "./chrono.js";
 import { logDebug } from "./debug.js";
 
 const _listeners = new Set();
@@ -266,7 +266,7 @@ export const stateManager = {
         // Bonds (core/bonds.js): bar definitions + each existing bond.
         bondConfig(d);
         for (const c of bondSheets(d)) if (c.bond) ensureBond(c, d, false);
-        // Chronogram (core/chrono.js): clock, schedules, objectives.
+        // Chronogram (core/chrono.js): clock, schedules, plans.
         chronoConfig(d);
         if (!d.characters.some(c => c.id === d.activeCharacterId)) {
             d.activeCharacterId = d.characters[0]?.id ?? null;
@@ -689,15 +689,9 @@ export const stateManager = {
         return isPlayerSheet(sheet, playerNames) ? PLAYER_OWNER : sheet.id;
     },
 
-    // Display name of an objective's owner (sheet renames follow).
-    objectiveOwnerName(o) {
-        if (o?.owner === PLAYER_OWNER) return playerLabel();
-        return (o?.owner && this.getSheet(o.owner)?.name) || o?.ownerName || "";
-    },
-
     setChronoOptions(patch = {}) {
         const c = chronoConfig(this.getData());
-        for (const k of ["locked", "schedules_on", "schedules_party", "objectives_on", "inject_clock", "inject_schedules", "inject_objectives"]) {
+        for (const k of ["locked", "schedules_on", "schedules_party", "plans_on", "inject_clock", "inject_schedules", "inject_plans"]) {
             if (patch[k] !== undefined) c[k] = !!patch[k];
         }
         this.emitChange("chrono_options");
@@ -739,45 +733,47 @@ export const stateManager = {
         this.emitChange("chrono_schedule");
     },
 
-    // Returns { objective, created } or null.
-    addObjective(fields, opts = {}) {
-        const res = chronoAddObjective(this.getData(), fields);
-        if (res?.created) this.emitChange("chrono_objective");
+    // Returns { plan, created } or null.
+    addPlan(fields, opts = {}) {
+        const res = chronoAddPlan(this.getData(), fields);
+        if (res?.created) this.emitChange("chrono_plan");
         return res;
     },
 
-    updateObjective(title, fields, opts = {}) {
-        const res = chronoUpdateObjective(this.getData(), title, fields);
-        if (res) this.emitChange("chrono_objective");
+    updatePlan(title, fields, opts = {}) {
+        const res = chronoUpdatePlan(this.getData(), title, fields);
+        if (res) this.emitChange("chrono_plan");
         return res;
     },
 
-    setObjectiveStatus(titleOrId, status, opts = {}) {
-        const res = chronoSetObjectiveStatus(this.getData(), titleOrId, status);
-        if (res) this.emitChange("chrono_objective");
+    // outcome: kept | missed | cancelled | active.
+    resolvePlan(titleOrId, outcome, opts = {}) {
+        const res = chronoResolvePlan(this.getData(), titleOrId, outcome);
+        if (res) this.emitChange("chrono_plan");
         return res;
     },
 
-    // Manual edit (Time tab, edit mode).
-    editObjective(id, patch = {}) {
-        const o = chronoConfig(this.getData()).objectives.find(x => x.id === id);
-        if (!o) return;
-        for (const k of ["title", "description", "deadline", "steps", "progress"]) {
-            if (patch[k] !== undefined) o[k] = String(patch[k]).trim();
+    // Manual edit (Time tab, edit mode). Unlike the tracker's update, an
+    // empty date/time clears it (the plan becomes undated / untimed).
+    editPlan(id, patch = {}) {
+        const d = this.getData();
+        const p = chronoConfig(d).plans.find(x => x.id === id);
+        if (!p) return;
+        if (patch.title !== undefined) p.title = String(patch.title).trim() || "Untitled";
+        if (patch.note !== undefined) p.note = String(patch.note).trim();
+        if (patch.date !== undefined) p.date = repairDate(patch.date, clockYear(d));
+        if (patch.time !== undefined) {
+            const t = parseTimeHM(patch.time);
+            p.time = t === null ? "" : `${pad2(Math.floor(t / 60))}:${pad2(t % 60)}`;
         }
-        if (patch.owner !== undefined) {
-            o.owner = this.resolveChronoOwner(patch.owner, playerNames()) || "";
-            o.ownerName = String(patch.owner).trim();
-        }
-        if (!o.title) o.title = "Untitled";
-        this.emitChange("chrono_objective");
+        this.emitChange("chrono_plan");
     },
 
-    removeObjective(id) {
+    removePlan(id) {
         const c = chronoConfig(this.getData());
-        const before = c.objectives.length;
-        c.objectives = c.objectives.filter(o => o.id !== id);
-        if (c.objectives.length !== before) this.emitChange("chrono_objective");
+        const before = c.plans.length;
+        c.plans = c.plans.filter(p => p.id !== id);
+        if (c.plans.length !== before) this.emitChange("chrono_plan");
     },
 
     // Roster entry by entry id, its sheet's id, or name.

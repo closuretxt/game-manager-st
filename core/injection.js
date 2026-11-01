@@ -22,7 +22,7 @@ import { stateManager, playerNames } from "./stateManager.js";
 import { resolveResourceMax } from "./resourceScaler.js";
 import { bondConfig, bondInjectionLine, bondGuideText, isPlayerSheet } from "./bonds.js";
 import { isMentioned } from "./rosterRotation.js";
-import { clockInjectionText, scheduleInjectionLines, objectiveInjectionLines, nameTag, chronoGuideText } from "./chrono.js";
+import { clockInjectionText, scheduleInjectionLines, planInjectionLines, nameTag, chronoGuideText } from "./chrono.js";
 import { CHARACTER_CONTAINERS } from "./schemas.js";
 import { scenarioBriefInjection } from "./scenarioBrief.js";
 
@@ -334,7 +334,7 @@ export function discardPending() {
 // ---------- low priority (persistent context) ----------
 
 // Builds the persistent context block: warnings, always-inject entries,
-// character states and objectives (bonds ride in the turn context). Ordered deterministically (no insertion-order churn), so
+// character states, schedules and plans (bonds ride in the turn context). Ordered deterministically (no insertion-order churn), so
 // the block only changes when the underlying state does.
 export function buildLowPriority() {
     if (!enabled()) return "";
@@ -371,18 +371,18 @@ export function buildLowPriority() {
         if (blockText) parts.push(blockText);
     }
 
-    // Time: the day's schedules (change once a day) and active objectives —
+    // Time: the day's schedules (change once a day) and the coming plans —
     // the clock itself is volatile and rides in the turn context so this
     // block keeps its cached prefix.
     // The pacing guidance is static text, so it sits here (cached) rather than
     // next to the per-turn clock; it only appears with something to apply to.
     if (s.feature_chrono) {
         const scheds = scheduleInjectionLines(d, stateManager.chronoOwners(playerNames()), txt);
-        const objs = objectiveInjectionLines(d, txt, o => stateManager.objectiveOwnerName(o));
-        if (scheds.length || objs.length) {
+        const plans = planInjectionLines(d, txt);
+        if (scheds.length || plans.length) {
             // Editable per chat (Time tab); the built-in text otherwise.
-            const guide = chronoGuideText(d, { clock: !!d.chrono?.inject_clock, schedules: scheds.length > 0, objectives: objs.length > 0 }, txt(personaName()));
-            parts.push(block("chronogram", guide, [...scheds, ...objs]));
+            const guide = chronoGuideText(d, { clock: !!d.chrono?.inject_clock, schedules: scheds.length > 0, plans: plans.length > 0 }, txt(personaName()));
+            parts.push(block("chronogram", guide, [...scheds, ...plans]));
         }
     }
 

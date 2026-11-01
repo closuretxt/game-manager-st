@@ -1,12 +1,12 @@
 // Time tab — the Chronogram fold-in: world clock, today's schedule of the
-// present cast, long-term objectives. Read-only outside edit mode; in edit
+// present cast, plans made in the story. Read-only outside edit mode; in edit
 // mode the clock can be set/nudged/locked, schedules cleared (the next
-// post-pass rebuilds them) and objectives edited. Data and rules live in
+// post-pass rebuilds them) and plans edited. Data and rules live in
 // core/chrono.js; every change goes through the stateManager wrappers.
 // Manual edits pass silent: true so they never pop notifications.
 
 import { stateManager, playerNames } from "../core/stateManager.js";
-import { chronoConfig, scheduleFor, nowNext, weekday, parseTimeHM, defaultChronoGuide } from "../core/chrono.js";
+import { chronoConfig, scheduleFor, nowNext, weekday, parseTimeHM, defaultChronoGuide, activePlans, planOverdue, planWhenText } from "../core/chrono.js";
 import { iconBtn } from "./characterView.js";
 import { openPromptEditor } from "./promptEditor.js";
 
@@ -18,7 +18,7 @@ export function renderTimeTab(container, edit) {
     const cfg = chronoConfig(d);
     renderClock(container, cfg, edit);
     if (cfg.schedules_on && cfg.clock) renderSchedules(container, d, cfg, edit);
-    if (cfg.objectives_on) renderObjectives(container, cfg, edit);
+    if (cfg.plans_on) renderPlans(container, d, cfg, edit);
 }
 
 function header(icon, title, hint) {
@@ -41,13 +41,13 @@ function renderClock(container, cfg, edit) {
     if (edit) {
         const prompt = iconBtn("fa-solid fa-file-pen").addClass("gm_prompt_btn")
             .toggleClass("gm_prompt_custom", !!cfg.guide)
-            .attr("title", `Edit the time guidance injected with the schedule/objectives${cfg.guide ? " (custom)" : ""}`);
+            .attr("title", `Edit the time guidance injected with the schedule/plans${cfg.guide ? " (custom)" : ""}`);
         prompt.on("click", () => openPromptEditor({
             title: "Time guidance",
-            hint: "Instructions the story model reads at the top of the <chronogram> block (low priority, cached), above the day's plans and objectives. Shown only when a plan or objective is injected. A custom text is used as-is whichever modules are on.",
+            hint: "Instructions the story model reads at the top of the <chronogram> block (low priority, cached), above the day's schedule and the coming plans. Shown only when a schedule or plan is injected. A custom text is used as-is whichever modules are on.",
             placeholders: ["{{user}} = your persona's name"],
             value: cfg.guide,
-            defaultText: defaultChronoGuide({ clock: cfg.inject_clock, schedules: cfg.schedules_on && cfg.inject_schedules, objectives: cfg.objectives_on && cfg.inject_objectives }),
+            defaultText: defaultChronoGuide({ clock: cfg.inject_clock, schedules: cfg.schedules_on && cfg.inject_schedules, plans: cfg.plans_on && cfg.inject_plans }),
             onSave: text => stateManager.setChronoGuide(text),
         }));
         head.append(prompt);
@@ -101,12 +101,12 @@ function renderClock(container, cfg, edit) {
             group("Tracking",
                 box("schedules_on", "Daily schedules", "The post-pass writes a day plan"),
                 box("schedules_party", "Schedules for the whole party", "Off: only the player keeps a schedule", !cfg.schedules_on),
-                box("objectives_on", "Objectives", "Long-term goals of the player and the characters"),
+                box("plans_on", "Plans", "Arrangements made in the story (a dinner on Sunday, a meeting at dawn)"),
             ),
             group("Injection",
                 box("inject_clock", "Clock (high priority)", "Date and time in {{gamemaster-high-priority}}"),
-                box("inject_schedules", "Day schedule (low priority)", "Today's plan in {{gamemaster-low-priority}} (changes on a new day or a real revision)", !cfg.schedules_on),
-                box("inject_objectives", "Active objectives (low priority)", "Active objectives in {{gamemaster-low-priority}}", !cfg.objectives_on),
+                box("inject_schedules", "Day schedule (low priority)", "Today's schedule in {{gamemaster-low-priority}} (changes on a new day or a real revision)", !cfg.schedules_on),
+                box("inject_plans", "Coming plans (low priority)", "Plans for the next 7 days (and undated ones) in {{gamemaster-low-priority}}", !cfg.plans_on),
             ),
         ));
         wrap.append(opts);
@@ -149,34 +149,36 @@ function renderSchedules(container, d, cfg, edit) {
     container.append(wrap);
 }
 
-// ---------- objectives ----------
+// ---------- plans ----------
 
-function renderObjectives(container, cfg, edit) {
-    const wrap = $("<div>").addClass("gm_list gm_time_objectives");
-    const head = header("fa-solid fa-flag", "Objectives", "Long-term goals with real stakes");
+const OUTCOME_LABEL = { kept: "kept", missed: "missed", cancelled: "cancelled" };
+
+function renderPlans(container, d, cfg, edit) {
+    const wrap = $("<div>").addClass("gm_list gm_time_plans");
+    const head = header("fa-solid fa-calendar-check", "Plans", "Arrangements made in the story");
     if (edit) {
         const add = $("<div>").addClass("menu_button gm_add_btn").append($("<i>").addClass("fa-solid fa-plus"), $("<span>").text(" Add"));
-        add.on("click", () => stateManager.addObjective({ title: `New objective ${cfg.objectives.length + 1}`, owner: "player" }, SILENT));
+        add.on("click", () => stateManager.addPlan({ title: `New plan ${cfg.plans.length + 1}`, date: cfg.clock?.date || "" }, SILENT));
         head.append(add);
     }
     wrap.append(head);
 
-    const active = cfg.objectives.filter(o => o.status === "active");
-    const past = cfg.objectives.filter(o => o.status !== "active");
+    const active = activePlans(d);
+    const past = cfg.plans.filter(p => p.status !== "active");
     const list = $("<div>").addClass("gm_entry_list");
-    for (const o of active) list.append(edit ? objectiveEditor(o) : objectiveView(o));
-    if (!active.length) list.append($("<div>").addClass("gm_empty").text("No active objectives."));
+    for (const p of active) list.append(edit ? planEditor(p) : planView(p, cfg));
+    if (!active.length) list.append($("<div>").addClass("gm_empty").text("No plans yet."));
     wrap.append(list);
 
     if (past.length) {
-        const hist = $("<details>").addClass("gm_bond_history").append($("<summary>").text(`Finished (${past.length})`));
-        for (const o of past) {
-            const row = $("<div>").addClass("gm_entry_desc gm_time_past_obj").append(
-                $("<span>").text(`${o.title} — ${o.status === "completed" ? "completed" : "dropped"}`));
+        const hist = $("<details>").addClass("gm_bond_history").append($("<summary>").text(`Past (${past.length})`));
+        for (const p of past) {
+            const row = $("<div>").addClass("gm_entry_desc gm_time_past_plan").append(
+                $("<span>").text(`${p.title} — ${OUTCOME_LABEL[p.status] || p.status}`));
             if (edit) {
                 row.append(
-                    iconBtn("fa-solid fa-rotate-left").attr("title", "Make it active again").on("click", () => stateManager.setObjectiveStatus(o.id, "active", SILENT)),
-                    iconBtn("fa-solid fa-trash").attr("title", "Delete").on("click", () => stateManager.removeObjective(o.id)),
+                    iconBtn("fa-solid fa-rotate-left").attr("title", "Make it active again").on("click", () => stateManager.resolvePlan(p.id, "active", SILENT)),
+                    iconBtn("fa-solid fa-trash").attr("title", "Delete").on("click", () => stateManager.removePlan(p.id)),
                 );
             }
             hist.append(row);
@@ -186,38 +188,36 @@ function renderObjectives(container, cfg, edit) {
     container.append(wrap);
 }
 
-function objectiveView(o) {
-    const row = $("<div>").addClass("gm_entry_row gm_time_obj");
-    const owner = stateManager.objectiveOwnerName(o);
+function planView(p, cfg) {
+    const row = $("<div>").addClass("gm_entry_row gm_time_plan");
+    const overdue = planOverdue(p, cfg.clock);
     row.append($("<div>").addClass("gm_entry_top").append($("<div>").addClass("gm_entry_main").append(
-        $("<b>").text(o.title),
-        owner ? $("<span>").addClass("gm_entry_meta").text(owner) : null,
+        $("<b>").text(p.title),
+        $("<span>").addClass("gm_entry_meta").toggleClass("gm_time_plan_overdue", overdue)
+            .attr("title", overdue ? "Its time has passed — the next post-pass resolves it" : "")
+            .text(planWhenText(p) || "No set day"),
     )));
-    if (o.description) row.append($("<div>").addClass("gm_entry_desc").text(o.description));
-    const sub = [o.deadline ? `Deadline: ${o.deadline}` : "", o.steps ? `Steps: ${o.steps}` : "", o.progress ? `Progress: ${o.progress}` : ""].filter(Boolean);
-    for (const line of sub) row.append($("<div>").addClass("gm_entry_desc gm_time_obj_sub").text(line));
+    if (p.note) row.append($("<div>").addClass("gm_entry_desc").text(p.note));
     return row;
 }
 
-function objectiveEditor(o) {
-    const row = $("<div>").addClass("gm_entry_row gm_time_obj gm_time_obj_edit");
-    const field = (key, placeholder, value) => {
-        const input = $("<input>").addClass("gm_input").attr({ placeholder, title: placeholder }).val(value ?? o[key] ?? "");
-        input.on("change", () => stateManager.editObjective(o.id, { [key]: input.val() }));
+function planEditor(p) {
+    const row = $("<div>").addClass("gm_entry_row gm_time_plan gm_time_plan_edit");
+    const field = (key, placeholder) => {
+        const input = $("<input>").addClass("gm_input").attr({ placeholder, title: placeholder }).val(p[key] ?? "");
+        input.on("change", () => stateManager.editPlan(p.id, { [key]: input.val() }));
         return input;
     };
     const actions = $("<div>").addClass("gm_entry_actions").append(
-        iconBtn("fa-solid fa-check").attr("title", "Completed").on("click", () => stateManager.setObjectiveStatus(o.id, "completed", SILENT)),
-        iconBtn("fa-solid fa-ban").attr("title", "Drop it").on("click", () => stateManager.setObjectiveStatus(o.id, "abandoned", SILENT)),
-        iconBtn("fa-solid fa-trash").attr("title", "Delete").on("click", () => stateManager.removeObjective(o.id)),
+        iconBtn("fa-solid fa-check").attr("title", "Kept (it happened)").on("click", () => stateManager.resolvePlan(p.id, "kept", SILENT)),
+        iconBtn("fa-solid fa-user-clock").attr("title", "Missed").on("click", () => stateManager.resolvePlan(p.id, "missed", SILENT)),
+        iconBtn("fa-solid fa-ban").attr("title", "Cancelled").on("click", () => stateManager.resolvePlan(p.id, "cancelled", SILENT)),
+        iconBtn("fa-solid fa-trash").attr("title", "Delete").on("click", () => stateManager.removePlan(p.id)),
     );
     row.append(
-        $("<div>").addClass("gm_entry_top").append($("<div>").addClass("gm_entry_main").append(field("title", "Title")), actions),
-        field("owner", "Owner (character or player)", stateManager.objectiveOwnerName(o)),
-        field("description", "What must be done and why it matters"),
-        field("deadline", "Deadline (optional)"),
-        field("steps", "Steps (optional, A -> B -> C)"),
-        field("progress", "Progress so far"),
+        $("<div>").addClass("gm_entry_top").append($("<div>").addClass("gm_entry_main").append(field("title", "What, with whom, where")), actions),
+        $("<div>").addClass("gm_time_plan_when").append(field("date", "Date MM/DD/YYYY (empty = no set day)"), field("time", "Time HH:MM (optional)")),
+        field("note", "Note (optional)"),
     );
     return row;
 }

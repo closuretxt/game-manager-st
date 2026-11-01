@@ -30,7 +30,7 @@ export const FEATURE_LABELS = {
     feature_death: "Permadeath",
     feature_roster_rotation: "Roster rotation",
     feature_bonds: "Bonds",
-    feature_chrono: "Time (clock, schedules, objectives)",
+    feature_chrono: "Time (clock, schedules, plans)",
 };
 export const CHAT_FEATURE_KEYS = Object.keys(FEATURE_LABELS);
 

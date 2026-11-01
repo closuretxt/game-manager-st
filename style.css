@@ -3771,7 +3771,7 @@ body > #gm_spawn_chip {
     padding: 1px 0;
 }
 
-/* ---------- Time tab (clock, schedules, objectives) ---------- */
+/* ---------- Time tab (clock, schedules, plans) ---------- */
 #gm_tab_content > .gm_list + .gm_list {
     border-top: 1px solid var(--gm-line);
     margin-top: 12px;
@@ -3906,32 +3906,43 @@ body > #gm_spawn_chip {
     font-weight: bold;
 }
 
-.gm_time_obj_edit > .gm_input {
+.gm_time_plan_edit > .gm_input {
     width: 100%;
     box-sizing: border-box;
     margin-top: 4px;
 }
 
-.gm_time_obj_edit .gm_entry_main {
+.gm_time_plan_edit .gm_entry_main {
     min-width: 0;
 }
 
-.gm_time_obj_edit .gm_entry_main .gm_input {
+.gm_time_plan_edit .gm_entry_main .gm_input {
     width: 100%;
     box-sizing: border-box;
 }
 
-.gm_time_obj_sub {
-    opacity: 0.8;
+.gm_time_plan_when {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
 }
 
-.gm_time_past_obj {
+.gm_time_plan_when > .gm_input {
+    flex: 1;
+    min-width: 0;
+}
+
+.gm_time_plan_overdue {
+    color: var(--gm-danger, #c07067);
+}
+
+.gm_time_past_plan {
     display: flex;
     align-items: center;
     gap: 6px;
 }
 
-.gm_time_past_obj > span {
+.gm_time_past_plan > span {
     flex: 1;
 }
 
