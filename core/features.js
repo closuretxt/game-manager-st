@@ -225,6 +225,21 @@ export function setContestRulesets(rulesets) {
     return true;
 }
 
+// Quick battle (inject/quickBattle.js): the chat's input-bar toggle. Chat
+// configuration like the rulesets, so a rollback never flips it.
+export function getQuickBattle() {
+    return chatBucket()?.quick === true;
+}
+
+export function setQuickBattle(on) {
+    const b = chatBucket(true);
+    if (!b) return false;
+    if (on) b.quick = true;
+    else delete b.quick;
+    saveChat();
+    return true;
+}
+
 // Container gate shared by the UI, the snapshot renderers and the parser.
 // Containers no tab toggle covers (resources, attributes, traits) are always on.
 export function containerEnabled(container) {

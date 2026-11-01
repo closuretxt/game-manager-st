@@ -38,6 +38,7 @@ import { rollDice, requeueRollResult } from "./diceRoller.js";
 import { runCombatTurn, requeueCombatRound } from "./combatEngine.js";
 import { runContestTurn, replayContestRound, contestRuleset, activeContestKind, endContest } from "./contest/contest.js";
 import { takeQuickActions, applyQuickActions, continueContestPlan, plannedContestKind } from "./contest/quick.js";
+import { forceQuickPlan, markQuickRound } from "../inject/quickBattle.js";
 import { runTransaction } from "./transactions.js";
 import { runPrePass, planFromRaw } from "./prePass.js";
 import { restoreSnapshot } from "./snapshots.js";
@@ -318,6 +319,9 @@ export async function handlePreTurn(type = "normal") {
         } else if (activeKind) {
             plan = continueContestPlan(plan, activeKind);
         }
+        // Quick battle on: a fresh message is a fight round even when the
+        // router judged none (inject/quickBattle.js).
+        if (isPlayerAction) plan = forceQuickPlan(plan, s.feature_combat ? plannedContestKind(plan) : null);
     }
     // Swipes/regenerates never re-run the pre-pass while the stash holds the
     // original turn's results (the previous generation's macro already
@@ -391,6 +395,9 @@ export async function handlePreTurn(type = "normal") {
                 // the user's message (gm_prepass) — no payload passing needed.
                 await rollDice(action, actionMsgId, { title: plan.roll.title });
             }
+            // Quick battle: the interceptor swaps the story call for the
+            // round's cards (fresh sends only).
+            if (contestRan && isPlayerAction) markQuickRound(actionMsgId);
 
             // Transactions — plan entries carry a pre-judged delta when the
             // router provided one; otherwise the specialist judges the amount.

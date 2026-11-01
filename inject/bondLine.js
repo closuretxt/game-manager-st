@@ -27,8 +27,6 @@ import { isMentioned } from "../core/rosterRotation.js";
 import { storeMessageData } from "../util/chatStore.js";
 import { onMessageRendered, registerAttachmentRestorer } from "../util/messageDom.js";
 
-const INTERCEPTOR = "gmBondsInterceptor"; // must match manifest.json
-
 function personaName() {
     return String(getContext()?.name1 || "").trim() || "the player";
 }
@@ -79,7 +77,8 @@ export function attachBondLines(now, exchangeText) {
 
 // ---------- prompt ----------
 
-async function interceptor(chat, _contextSize, _abort, type) {
+// Run by the shared generate interceptor (inject/interceptor.js).
+export async function bondsInterceptor(chat, _contextSize, _abort, type) {
     try {
         if (!placementOn() || !Array.isArray(chat)) return;
         // Backwards, so each splice leaves the indexes still to visit alone.
@@ -126,7 +125,6 @@ function renderInto(mesEl, msg) {
 }
 
 export function initBondLines() {
-    globalThis[INTERCEPTOR] = interceptor;
     registerAttachmentRestorer((mesEl, msg) => {
         if (!msg?.gm_bond && !mesEl.querySelector(".gm_bond_line")) return;
         renderInto(mesEl, msg);

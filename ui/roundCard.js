@@ -52,6 +52,7 @@ export function roundCardEl(card, { icon = "" } = {}) {
     if (card.move) {
         const move = $("<div>").addClass("gm_rc_move").text(card.move);
         if (card.against) move.append($("<span>").addClass("gm_rc_against").text(` (${card.target || "they"} used ${card.against})`));
+        if (card.moveHint) move.attr("title", card.moveHint);
         el.append(move);
     }
     // "Success"/"Failure" explain themselves; a partial one needs the words.

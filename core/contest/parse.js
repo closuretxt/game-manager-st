@@ -139,6 +139,7 @@ export function parseActs(text) {
             title: title.slice(0, 80),
             text: (body || title).slice(0, 200),
             target: String(a.target || "").trim().slice(0, 80),
+            after: String(a.after || "").trim().slice(0, 80),
         });
     }
     return out;

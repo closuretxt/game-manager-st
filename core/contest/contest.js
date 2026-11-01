@@ -182,7 +182,27 @@ export function buildPartyActions(action, plan, contest) {
             action: [title, text !== title ? text : ""].filter(Boolean).join(" — ").slice(0, 140) || "Act",
         });
     }
+    // Follow-ups: resolved after the move they follow (engine followOrder).
+    const names = out.map(p => p.actor);
+    for (const p of out) {
+        const a = (plan?.acts || []).find(x => contestKey(x.actor) === contestKey(p.actor));
+        const after = a ? followTargetOf(a, p.actor, names) : "";
+        if (after) p.after = after;
+    }
     return out;
+}
+
+// Whose move an ally's act follows up: the router's after="..." first, else
+// the wording ("Follow Aaru's shots", "after Kael's strike"). Only another
+// party actor of this round counts. "Cover"/"protect" don't: those come first.
+const FOLLOW_RE = /\b(?:follow(?:s|ing)?(?:\s+up)?(?:\s+on)?|after|finish(?:es|ing)?\s+off)\s+(.+)/i;
+function followTargetOf(act, self, names) {
+    const others = names.filter(n => contestKey(n) !== contestKey(self));
+    if (act.after) return matchName(others.map(n => ({ name: n })), act.after)?.name || "";
+    const m = FOLLOW_RE.exec(`${act.title || ""} ${act.text || ""}`);
+    if (!m) return "";
+    const rest = m[1].toLowerCase();
+    return others.find(n => rest.startsWith(n.toLowerCase())) || "";
 }
 
 // Stakes left, 0..1, for the scripted brains; null when the sheet has none.
@@ -490,6 +510,8 @@ export async function runContestTurn(action, plan, userMsgId, kind = "clash") {
             opts: { ...ruleset.opts, stakes },
             contest,
             participants: contestParticipants(contest, shape, partyActions),
+            // Actor -> the party member whose move they follow up this round.
+            follows: Object.fromEntries(partyActions.filter(p => p.after).map(p => [p.actor, p.after])),
             roundNo: contest.round + 1,
             out: {},
             log: msg => logDebug(`contest: ${msg}`),

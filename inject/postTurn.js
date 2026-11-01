@@ -81,6 +81,9 @@ export function initPostTurn() {
             const id = Number.isFinite(mesId) ? mesId : st.chat.length - 1;
             const msg = st.chat[id];
             if (!msg || msg.is_user) return;
+            // Quick battle reply: the round already applied everything and
+            // there is no story to read (inject/quickBattle.js).
+            if (msg.gm_quick && Number(msg.swipe_id ?? 0) === Number(msg.gm_quick.swipe ?? 0)) return;
             if (String(msg.mes ?? "").trim().length < MIN_REPLY_CHARS) {
                 logDebug(`postTurn: reply under ${MIN_REPLY_CHARS} chars — tracker skipped`);
                 return;

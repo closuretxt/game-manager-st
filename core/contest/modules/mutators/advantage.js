@@ -35,17 +35,18 @@ export function advantageBeforeRoll(ctx, group, roll) {
     const own = advStatusWords(ctx, a.actor);
     const bad = own.find(s => ADV_BAD_RE.test(s));
     const good = own.find(s => ADV_GOOD_RE.test(s));
-    if (bad) { delta--; why.push(`${a.actor} ${bad}`); }
-    if (good) { delta++; why.push(`${a.actor} ${good}`); }
+    if (bad) { delta--; why.push(`${a.actor} is ${bad}`); }
+    if (good) { delta++; why.push(`${a.actor} is ${good}`); }
     if (b) {
         const hindered = advStatusWords(ctx, b.actor).find(s => ADV_BAD_RE.test(s));
-        if (hindered) { delta++; why.push(`${b.actor} ${hindered}`); }
+        if (hindered) { delta++; why.push(`${b.actor} is ${hindered}`); }
         if (contestSide(ctx, a.actor) === "party" && (ctx.flank?.[contestKey(b.actor)] || 0) >= 2) { delta++; why.push(`flanking ${b.actor}`); }
     }
     if (!delta) return;
     const step = delta > 0 ? 1 : -1;
     roll.adv += step;
-    roll.notes.push(`${step > 0 ? "Advantage (rolled twice, kept the better)" : "Disadvantage (rolled twice, kept the worse)"}: ${why.join(", ")}`);
+    // The roll line already says "best/worst of two"; the note only says why.
+    roll.notes.push(`${step > 0 ? "Advantage" : "Disadvantage"}: ${why.join(", ")}`);
 }
 
 export const mutAdvantage = {

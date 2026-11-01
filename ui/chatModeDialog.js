@@ -16,6 +16,7 @@ import {
 import {
     CONTEST_MODULES, CONTEST_PRESETS, contestRulesetOptions, resolveRuleset, editRuleset, sanitizeRulesets, slotModules,
 } from "../core/contest/registry.js";
+import { PRESET_DESCRIPTIONS, MODULE_DESCRIPTIONS } from "../core/contest/descriptions.js";
 import { refreshFeatureUI } from "../settings/settingsManager.js";
 import { fadeOutRemove } from "../util/fx.js";
 
@@ -79,6 +80,16 @@ let _rulesetKind = "clash";
 const KIND_LABELS = { clash: "Fights", race: "Races", scores: "Contests", challenge: "Challenges" };
 const SLOT_LABELS = { turn: "Turn order", dice: "Dice", consequence: "Consequences" };
 
+// What the current pick does, in plain words, right under its control:
+// tooltips never show on phones.
+function descLine(text) {
+    return text ? $("<div>").addClass("gm_field_desc").text(text) : null;
+}
+
+function moduleDesc(mod) {
+    return MODULE_DESCRIPTIONS[mod?.id] || mod?.hint || "";
+}
+
 function editRules(patch) {
     const s = extension_settings[extensionName];
     setContestRulesets(editRuleset(getContestRulesets(), _rulesetKind, { ...patch, fallbackPreset: s.contest_preset }));
@@ -107,8 +118,7 @@ function optionControl(opt, value, onSet) {
         input.on("change", () => onSet(String(input.val()).trim()));
     }
     const row = $("<div>").addClass("gm_field gm_field_inline").append($("<label>").text(opt.label), input);
-    if (opt.hint) row.attr("title", opt.hint);
-    return row;
+    return opt.hint ? $("<div>").append(row, descLine(opt.hint)) : row;
 }
 
 function moduleOptions(moduleId, opts) {
@@ -149,11 +159,11 @@ function renderRulesetBuilder(body) {
     const globalId = presets[s.contest_preset] && !presets[s.contest_preset].legacy ? s.contest_preset : "universal";
     const presetSel = $("<select>").addClass("text_pole");
     presetSel.append($("<option>").val("").text(`Default: ${presets[globalId]?.label || globalId}`));
-    for (const [id, p] of Object.entries(presets)) presetSel.append($("<option>").val(id).text(p.label || id));
+    for (const [id, p] of Object.entries(presets)) presetSel.append($("<option>").val(id).text(p.label || id).attr("title", PRESET_DESCRIPTIONS[_rulesetKind]?.[id] || ""));
     presetSel.val(presets[raw.preset] ? raw.preset : "");
     presetSel.on("change", () => editRules({ preset: presetSel.val() }));
     body.append($("<div>").addClass("gm_field gm_field_inline").append($("<label>").text("Preset"), presetSel));
-
+    body.append(descLine(PRESET_DESCRIPTIONS[_rulesetKind]?.[rs.preset]));
     if (rs.legacy) {
         body.append($("<div>").addClass("gm_modal_hint").text("Legacy runs the pre-rework pipeline: no slots or options."));
     } else {
@@ -163,13 +173,12 @@ function renderRulesetBuilder(body) {
         const changedSlots = [];
         for (const slot of Object.keys(SLOT_LABELS)) {
             const sel = $("<select>").addClass("text_pole");
-            for (const m of slotModules(slot, _rulesetKind)) sel.append($("<option>").val(m.id).text(m.label).attr("title", m.hint));
+            for (const m of slotModules(slot, _rulesetKind)) sel.append($("<option>").val(m.id).text(m.label).attr("title", MODULE_DESCRIPTIONS[m.id] || m.hint));
             sel.val(rs[slot]?.id || "");
             sel.on("change", () => editRules({ slot, value: sel.val() }));
             const row = $("<div>").addClass("gm_field gm_field_inline").append($("<label>").text(SLOT_LABELS[slot]), sel);
-            if (rs[slot]?.hint) row.attr("title", rs[slot].hint);
             if (slot in raw) { row.addClass("gm_mode_changed"); changedSlots.push(slot); }
-            body.append(row);
+            body.append(row, descLine(moduleDesc(rs[slot])));
             const opts = rs[slot] ? moduleOptions(rs[slot].id, raw.opts) : null;
             if (opts) body.append(opts);
         }
@@ -179,7 +188,7 @@ function renderRulesetBuilder(body) {
         for (const m of slotModules("mutators", _rulesetKind)) {
             const box = $("<input>").attr("type", "checkbox").prop("checked", on.has(m.id));
             box.on("change", () => editRules({ mutator: m.id, on: box.prop("checked") }));
-            const row = $("<label>").addClass("checkbox_label").attr("title", m.hint).append(box, $("<span>").text(m.label));
+            const row = $("<label>").addClass("checkbox_label").attr("title", MODULE_DESCRIPTIONS[m.id] || m.hint).append(box, $("<span>").text(m.label));
             if (Array.isArray(raw.mutators)) row.addClass("gm_mode_changed");
             grid.append(row);
         }

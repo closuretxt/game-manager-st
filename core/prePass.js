@@ -104,7 +104,9 @@ const SYSTEM_PROMPT = [
 
 const ACT_RULES = [
     "ALLY ACTS (only together with <combat>):",
-    '<act actor="<party member name>" speed="<initiative, 0 if unknown>" title="<short action title>"><intent line under 20 words: what they attempt and at whom></act>',
+    '<act actor="<party member name>" speed="<initiative, 0 if unknown>" title="<the move in 2-5 words>" after="<optional: the party member whose move this one follows up>"><intent line under 20 words: what they attempt and at whom></act>',
+    "- title is the move itself in 2-5 words, the skill's name when they use one (\"Waveless Splash\", \"Cover the flank\"); the details go in the intent line.",
+    "- after=\"Name\" only when the act needs that party member's move to happen first (finishing what they opened, following up their shots); the round then resolves it right after theirs. Leave it out otherwise.",
     "- One <act> for each party member (never the player's own character) whose behavior the player's action does NOT already cover. Members the player commanded, named or protected get NOTHING: never override the player's orders. Allies are friendly: they may coordinate with the player's move, cover them or follow their lead.",
     "- Skip allies who cannot act (dazed, unconscious, state=\"ko\"/\"dead\") or have nothing sensible to do. Prefer a fitting READY skill (no * marker) over a plain attack and name it in the intent; never a skill on cooldown, never one they can't afford, never one not on their sheet.",
     "- No <skill> suggestion together with <combat>: the combat round adjudicates skill uses itself.",

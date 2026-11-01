@@ -183,6 +183,32 @@ function* resolveGroupSteps(ctx, g, index) {
     return res;
 }
 
+// Follow-ups (ctx.follows: actor -> whom they follow): a group whose first
+// side follows someone acting LATER moves to right after that person's first
+// group, this round only; the stored initiative is untouched. Already later =
+// left alone. One pass in queue order, so chains (C after B after A) settle.
+function followOrder(ctx, list, order) {
+    const follows = ctx.follows || {};
+    if (!Object.keys(follows).length) return order;
+    const key = n => contestKey(n);
+    const want = {};
+    for (const [a, b] of Object.entries(follows)) want[key(a)] = key(b);
+    const out = [...order];
+    for (const i of order) {
+        const actor = list[i]?.sides?.[0]?.actor;
+        const lead = want[key(actor)];
+        if (!lead) continue;
+        const at = out.indexOf(i);
+        const leadAt = out.findIndex(j => (list[j]?.sides || []).some(sd => key(sd.actor) === lead));
+        if (leadAt < 0 || leadAt < at) continue;
+        const leadName = list[out[leadAt]].sides.find(sd => key(sd.actor) === lead).actor;
+        out.splice(at, 1);
+        out.splice(leadAt, 0, i); // leadAt shifted down by one after the removal
+        ctx.notes.push(`${actor} waits for ${leadName} (follows up their move)`);
+    }
+    return out;
+}
+
 // Resolves a whole round. Returns { order, groups (resolution order),
 // standing, over, out, notes }. `notes` = round-level mechanics for the
 // results message (initiative rolls...), never the story.
@@ -194,7 +220,7 @@ function* roundSteps(ctx, groups) {
     const list = Array.isArray(groups) ? groups : [];
     // roundStart sees every group before any resolves (flanking, clocks).
     callMutators(ctx, "roundStart", list);
-    const order = ctx.turn.queue(ctx, list);
+    const order = followOrder(ctx, list, ctx.turn.queue(ctx, list));
     const results = [];
     for (const i of order) {
         const res = yield* resolveGroupSteps(ctx, list[i], i);

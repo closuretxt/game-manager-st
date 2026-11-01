@@ -232,15 +232,31 @@ function cardEffects(g, actor) {
     return [...out.filter(e => contestKey(e.who) !== me), ...out.filter(e => contestKey(e.who) === me)];
 }
 
+// The move as the card shows it. Ally/enemy plans are often whole sentences
+// ("Follow Aaru's shots with Waveless Splash/Sharky's Bite on nearest dazed
+// scout"); a short plan reads fine as is, a long one is replaced by the skill
+// the character actually used, the full plan kept for the hover.
+const CARD_MOVE_MAX = 40;
+function cardMove(g, side) {
+    const plan = storyAction(side?.action);
+    if (plan.length <= CARD_MOVE_MAX) return { text: plan, hint: "" };
+    const k = contestKey(side.actor);
+    const used = (g?.records || []).find(r => r.kind === "skill" && r.status === "applied" && contestKey(r.target) === k);
+    return used ? { text: used.name, hint: plan } : { text: plan, hint: "" };
+}
+
 export function roundCards(round) {
     const groups = (round?.groups || []).map(g => {
         const first = g.sides?.[0] || {};
         const line = g.lines?.[0] || {};
+        const move = cardMove(g, first);
+        const against = g.sides?.[1]?.action ? cardMove(g, g.sides[1]) : { text: "", hint: "" };
         const card = {
             who: first.actor || "",
-            move: storyAction(first.action),
+            move: move.text,
+            moveHint: [move.hint, against.hint && `${g.sides[1].actor}: ${against.hint}`].filter(Boolean).join("\n"),
             target: line.versus || "",
-            against: g.sides?.[1]?.action ? storyAction(g.sides[1].action) : "",
+            against: against.text,
             story: (g.lines || []).map(l => l.text).filter(Boolean).join(" "),
             effects: cardEffects(g, first.actor),
             tags: [...(g.notes || [])],
@@ -262,6 +278,17 @@ export function roundCardText(card) {
     const res = [card.result, card.roll].filter(Boolean).join(", ");
     const fx = (card.effects || []).map(e => `${e.who} ${e.items.map(i => i.text).join(", ")}`).join("; ");
     return [`${head}${res ? ` — ${res}` : ""}`, card.story, fx, ...(card.tags || [])].filter(Boolean).join("\n");
+}
+
+// The quick-battle reply's text (inject/quickBattle.js): what the chat keeps
+// in place of a narrated reply, so later story turns read what happened. The
+// message itself shows the cards; this is the prompt's view of it.
+export function quickReplyText(cards, roundNo, over = false) {
+    const parts = [`[Quick battle, round ${roundNo}]`];
+    for (const c of cards?.groups || []) parts.push(roundCardText(c));
+    for (const ev of cards?.events || []) parts.push(ev);
+    if (over) parts.push("The fight is over.");
+    return parts.join("\n\n");
 }
 
 // One chip per group: { title, tier, outcome, icon? }. Round notes

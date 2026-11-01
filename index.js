@@ -21,6 +21,8 @@ import { initMacros } from "./inject/macro.js";
 import { initPreTurn } from "./inject/preTurn.js";
 import { initPostTurn } from "./inject/postTurn.js";
 import { initBondLines } from "./inject/bondLine.js";
+import { initInterceptor } from "./inject/interceptor.js";
+import { initQuickBattle } from "./inject/quickBattle.js";
 // Connection profiles
 import { swapProfile } from "./util/profileSwapper.js";
 export { swapProfile };
@@ -54,6 +56,8 @@ jQuery(async () => {
         initPreTurn();
         initPostTurn();
         initBondLines();
+        initInterceptor();
+        initQuickBattle();
         initAttachmentRestore();
 
         logDebug("Game Manager initialized.", extension_settings[extensionName]);

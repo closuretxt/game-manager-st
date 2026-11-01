@@ -1473,6 +1473,14 @@ textarea.gm_input {
     color: var(--SmartThemeEmColor, #999);
 }
 
+/* What the picked rule does, under its dropdown (combat rules dialog). */
+.gm_field_desc {
+    font-size: 11.5px;
+    line-height: 1.35;
+    opacity: var(--gm-muted);
+    margin: -2px 0 8px;
+}
+
 .gm_modal label {
     font-size: 12px;
     font-weight: 600;
@@ -4355,6 +4363,36 @@ body > #gm_spawn_chip {
     padding: 6px;
     border: 1px solid var(--gm-line);
     border-radius: var(--gm-radius);
+}
+
+/* Quick battle (inject/quickBattle.js): the input-bar toggle and the reply
+   that shows the round cards in place of a narrated message. */
+#gm_quick_battle {
+    opacity: 0.6;
+    transition: opacity 0.15s, color 0.15s;
+}
+#gm_quick_battle:hover {
+    opacity: 1;
+}
+#gm_quick_battle.gm_quick_on {
+    opacity: 1;
+    color: var(--SmartThemeQuoteColor, #e8a33d);
+    filter: drop-shadow(0 0 4px var(--SmartThemeQuoteColor, #e8a33d));
+}
+.gm_quick_mes .mes_text {
+    display: none;
+}
+.gm_quick_reply {
+    margin-top: 4px;
+}
+.gm_quick_over {
+    margin-top: 6px;
+    font-weight: 600;
+    text-align: center;
+}
+/* The reply below already shows this round: no second copy on the action. */
+.mes:has(+ .mes.gm_quick_mes) .gm_round_file {
+    display: none;
 }
 
 /* "Ask me": a question inside the combat bubble. */
