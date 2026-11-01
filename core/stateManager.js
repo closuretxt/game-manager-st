@@ -9,7 +9,7 @@ import { extensionName, CHARACTER_STATES } from "./constants.js";
 import { CHARACTER_CONTAINERS, GM_SCHEMA, defaultEntry, genId } from "./schemas.js";
 import { resolveResourceMax } from "./resourceScaler.js";
 import { getTemplate, conformSheet, followsCard } from "./cardTemplates.js";
-import { bondConfig, bondSheets, ensureBond, isPlayerSheet, setBondStatus, endBondStatus, settleBondStatuses, setBondDefs } from "./bonds.js";
+import { bondConfig, bondSheets, ensureBond, isPlayerSheet, setBondStatus, endBondStatus, settleBondStatuses, setBondDefs, setBondStage, reviewBondStage, matchStage, stageOf } from "./bonds.js";
 import { PLAYER_OWNER, chronoConfig, setClock as chronoSetClock, advanceClock as chronoAdvance, setSchedule as chronoSetSchedule, addPlan as chronoAddPlan, updatePlan as chronoUpdatePlan, resolvePlan as chronoResolvePlan, parseTimeHM, repairDate, clockYear, pad2 } from "./chrono.js";
 import { logDebug } from "./debug.js";
 
@@ -599,12 +599,15 @@ export const stateManager = {
         this.emitChange("bond_defs");
     },
 
-    setBondOptions({ inject, step, settle, guide } = {}) {
+    setBondOptions({ inject, step, settle, notes, placement, reattach, thresholds } = {}) {
         const cfg = bondConfig(this.getData());
         if (inject !== undefined) cfg.inject = !!inject;
-        if (guide !== undefined) cfg.guide = String(guide ?? "").trim();
+        if (notes !== undefined) cfg.notes = String(notes ?? "").trim();
+        if (placement !== undefined) cfg.placement = placement;
         if (step !== undefined) cfg.step = step;
         if (settle !== undefined) cfg.settle = settle;
+        if (reattach !== undefined) cfg.reattach = reattach;
+        if (thresholds !== undefined) cfg.thresholds = { ...cfg.thresholds, ...thresholds };
         bondConfig(this.getData());
         this.emitChange("bond_options");
     },
@@ -661,6 +664,59 @@ export const stateManager = {
         if (!(defId in bond.values)) return;
         bond.values[defId] = Math.min(100, Math.max(0, Math.round(Number(value) || 0)));
         this.emitChange("bond_value");
+    },
+
+    // The tracker's <bond_stage> (gated up, free down). Returns
+    // { from, to } or { rejected }.
+    applyBondStage(id, to, now) {
+        const c = this.getSheet(id);
+        if (!c) return { rejected: "no sheet" };
+        const res = setBondStage(this.getData(), c, to, now);
+        if (!res.rejected) this.emitChange("bond_stage");
+        return res;
+    },
+
+    // Manual stage pick (sheet, edit mode): the user is the GM, no gate.
+    setBondStageManual(id, to) {
+        const c = this.getSheet(id);
+        const key = matchStage(to);
+        if (!c || !key || !bondConfig(this.getData()).defs.length) return;
+        const bond = ensureBond(c, this.getData());
+        if (stageOf(c) === key) return;
+        bond.stage = key;
+        bond.graduated = false;
+        this.emitChange("bond_stage");
+    },
+
+    setBondGraduated(id, on) {
+        const c = this.getSheet(id);
+        if (!c?.bond) return;
+        c.bond.graduated = !!on;
+        this.emitChange("bond_stage");
+    },
+
+    // After the tracker's tags: demotions, the negative side, graduation.
+    // Returns [{ id, name, from?, to?, graduated? }] for the notifications.
+    reviewBondStages(now, playerNames = []) {
+        const d = this.getData();
+        if (!bondConfig(d).defs.length) return [];
+        const out = [];
+        for (const c of this.bondHolders(playerNames)) {
+            if (!c.bond) continue;
+            const res = reviewBondStage(d, c, now);
+            if (res) out.push({ id: c.id, name: c.name, ...res });
+        }
+        if (out.length) this.emitChange("bond_review");
+        return out;
+    },
+
+    // Records which message last carried each character's bond line.
+    markBondsAttached(ids, now) {
+        for (const id of ids) {
+            const c = this.getSheet(id);
+            if (c?.bond) c.bond.attachedAt = now;
+        }
+        if (ids.length) this.persist();
     },
 
     // ---------- chronogram (core/chrono.js) ----------

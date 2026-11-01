@@ -418,7 +418,8 @@ export const setupWizard = {
                 .filter(k => (char[k] || []).length)
                 .map(k => `${char[k].length} ${CONTAINER_LABELS[k]}`)
                 .join(", ") || "empty sheet";
-            const bondNote = char.bond?.label ? ` · Bond: ${char.bond.label}${char.bond.values ? ` (${char.bond.values})` : ""}` : "";
+            const bondHead = char.bond?.stage || char.bond?.label || "";
+            const bondNote = bondHead ? ` · Bond: ${bondHead}${char.bond.values ? ` (${char.bond.values})` : ""}` : "";
             const del = iconBtn("fa-solid fa-trash");
             del.on("click", () => {
                 this._expanded.delete(char);

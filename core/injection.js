@@ -20,8 +20,7 @@ import { gmSettings, containerEnabled } from "./features.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerNames } from "./stateManager.js";
 import { resolveResourceMax } from "./resourceScaler.js";
-import { bondConfig, bondInjectionLine, bondGuideText, isPlayerSheet } from "./bonds.js";
-import { isMentioned } from "./rosterRotation.js";
+import { bondConfig, bondStoryParts, isPlayerSheet } from "./bonds.js";
 import { clockInjectionText, scheduleInjectionLines, planInjectionLines, nameTag, chronoGuideText } from "./chrono.js";
 import { CHARACTER_CONTAINERS } from "./schemas.js";
 import { scenarioBriefInjection } from "./scenarioBrief.js";
@@ -231,37 +230,33 @@ function cacheFirst() {
     return extension_settings[extensionName]?.cache_first !== false;
 }
 
-// Bonds of the characters in the scene: the party, plus benched sheets named
-// in the last few messages. Per-turn on purpose: in the cached low block a
-// change surfaced late (only on a band crossing) and every change broke the
-// prefix anyway.
-function bondLines(d, s) {
+// Bonds v2 in the low block (placement "low"; "message" attaches them to
+// chat messages instead, inject/bondLine.js): one name-keyed block per living
+// party NPC who hasn't graduated — the stage + its role note, then the open
+// threads. Party only, so benched characters walking in and out of the last
+// messages never churn the cached prefix; it changes only with a stage or a
+// thread.
+function bondsBlock(d, s) {
     const cfg = s.feature_bonds ? bondConfig(d) : null;
-    if (!cfg?.inject || !cfg.defs.length) return [];
-    const chat = getContext()?.chat || [];
-    const recent = chat.slice(-3).map(m => `${m?.name ?? ""}\n${m?.mes ?? ""}`).join("\n");
+    if (!cfg?.inject || cfg.placement !== "low" || !cfg.defs.length) return "";
+    const user = personaName();
     const players = playerNames();
-    const benched = (d.roster || []).map(r => r.sheet).filter(c => c && isMentioned(recent, c.name, c.aliases));
-    const holders = [...(d.characters || []), ...benched]
-        .filter(c => c.bond && c.state?.mode !== "dead" && !isPlayerSheet(c, players))
-        .sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? "")));
-    const lines = holders.map(c => bondInjectionLine(d, c, txt, nameTag(c.name))).filter(Boolean);
-    if (!lines.length) return [];
-    return [block("bonds", `How each character feels toward ${txt(personaName())} right now${bondGuideOn(d, s) ? " (read with <bond_rules>)" : ""}. Let it color their behavior; never state it outright.`, lines)];
+    const lines = (d.characters || [])
+        .filter(c => c.state?.mode !== "dead" && !isPlayerSheet(c, players))
+        .sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? "")))
+        .map(c => {
+            const p = bondStoryParts(d, c, user);
+            if (!p) return "";
+            const tag = nameTag(c.name);
+            const body = [`${p.stage}: ${p.note}`, ...(p.threads.length ? ["Still open between them:", ...p.threads.map(t => `- ${t}`)] : [])];
+            return [`<${tag}>`, ...body.map(txt), `</${tag}>`].join("\n");
+        })
+        .filter(Boolean);
+    if (!lines.length) return "";
+    return block("bonds", `Where each character stands with ${txt(user)}: play the stage as part of who they are, and let the open threads carry over. Never state it outright.`, lines);
 }
 
-// The bonds guidance is static text, so it sits in the cached low block
-// (like the chronogram guidance) instead of riding in every turn context.
-// Shown while some living party NPC carries a bond, so it does not flicker
-// with benched characters walking in and out of the last messages.
-function bondGuideOn(d, s) {
-    const cfg = s.feature_bonds ? bondConfig(d) : null;
-    if (!cfg?.inject || !cfg.defs.length) return false;
-    const players = playerNames();
-    return (d.characters || []).some(c => c.bond && c.state?.mode !== "dead" && !isPlayerSheet(c, players));
-}
-
-// Per-turn context: world clock, live enemy state, bonds + the pre-pass's
+// Per-turn context: world clock, live enemy state + the pre-pass's
 // one-shot readouts. Drains the one-shot queue (recorded for the post-pass as _lastLow).
 function buildTurnContext() {
     const d = stateManager.getData();
@@ -283,7 +278,6 @@ function buildTurnContext() {
         });
         parts.push(block("enemies", "Active enemies in the scene.", lines));
     }
-    parts.push(...bondLines(d, s));
     // One-shot lines queued by the pre-pass for THIS turn only.
     if (_pendingLow.length) {
         const oneShot = _pendingLow.splice(0, _pendingLow.length);
@@ -334,7 +328,7 @@ export function discardPending() {
 // ---------- low priority (persistent context) ----------
 
 // Builds the persistent context block: warnings, always-inject entries,
-// character states, schedules and plans (bonds ride in the turn context). Ordered deterministically (no insertion-order churn), so
+// character states, schedules and plans, bonds (placement "low"). Ordered deterministically (no insertion-order churn), so
 // the block only changes when the underlying state does.
 export function buildLowPriority() {
     if (!enabled()) return "";
@@ -386,7 +380,8 @@ export function buildLowPriority() {
         }
     }
 
-    if (bondGuideOn(d, s)) parts.push(block("bond_rules", bondGuideText(d, txt(personaName()), txt), []));
+    const bonds = bondsBlock(d, s);
+    if (bonds) parts.push(bonds);
 
     // Legacy layout: per-turn context shares this block (cache-first off).
     if (!cacheFirst()) parts.push(...buildTurnContext());

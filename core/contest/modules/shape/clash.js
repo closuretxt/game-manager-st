@@ -16,7 +16,7 @@ export function clashStakes(ctx, sheet) {
     return ctx.ops.match(sheet?.resources || [], name) || null;
 }
 
-const CLASH_OUT_WORDS = { dead: "dead", ko: "knocked out", down: "down", fled: "fled", yielded: "yielded", out: "out of the fight" };
+const CLASH_OUT_WORDS = { dead: "dead", ko: "knocked out", down: "down", fled: "has fled", yielded: "has yielded", out: "out of the fight" };
 
 // Condition in words for the story LLM — never a number.
 export function clashCondition(ctx, sheet) {
@@ -47,9 +47,21 @@ export function clashStanding(ctx) {
         seen.add(key);
         const found = ctx.ops.sheet(p.name);
         if (!found) continue;
-        parts.push(`${found.sheet.name}: ${clashCondition(ctx, found.sheet)}`);
+        // A plain sentence ("Kael is badly hurt, Goblin A has fled."): the
+        // story LLM reads it as prose, not as a stat line.
+        const word = clashCondition(ctx, found.sheet);
+        parts.push(/^has /.test(word) ? `${found.sheet.name} ${word}` : `${found.sheet.name} is ${word}`);
     }
-    return parts.join(" · ");
+    // Enemies who fell in earlier rounds left the scene (archived) but stay
+    // named, or the story may keep them fighting.
+    for (const f of ctx.contest?.fallen || []) {
+        const key = contestKey(f.name);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const word = CLASH_OUT_WORDS[f.mode] || f.mode || "down";
+        parts.push(/^has /.test(word) ? `${f.name} ${word}` : `${f.name} is ${word}`);
+    }
+    return parts.length ? `${parts.join(", ")}.` : "";
 }
 
 // Over when a side has nobody left standing (a side with no participants at
@@ -95,7 +107,8 @@ export const shapeClash = {
     basicActions: CLASH_BASIC_ACTIONS,
     storyTag: "combat_round",
     lineTag: "clash",
-    rule: "These results are final: narrate them, and add no hits, injuries, deaths or escapes beyond them.",
+    rule: "The game already decided this round: do not resolve any action yourself. Narrate these results in this order, on the targets named. landed says what each attack did to its target (\"no damage\" = it hurt no one). Add no hits, injuries, deaths or escapes beyond them; fighters the standing calls down, dead or fled are out of the fight.",
+    landed: true,
     stakes: clashStakes,
     standing: clashStanding,
     isOver: clashIsOver,

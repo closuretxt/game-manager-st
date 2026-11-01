@@ -25,15 +25,23 @@ function ledgerText(v) {
         .trim();
 }
 
+// The move's name only. Party acts arrive as "Sharky's Bite on Scout B —
+// follow up to finish the dazed scout": the part after the dash is the
+// intent the oracle judged, and handed to the story it reads as what happened.
+function storyAction(action) {
+    return String(action ?? "").split(" — ")[0].trim();
+}
+
 export function storyBlock(shape, round) {
     const tag = shape?.storyTag || "contest_round";
     const lineTag = shape?.lineTag || "result";
     const lines = [];
     for (const g of round?.groups || []) {
         for (const l of g.lines || []) {
-            const attrs = [`actor="${ledgerAttr(l.actor)}"`, `action="${ledgerAttr(l.action)}"`];
+            const attrs = [`actor="${ledgerAttr(l.actor)}"`, `action="${ledgerAttr(storyAction(l.action))}"`];
             if (l.versus) attrs.push(`versus="${ledgerAttr(l.versus)}"`);
             attrs.push(`result="${ledgerAttr(l.result)}"`);
+            if (l.landed) attrs.push(`landed="${ledgerAttr(l.landed)}"`);
             if (l.fell) attrs.push(`fell="${ledgerAttr(l.fell)}"`);
             if (l.status) attrs.push(`status="${ledgerAttr(l.status)}"`);
             lines.push(`<${lineTag} ${attrs.join(" ")}>${ledgerText(l.text)}</${lineTag}>`);
@@ -119,7 +127,10 @@ export function postPassBlock(round, { degraded = false, roundNo = 0 } = {}) {
 
 // A group's applied effects in short form, plus falls no state effect named.
 export function groupEffectShorts(g) {
-    const fx = (g?.records || []).filter(r => r.status === "applied").map(effectShort);
+    // A number that did not move (already at max, a band already set) is noise.
+    const fx = (g?.records || [])
+        .filter(r => r.status === "applied" && !((r.kind === "resource" || r.kind === "track") && r.applied === 0))
+        .map(effectShort);
     for (const f of g?.fell || []) {
         if (!(g.records || []).some(r => r.kind === "state" && r.status === "applied" && r.target === f.name)) fx.push(`${f.name} ${f.word}`);
     }

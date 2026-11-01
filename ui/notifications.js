@@ -21,7 +21,7 @@ import { progression } from "../core/progression.js";
 import { onDiceRoll } from "../core/valueResolver.js";
 import { statusBubble } from "./statusBubble.js";
 import { logNotification } from "./messageLog.js";
-import { bondDefs } from "../core/bonds.js";
+import { bondDefs, stageDef } from "../core/bonds.js";
 import { weekday, formatDuration, planWhenText } from "../core/chrono.js";
 
 // Every popup also lands in the open message log (ui/messageLog.js) — a
@@ -182,17 +182,30 @@ export const notifications = {
             emit(`${hl.name(char?.name ?? "?")}: ${hl.val(name)} ended`, 14000, true);
         });
 
-        // ---------- bonds (NPC feelings toward the player) ----------
+        // ---------- bonds (where NPCs stand with the player) ----------
         const bondShifts = shifts => {
             const defs = bondDefs(stateManager.getData());
             return defs.filter(x => shifts?.[x.id]).map(x => (shifts[x.id] > 0 ? hl.pos : hl.neg)(`${x.name} ${signed(shifts[x.id])}`)).join(" ");
         };
+        const stageName = key => stageDef(key)?.name ?? key;
         wrapMethod(stateManager, "applyBondStatus", ([charId], res) => {
             if (!res || !allowed("notify_bonds")) return;
             const char = stateManager.getSheet(charId);
-            const verb = res.action === "new" ? "feels" : "now feels";
+            const verb = res.action === "new" ? "new thread" : "thread updated";
             const moved = bondShifts(res.shifts);
-            emit(`${hl.name(char?.name ?? "?")} ${verb} ${hl.val(res.status.name)}${moved ? ` ${moved}` : ""}`, 16000, true);
+            emit(`${hl.name(char?.name ?? "?")} · ${verb}: ${hl.val(res.status.name)}${moved ? ` ${moved}` : ""}${res.settled ? ` ${hl.dim(`(${res.settled} settled)`)}` : ""}`, 16000, true);
+        });
+        wrapMethod(stateManager, "applyBondStage", ([charId], res) => {
+            if (!res || res.rejected || !allowed("notify_bonds")) return;
+            const char = stateManager.getSheet(charId);
+            emit(`${hl.name(char?.name ?? "?")} · ${hl.dim(stageName(res.from))} → ${hl.val(stageName(res.to))}`, 16000, true);
+        });
+        wrapMethod(stateManager, "reviewBondStages", (args, moves) => {
+            if (!allowed("notify_bonds")) return;
+            for (const m of moves || []) {
+                if (m.to) emit(`${hl.name(m.name)} · ${hl.dim(stageName(m.from))} → ${hl.val(stageName(m.to))}`, 16000, true);
+                if (m.graduated) emit(`${hl.name(m.name)} · ${hl.val(stageName(stateManager.getSheet(m.id)?.bond?.stage))} ${hl.dim("settled — no longer injected")}`, 14000, true);
+            }
         });
         wrapMethod(stateManager, "endBondStatus", ([charId], res) => {
             if (!res || !allowed("notify_bonds")) return;

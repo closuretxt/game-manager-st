@@ -14,7 +14,7 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel, charLabel, playerNames } from "./stateManager.js";
-import { bondDefs, ensureBond, isPlayerSheet, matchDef } from "./bonds.js";
+import { bondDefs, ensureBond, isPlayerSheet, matchDef, initialStage } from "./bonds.js";
 import { progression } from "./progression.js";
 import { GM_SCHEMA, CHARACTER_CONTAINERS, CONTAINER_TYPES, defaultEntry } from "./schemas.js";
 import { parseAttrs, decodeEntities } from "./toolParser.js";
@@ -67,7 +67,7 @@ const RESPONSE_SHAPE_LINES = [
     '<skill name="Fireball" cost="10 Mana" cooldown="2" description="..."/> <!-- cooldown in messages; 0 or omitted = always ready -->',
     '<passive name="Tough" ptype="stat" description="..."/> <!-- ptype: special|stat -->',
     '<status name="Dazed" modifiers="Aim -2" effect="..."/> <!-- TEMPORARY conditions only, removed when they end -->',
-    '<bond label="Old friend, a little guarded" values="Trust=45, Affection=60"/> <!-- how THIS character feels about the player (never on the player\'s own character) -->',
+    '<bond stage="Known" values="Trust=45, Affection=60"/> <!-- where THIS character stands with the player (never on the player\'s own character) -->',
     "</char>",
     "</party>",
     '<ally name="..." note="<one line: who they are, why they matter>"/>',
@@ -75,7 +75,7 @@ const RESPONSE_SHAPE_LINES = [
     '<custom name="Seeds" value="Pouch" description="..."/> <!-- gimmick, objective, clock or note -->',
     '<progression enabled="true" exp_base="100" exp_growth="1.10" max_level="90" skill_points="1" bonus_every="5" attr_points="0" attr_cost_every="10" attr_starting_budget="20">EXP guidelines: dynamic grants + level tiers (see rules)</progression>',
     '<warning name="Food" text="<under 15 words, imminent need>"/>',
-    '<bonds><bar name="Trust" start="20" description="..."/><bar name="Affection" start="15" description="..."/></bonds> <!-- the chat\'s relationship bars, 0-100; omit when the input lists BOND BARS -->',
+    '<bonds><bar name="Trust" start="20" close="0.5" romance="0.3" hostility="-0.4" description="..."/><bar name="Affection" start="15" close="0.7" romance="0.8" hostility="-0.3" description="..."/></bonds> <!-- the chat\'s relationship bars, 0-100; omit when the input lists BOND BARS -->',
     '<clock date="MM/DD/YYYY" time="HH:MM"/> <!-- the in-fiction date and 24h time where the story stands; omit when the input says CLOCK: SET -->',
     '<plan title="<what, with whom, where>" date="MM/DD/YYYY" time="HH:MM">short note</plan> <!-- arrangements the scenario already made; time/date optional -->',
     "<brief>2-6 plain sentences: premise, tone, how the world works, what the stakes are</brief>",
@@ -288,7 +288,7 @@ export function sanitizeProposal(parsed) {
                 char[container] = containerEnabled(container) ? sanitizeList(CONTAINER_TYPES[container], raw[container]) : [];
             }
             if (wireTagEnabled("bond") && raw.bond && typeof raw.bond === "object") {
-                char.bond = { label: String(raw.bond.label || "").slice(0, 160), values: String(raw.bond.values || "").slice(0, 300) };
+                char.bond = { stage: String(raw.bond.stage || "").slice(0, 40), label: String(raw.bond.label || "").slice(0, 160), values: String(raw.bond.values || "").slice(0, 300) };
             }
             return char;
         })
@@ -337,7 +337,13 @@ export function sanitizeProposal(parsed) {
             const name = String(b?.name || "").trim().slice(0, 40);
             if (!name) return null;
             const start = Math.trunc(Number(b.start));
-            return { name, start: Number.isFinite(start) ? Math.min(100, Math.max(0, start)) : 20, description: String(b.description || "").slice(0, 300) };
+            // Weights left out stay undefined: bondConfig fills them (preset
+            // bar of the same name, else a plain closeness bar).
+            const w = v => (v === undefined || v === "" || !Number.isFinite(Number(v)) ? undefined : Math.min(1, Math.max(-1, Number(v))));
+            return {
+                name, start: Number.isFinite(start) ? Math.min(100, Math.max(0, start)) : 20, description: String(b.description || "").slice(0, 300),
+                weight: w(b.close ?? b.weight), romance: w(b.romance), hostility: w(b.hostility),
+            };
         })
         .filter(Boolean)
         .slice(0, 8);
@@ -520,9 +526,9 @@ const IMPROVED_GROUNDS_RULE = [
 // already HAS bars is said in the user message (bondsContextLines).
 const BONDS_RULE = [
     "",
-    "- BONDS are active: they track how each NPC feels about the PLAYER'S character (never the reverse, never between NPCs).",
-    "  - <bonds>: 2-5 relationship bars that fit THIS scenario (a romance: Affection, Trust, Tension; a crime drama: Loyalty, Fear, Respect), each 0-100 with a start value for a stranger and a one-line, in-world description of what raises or lowers it. Skip <bonds> when the input lists the chat's BOND BARS — use those names exactly.",
-    "  - Every party <char> other than the player's own character gets one <bond>: a short label (under 12 words) for the relationship as it stands, and values for EVERY bar reflecting their shared history (strangers sit near the start values; old friends, rivals and lovers do not).",
+    "- BONDS are active: they track where each NPC stands with the PLAYER'S character (never the reverse, never between NPCs).",
+    "  - <bonds>: 2-5 relationship bars that fit THIS scenario (a romance: Affection, Trust, Tension; a crime drama: Loyalty, Fear, Respect), each 0-100 with a start value for a stranger and a one-line, in-world description of what raises or lowers it. Each bar also weighs -1..1 into three scores: close (friendship ladder), romance (Crush) and hostility (Wary/Hostile); negative counts against. At least one bar needs a positive romance weight for romance to be possible. Skip <bonds> when the input lists the chat's BOND BARS — use those names exactly.",
+    "  - Every party <char> other than the player's own character gets one <bond>: a stage (Stranger, Neutral, Known, Friend, Best friend, Crush, Wary or Hostile) for the relationship as it stands, and values for EVERY bar that support that stage (strangers sit near the start values; old friends, rivals and lovers do not).",
 ].join("\n");
 
 // Time rule: flag only (cache-stable, like BONDS_RULE); whether the clock is
@@ -666,11 +672,12 @@ function proposalToPromptXml(p) {
         const lvl = Math.trunc(Number(c.level));
         lines.push(`<char name="${escAttr(c.name)}"${Number.isFinite(lvl) && lvl >= 1 ? ` level="${lvl}"` : ""}>`);
         lines.push(...sheetWireLines(c));
-        if (c.bond) lines.push(`<bond label="${escAttr(c.bond.label)}" values="${escAttr(c.bond.values)}"/>`);
+        if (c.bond) lines.push(`<bond stage="${escAttr(c.bond.stage || "")}" values="${escAttr(c.bond.values)}"/>`);
         lines.push("</char>");
     }
     if (p.bonds?.length) {
-        lines.push(`<bonds>${p.bonds.map(b => `<bar name="${escAttr(b.name)}" start="${escAttr(b.start)}" description="${escAttr(b.description)}"/>`).join("")}</bonds>`);
+        const wAttr = (k, v) => (v === undefined ? "" : ` ${k}="${escAttr(v)}"`);
+        lines.push(`<bonds>${p.bonds.map(b => `<bar name="${escAttr(b.name)}" start="${escAttr(b.start)}"${wAttr("close", b.weight)}${wAttr("romance", b.romance)}${wAttr("hostility", b.hostility)} description="${escAttr(b.description)}"/>`).join("")}</bonds>`);
     }
     for (const a of p.roster || []) lines.push(`<ally name="${escAttr(a.name)}" note="${escAttr(a.note)}"/>`);
     for (const r of p.sharedResources || []) lines.push(`<shared name="${escAttr(r.name)}" qty="${escAttr(r.qty)}" description="${escAttr(r.description)}" always_inject="${r.always_inject ? "true" : "false"}"/>`);
@@ -829,7 +836,8 @@ export function applyProposal(proposal, mode = "replace") {
             char.needs_build = true;
             char.buildNote = String(raw.buildNote || raw.note || "");
         }
-        // Starting bond: label + "Bar=N" values matched to the chat's bars.
+        // Starting bond: "Bar=N" values matched to the chat's bars, then the
+        // proposed stage when those bars support it (else the best fit).
         if (raw.bond && bondDefs(d).length && !isPlayerSheet(char, players)) {
             const bond = ensureBond(char, d);
             bond.label = String(raw.bond.label || "").trim();
@@ -837,6 +845,7 @@ export function applyProposal(proposal, mode = "replace") {
                 const def = matchDef(bondDefs(d), name);
                 if (def) bond.values[def.id] = Math.min(100, Math.max(0, Number(num)));
             }
+            bond.stage = initialStage(d, char, raw.bond.stage);
         }
     }
 

@@ -140,6 +140,17 @@ function clampTrack(ctx, tname, value) {
     return v;
 }
 
+// A track nobody wrote yet starts where its module says (range bands start
+// "near", not 0), so the first write reports the real change.
+function trackDefault(ctx, tname) {
+    for (const m of [ctx.shape, ctx.turn, ...(ctx.mutators || [])]) {
+        if (typeof m?.trackDefault !== "function") continue;
+        const v = Number(m.trackDefault(ctx, tname));
+        if (Number.isFinite(v)) return v;
+    }
+    return 0;
+}
+
 function applyTrack(ctx, rec, ownerKey, eff) {
     ctx.contest.tracks = ctx.contest.tracks || {};
     const own = (ctx.contest.tracks[ownerKey] = ctx.contest.tracks[ownerKey] || {});
@@ -160,7 +171,7 @@ function applyTrack(ctx, rec, ownerKey, eff) {
     }
     const rolled = rollExpr(eff.delta ?? eff.value, ctx.rng, ctx.ops.evalMath);
     if (!rolled) return { ...rec, status: "skipped", reason: "bad value" };
-    const before = Number(own[tname]) || 0;
+    const before = tname in own ? Number(own[tname]) || 0 : trackDefault(ctx, tname);
     const raw = eff.delta !== undefined ? before + rolled.value : rolled.value;
     const after = clampTrack(ctx, tname, Math.round(raw));
     own[tname] = after;

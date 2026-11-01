@@ -149,6 +149,16 @@ export function resolveRuleset(rulesets, kind = "clash", fallbackPreset = null) 
     return out;
 }
 
+// True when a resolved ruleset's modules differ from its preset's picks (the
+// HUD then says "Heroic (custom)"). Options alone do not count.
+export function rulesetIsCustom(ruleset) {
+    const preset = CONTEST_PRESETS[ruleset?.kind]?.[ruleset?.preset];
+    if (!preset || preset.legacy) return false;
+    if (CONTEST_SLOTS.some(slot => (ruleset[slot]?.id || null) !== (preset[slot] || null))) return true;
+    const mine = (ruleset.mutators || []).map(m => m.id).sort().join(",");
+    return mine !== (preset.mutators || []).slice().sort().join(",");
+}
+
 // ---------- ruleset builder (ui/chatModeDialog.js) ----------
 
 // Ruleset-wide options (stored at opts[key]); module options live at

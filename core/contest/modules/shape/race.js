@@ -66,13 +66,13 @@ export function raceStanding(ctx) {
     const order = raceOrder(ctx);
     let prev = null;
     return order.map(r => {
-        if (r.out) return `${r.name}: out of the race`;
+        if (r.out) return `${r.name} is out of the race`;
         let text = `${racePlaceWord(r.place)} ${r.name}`;
         if (r.progress >= length) text += ", across the finish";
         else if (prev) text += `, ${raceGapWord(prev.progress - r.progress)}`;
         prev = r;
         return text;
-    }).join(" · ");
+    }).join("; ");
 }
 
 export function raceIsOver(ctx) {

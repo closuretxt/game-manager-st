@@ -56,7 +56,7 @@ import { planRotation } from "./rosterRotation.js";
 
 const BLOCK_TAGS = ["change_values", "set_attributes", "set_traits", "add_items", "remove_items", "update_custom", "set_statuses", "clear_statuses", "use_skills", "grant_exp", "warnings", "threads", "enemies", "transfer", "renames", "deaths", "knockouts", "new_characters", "bonds", "chrono", "scene_cast"];
 const CAST_RE = /<(leave|join)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
-const BOND_RE = /<(bond_label|bond_status|bond_end)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
+const BOND_RE = /<(bond_label|bond_thread|bond_status|bond_end|bond_stage)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const CHRONO_RE = /<(clock_update|new_schedule|plan_new|plan_update|plan_resolve)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
 const BLOCK_RE = new RegExp(`<(${BLOCK_TAGS.join("|")})>([\\s\\S]*?)<\\/\\1>`, "gi");
 const INNER_RE = /<(char|target|enemy|shared|resource|item|attribute|trait|entry|status|warning|warning_clear|thread|thread_clear|passive|skill|exp|death|ko|ko_clear)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
@@ -429,7 +429,8 @@ function applyBondsBlock(raw, now) {
         let ok = false;
         if (tag === "bond_label") {
             ok = stateManager.setBondLabel(char.id, attrs.text ?? attrs.label ?? content);
-        } else if (tag === "bond_status") {
+        } else if (tag === "bond_thread" || tag === "bond_status") {
+            // <bond_status> = the v1 name, still accepted.
             ok = !!stateManager.applyBondStatus(char.id, {
                 name: attrs.name,
                 effect: attrs.effect,
@@ -438,6 +439,10 @@ function applyBondsBlock(raw, now) {
             }, now);
         } else if (tag === "bond_end") {
             ok = !!stateManager.endBondStatus(char.id, attrs.name ?? content, now);
+        } else if (tag === "bond_stage") {
+            const res = stateManager.applyBondStage(char.id, attrs.to ?? attrs.stage ?? content, now);
+            ok = !res.rejected;
+            if (res.rejected) logDebug(`toolParser: <bond_stage char="${char.name}"> rejected — ${res.rejected}`);
         }
         if (ok) applied++;
         else logDebug(`toolParser: NOT applied — <${tag} char="${char.name}"${attrs.name ? ` name="${attrs.name}"` : ""}> (unknown status, unchanged, or no bond bars)`);

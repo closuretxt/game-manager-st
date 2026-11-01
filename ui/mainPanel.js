@@ -546,7 +546,7 @@ class MainPanel {
             // Bonds — the chat's relationship bars (NPC feelings toward the player).
             if (bondsVisible()) {
                 const bondsBtn = $("<div>").addClass("menu_button gm_add_btn")
-                    .attr("title", "Bonds — the bars that track how NPCs feel about the player")
+                    .attr("title", "Bonds — the bars, stages and options that track where NPCs stand with the player")
                     .append($("<i>").addClass("fa-solid fa-heart-circle-check"), $("<span>").text(" Bonds"));
                 bondsBtn.on("click", () => openBondsDialog());
                 header.append(bondsBtn);
@@ -811,7 +811,7 @@ class MainPanel {
         const hud = contestHud();
         if (!hud || hud.legacy) return;
         const box = $("<div>").addClass("gm_contest_hud");
-        const label = CONTEST_PRESETS[hud.kind]?.[hud.preset]?.label || hud.preset;
+        const label = `${CONTEST_PRESETS[hud.kind]?.[hud.preset]?.label || hud.preset}${hud.custom ? " (custom)" : ""}`;
         const fight = hud.kind === "clash";
         const end = $("<div>").addClass("menu_button").attr("title", fight ? "End the contest (the enemies stay in the scene)" : "End the contest")
             .append($("<i>").addClass("fa-solid fa-flag-checkered"), $("<span>").text(" End"));

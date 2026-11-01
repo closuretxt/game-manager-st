@@ -21,7 +21,7 @@ import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "../core/constants.js";
 import { logDebug } from "../core/debug.js";
 import { stateManager } from "../core/stateManager.js";
-import { restoreLastDeleted } from "../core/snapshots.js";
+import { restoreLastDeleted, noteChat } from "../core/snapshots.js";
 import { handlePreTurn, setPendingAction } from "../core/triggerWatcher.js";
 import { clearHigh, clearLow } from "../core/injection.js";
 
@@ -70,8 +70,21 @@ export function initPreTurn() {
         }
     });
 
-    // MESSAGE_DELETED — roll the state back to before the deleted message's
-    // changes and drop its snapshot.
+    // The delete rollback compares the chat before and after (core/snapshots.js
+    // #noteChat): remember it after every event that adds or changes messages.
+    for (const name of ["CHAT_CHANGED", "MESSAGE_SENT", "MESSAGE_RECEIVED", "USER_MESSAGE_RENDERED", "CHARACTER_MESSAGE_RENDERED", "MESSAGE_SWIPED", "MESSAGE_SWIPE_DELETED", "GENERATION_ENDED", "MORE_MESSAGES_LOADED"]) {
+        if (!st.event_types[name]) continue;
+        st.eventSource.on(st.event_types[name], () => {
+            try {
+                noteChat();
+            } catch (e) {
+                console.error("[Game Manager] noteChat failed:", e);
+            }
+        });
+    }
+
+    // MESSAGE_DELETED — roll the state back to before the deleted messages'
+    // changes and drop their snapshots.
     st.eventSource.on(st.event_types.MESSAGE_DELETED, async () => {
         try {
             if (restoreLastDeleted()) {

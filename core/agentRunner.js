@@ -19,7 +19,8 @@ import { gmSettings, containerEnabled } from "./features.js";
 import { logDebug } from "./debug.js";
 import { presentRoster } from "./rosterRotation.js";
 import { stateManager, playerLabel, charLabel, playerNames } from "./stateManager.js";
-import { bondDefs, isPlayerSheet, formatEffects } from "./bonds.js";
+import { bondDefs, isPlayerSheet, formatEffects, BOND_STAGES, stageDef, stageOf, eligibleStages } from "./bonds.js";
+import { attachBondLines } from "../inject/bondLine.js";
 import { chronoConfig, chronoStateXml } from "./chrono.js";
 import { beginMessageLog, commitMessageLog } from "../ui/messageLog.js";
 import { progression } from "./progression.js";
@@ -61,19 +62,23 @@ function chronoOn() {
 }
 
 // The bonds section of the snapshot: the chat's bars once, then one line per
-// NPC in the scene (party + present benched sheets) with exact values and
-// active feelings. Lives in the per-turn user message, never the system
-// prompt, so bar edits do not break the system prompt's cache.
+// NPC in the scene (party + present benched sheets) with exact values, the
+// stage, the stages it may level up to (the GM gate) and the open threads.
+// Lives in the per-turn user message, never the system prompt, so bar edits
+// do not break the system prompt's cache.
 function bondsXml(holders) {
-    const defs = bondDefs(stateManager.getData());
+    const d = stateManager.getData();
+    const defs = bondDefs(d);
     const bars = defs.map(x => `${x.name} (start ${x.start}): ${x.description}`).join(" | ");
-    const lines = [`<bonds bars="${escAttr(bars)}" range="0-100">`];
+    const lines = [`<bonds bars="${escAttr(bars)}" range="0-100" stages="${escAttr(BOND_STAGES.map(x => x.name).join(", "))}">`];
     for (const c of holders) {
         const b = c.bond;
         if (!b) continue;
         const values = defs.map(x => `${x.name}=${b.values?.[x.id] ?? x.start}`).join(" ");
-        const feelings = (b.statuses || []).map(s => `<feeling name="${escAttr(s.name)}" effect="${escAttr(formatEffects(s.effects, defs))}"${s.ends ? ` ends="${escAttr(s.ends)}"` : ""}/>`).join("");
-        lines.push(`<bond char="${escAttr(c.name)}" label="${escAttr(b.label || "")}" values="${escAttr(values)}">${feelings}</bond>`);
+        const stage = stageDef(stageOf(c)).name;
+        const eligible = eligibleStages(d, c).map(k => stageDef(k).name).join(", ");
+        const threads = (b.statuses || []).map(s => `<bond_thread name="${escAttr(s.name)}" effect="${escAttr(formatEffects(s.effects, defs))}"${s.ends ? ` ends="${escAttr(s.ends)}"` : ""}>${escAttr(s.note || "")}</bond_thread>`).join("");
+        lines.push(`<bond char="${escAttr(c.name)}" stage="${escAttr(stage)}"${eligible ? ` eligible="${escAttr(eligible)}"` : ""}${b.graduated ? ' graduated="true"' : ""} values="${escAttr(values)}">${threads}</bond>`);
     }
     lines.push("</bonds>");
     return lines.join("\n");
@@ -299,7 +304,7 @@ async function buildSystemPrompt(exchange = [], { contest = "" } = {}) {
         ...(spawnReview ? ['<new_characters><char name="Kael" kind="party" details="wounded knight the party rescued, stoic and dry-humored" level="3"/><char name="Goblin Chief" kind="enemy" details="scarred veteran leading the warband, brutal close-quarters fighter"/></new_characters>'] : []),
         ...(s.feature_death !== false ? ['<deaths><death char="Name" reason="short cause of death"/></deaths>'] : []),
         '<knockouts><ko char="Name" reason="short cause"/><ko_clear char="Name"/></knockouts>',
-        ...(bonds ? ['<bonds><bond_label char="Name">Wary ally, slowly warming up</bond_label><bond_status char="Name" name="Shared secret" effect="Trust +6, Affection +2" ends="if the secret gets out">She told the player about her past</bond_status><bond_end char="Name" name="Broken promise"/></bonds>'] : []),
+        ...(bonds ? ['<bonds><bond_thread char="Mara" name="Rooftop night" effect="Affection +4, Trust +2" ends="if Aaru tells anyone">After the raid Mara and Aaru shared a bottle on the roof; Aaru sang badly, Mara laughed and asked him to keep the night between them.</bond_thread><bond_end char="Mara" name="Broken promise"/><bond_stage char="Mara" to="Friend"/></bonds>'] : []),
         ...(prog ?['<grant_exp><char>Name</char><exp amount="25"/></grant_exp>'] : []),
         ...(chrono ? [
             "<chrono><clock_update days=\"0\" hours=\"0\" minutes=\"3\"/>"
@@ -330,11 +335,13 @@ async function buildSystemPrompt(exchange = [], { contest = "" } = {}) {
         ...(on.statuses ? ["Use <set_statuses> for TEMPORARY per-character conditions (Dazed, Drunk, Inspired...). When a status lands, also apply its listed stat modifiers through <change_values>; when the condition ends, remove the modifiers with a matching <change_values> and clear the status with <clear_statuses>. Do not use statuses for permanent traits (passives) or party-wide gimmicks (custom)."] : []),
         "Use <knockouts> when a character is clearly unconscious or incapacitated but NOT dead — non-lethal defeat, blunt trauma to the head, choking, blood loss, drugging, electrocution, exhaustion, a spell that drops them. Do NOT hesitate to knock out human characters, allies or the player character when the fiction calls for it: being beaten unconscious is a normal game outcome, not something to shield anyone from. <ko char=\"Name\" reason=\"...\"/> knocks them out, <ko_clear char=\"Name\"/> when they regain consciousness (rest, recovery, a timeskip). Write the reason bluntly and concretely (\"choked out in a headlock\", \"cracked skull on the pavement\", \"drugged wine\") — never a vague euphemism. A character with state=\"ko\" cannot act until cleared — do not report actions, skill use or EXP for them.",
         ...(bonds ? [
-            "BONDS — the snapshot's <bonds> track how each NPC feels about the PLAYER'S character (bars 0-100, defined per scenario). Never a bond for the player's own character, never between NPCs.",
-            "- Bars NEVER move directly: every change is a FEELING — <bond_status> with a short name for what happened, effect=\"Bar +N, Bar -N\" (bar names exactly as in <bonds>, 1-15 each, most beats 2-6; big swings only for real turning points), an optional ends=\"condition that would resolve it\" and a one-line reason as the body. The system applies the effect ONCE.",
-            "- Report a feeling only when the exchange gives a CONCRETE reason (a kindness, a betrayal, a promise, flirting that lands or falls flat, being pushed or given space) — quiet scenes change nothing. To deepen or soften an existing feeling, re-emit it with the SAME name and the new total effect; never stack near-duplicates.",
-            "- <bond_end> ONLY when the feeling is genuinely resolved in the exchange (an apology accepted, a misunderstanding cleared): its effect is taken back. Lasting feelings settle into the bars on their own after a while — never end a feeling just to tidy the list.",
-            "- <bond_label>: a short (under 12 words) description of the relationship as it stands; rewrite it only when the relationship meaningfully shifts.",
+            "BONDS — the snapshot's <bonds> track where each NPC stands with the PLAYER'S character: bars 0-100 (defined per scenario), a stage (Stranger, Neutral, Known, Friend, Best friend, Crush, Wary, Hostile) and the open threads between them. Never a bond for the player's own character, never between NPCs.",
+            "- Bars NEVER move directly: every change is a THREAD — <bond_thread> with a short handle as name, effect=\"Bar +N, Bar -N\" (bar names exactly as in <bonds>, 1-15 each, most beats 2-6; big swings only for real turning points), an optional ends=\"condition that would resolve it\", and as the body ONE sentence (under 30 words) of what happened. The system applies the effect ONCE.",
+            "- The thread sentence is shown to the story writer as a memory, so: THIRD PERSON with both characters BY NAME (never \"you\", \"I\" or \"the player\"); concrete small details (what they talked about, how the character behaved, where); no feeling words and no instructions. Good: \"Mara and Aaru slept together at the inn three nights ago; Mara left before dawn and neither has brought it up.\" Bad: \"Mara feels conflicted about you.\"",
+            "- Report a thread only when the exchange gives a CONCRETE reason (a kindness, a betrayal, a promise, intimacy, flirting that lands or falls flat, being pushed or given space) — quiet scenes change nothing. When an open thread develops, re-emit it with the SAME name, the updated sentence and the new total effect; never stack near-duplicates. At most four stay open per character.",
+            "- <bond_end> ONLY when the thread is genuinely resolved in the exchange (an apology accepted, the secret out in the open): its effect is taken back. Threads that stop mattering settle into the bars on their own — never end one just to tidy the list.",
+            "- <bond_stage char to=\"Stage\"/> levels the relationship up — ONLY to a stage listed in that bond's eligible=\"...\" (the bars allow it), and ONLY when the exchange shows the character accepting that standing. Eligible is permission, not a cue: close friends do not become a Crush because the bars allow it; the story has to show it. Moving DOWN (or to Wary/Hostile after a real rupture) needs no eligibility. Never re-emit the current stage.",
+            "- A bond with graduated=\"true\" is settled: keep reporting threads only for real ruptures or major turns.",
         ] : []),
         ...(chrono ? [
             "TIME — the snapshot's <chrono> holds the world clock" + (chrono.schedules_on ? (chrono.schedules_party ? ", the day's schedule of everyone present" : ", the player's schedule for the day") : "") + (chrono.plans_on ? " and the plans already made" : "") + ". EVERY report contains one <chrono> block with exactly one <clock_update>, even when nothing else changed.",
@@ -525,6 +532,13 @@ export async function runAgentPass(reason = "manual", mesId = null) {
             logDebug(`agent pass (${reason}): applied ${applied} change(s)`);
         } else {
             logDebug(`agent pass (${reason}): no changes reported`);
+        }
+        // Bonds: stage moves the new bars call for (demotion, Wary/Hostile,
+        // graduation), then the message-attached story lines. Before the
+        // swipe state, so switching swipes restores both.
+        if (bondsOn()) {
+            stateManager.reviewBondStages(snapId, playerNames());
+            attachBondLines(snapId, exchange.map(m => m.text).join("\n"));
         }
         // Post-pass state of THIS swipe version: switching between swipe
         // versions of this message later restores exactly what this pass

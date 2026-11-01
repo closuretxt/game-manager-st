@@ -3771,6 +3771,55 @@ body > #gm_spawn_chip {
     padding: 1px 0;
 }
 
+/* Bonds v2: message-attached story line, stage row, weight fields. */
+.gm_bond_line {
+    margin-top: 6px;
+    font-size: 12px;
+    border-left: 2px solid color-mix(in srgb, #d9739a 60%, transparent);
+    padding: 2px 8px;
+    opacity: 0.9;
+}
+
+.gm_bond_line summary {
+    cursor: pointer;
+    color: var(--SmartThemeEmColor, #aaa);
+    user-select: none;
+}
+
+.gm_bond_line_body {
+    padding-top: 4px;
+    color: var(--SmartThemeEmColor, #aaa);
+    white-space: pre-wrap;
+}
+
+.gm_bond_stage {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.gm_bond_stage_select {
+    width: auto !important;
+    flex: none;
+}
+
+.gm_bond_weights {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    margin-top: 4px;
+}
+
+.gm_bond_field {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    opacity: 0.9;
+}
+
 /* ---------- Time tab (clock, schedules, plans) ---------- */
 #gm_tab_content > .gm_list + .gm_list {
     border-top: 1px solid var(--gm-line);

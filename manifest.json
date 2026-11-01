@@ -5,6 +5,7 @@
     "optional": [],
     "js": "index.js",
     "css": "style.css",
+    "generate_interceptor": "gmBondsInterceptor",
     "author": "actua",
     "version": "1.75",
     "homePage": "https://github.com/closuretxt/game-manager-st"

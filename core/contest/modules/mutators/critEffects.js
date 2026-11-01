@@ -21,9 +21,10 @@ export const CRIT_TABLES = {
     },
 };
 
-// Ranged first: "fire an arrow" is a shot, "Fireball" is a spell.
+// Ranged first: "fire an arrow" is a shot, "Fireball" is a spell. "fire" counts
+// as a shot only as a verb (fires, fired, firing, "fire at / twice / off").
 const CRIT_TAGS = [
-    ["ranged", /\b(bows?|arrows?|shoot\w*|shot|throw\w*|sling|crossbow|gun|pistol|rifle|darts?|javelins?|volley)\b/i],
+    ["ranged", /\b(bows?|arrows?|shoot\w*|shots?|throw\w*|sling|crossbow|guns?|gunfire|pistols?|rifles?|revolvers?|shotguns?|cannons?|blasters?|bullets?|rounds|ammo|snip\w*|darts?|javelins?|volley|fir(?:es|ed|ing))\b|\bfire\s+(?:at|off|on|twice|again|a|an|the|two|three|both|several)\b/i],
     ["spell", /\b(spells?|cast\w*|magic\w*|hex|curse|ward\w*|bolt|fire\w*|frost|ice|lightning|arcane|holy|smite|blast|incant\w*)\b/i],
 ];
 

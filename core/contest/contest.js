@@ -29,7 +29,7 @@ import { runEnemyAI } from "../enemyAI.js";
 import { makeRng, newSeed } from "./rng.js";
 import { contestKey, trackValue } from "./effects.js";
 import { runRound } from "./engine.js";
-import { resolveRuleset } from "./registry.js";
+import { resolveRuleset, rulesetIsCustom } from "./registry.js";
 import { storyBlock, postPassBlock, chipRows, outcomeDetail, groupEffectShorts } from "./ledger.js";
 import { adjudicateRound } from "./oracle.js";
 import { brainActions, rivalBrainActions } from "./brains.js";
@@ -80,12 +80,15 @@ function contestState() {
         // Races / scored contests: the rivals' names (tracked enemies or
         // untracked runners the pre-pass named).
         rivals: Array.isArray(c.rivals) ? c.rivals.map(String) : [],
+        // Fights: enemies taken out in earlier rounds (archived), for the
+        // story's standing: [{ name, mode }].
+        fallen: Array.isArray(c.fallen) ? c.fallen.filter(f => f && f.name) : [],
     };
     return d.contest;
 }
 
 function emptyContest(kind, active, round = 0) {
-    return { active, kind, round, party: [], out: {}, tracks: {}, initiative: {}, meters: {}, log: [], rivals: [] };
+    return { active, kind, round, party: [], out: {}, tracks: {}, initiative: {}, meters: {}, log: [], rivals: [], fallen: [] };
 }
 
 function startContest(kind) {
@@ -320,8 +323,13 @@ function commitOutStates(round, contest, shape) {
         const found = findSheet(o.name);
         if (!found) continue;
         if (found.side === "enemy") {
-            if (!found.sheet.pseudo && (fight || o.mode === "dead")) stateManager.removeEnemy(found.sheet.id);
-            else contest.out[contestKey(found.sheet.name)] = o.mode;
+            if (!found.sheet.pseudo && (fight || o.mode === "dead")) {
+                stateManager.removeEnemy(found.sheet.id);
+                // Archived enemies leave the participants; the standing
+                // still names them so the story does not bring them back.
+                contest.fallen = (contest.fallen || []).filter(f => contestKey(f.name) !== contestKey(found.sheet.name));
+                contest.fallen.push({ name: found.sheet.name, mode: o.mode });
+            } else contest.out[contestKey(found.sheet.name)] = o.mode;
             continue;
         }
         if (o.mode === "dead" && s.feature_death !== false) stateManager.setState(found.sheet.id, "dead", o.reason || "fell in combat");
@@ -430,6 +438,7 @@ export function contestHud() {
         kind: ruleset.kind,
         round: Math.max(0, Math.trunc(Number(contest.round) || 0)),
         preset: ruleset.preset,
+        custom: rulesetIsCustom(ruleset),
         legacy: ruleset.legacy,
         shape: ruleset.shape,
         fighters,

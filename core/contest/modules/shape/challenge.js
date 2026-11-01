@@ -44,12 +44,14 @@ function challengeDangerWord(ratio) {
     return ratio > 0 ? "stirring" : "calm";
 }
 
+const CHALLENGE_OUT_WORDS = { dead: "dead", ko: "knocked out", down: "down", fled: "gone", yielded: "out", out: "out" };
+
 export function challengeStanding(ctx) {
     const len = challengeLengths(ctx);
     const c = challengeClocks(ctx);
-    const parts = [`Goal: ${challengeProgressWord(c.progress / len.progress)}`, `Danger: ${challengeDangerWord(c.danger / len.danger)}`];
-    const out = (ctx?.participants || []).filter(p => outStateOf(ctx, p.name)).map(p => `${p.name}: ${outStateOf(ctx, p.name)}`);
-    return [...parts, ...out].join(" · ");
+    const parts = [`The goal is ${challengeProgressWord(c.progress / len.progress)}`, `the danger is ${challengeDangerWord(c.danger / len.danger)}`];
+    const out = (ctx?.participants || []).filter(p => outStateOf(ctx, p.name)).map(p => `${p.name} is ${CHALLENGE_OUT_WORDS[outStateOf(ctx, p.name)] || outStateOf(ctx, p.name)}`);
+    return `${[...parts, ...out].join(", ")}.`;
 }
 
 // Over when a clock fills, or nobody in the party can still act.

@@ -50,7 +50,7 @@ export function scoresStanding(ctx) {
     const ranking = scoresRanking(ctx);
     const best = ranking.find(r => !r.out)?.score || 0;
     const parts = ranking.map(r => {
-        if (r.out) return `${r.name}: out of the contest`;
+        if (r.out) return `${r.name} is out of the contest`;
         const gap = best - r.score;
         const spread = Math.max(1, Math.abs(best));
         const word = gap <= 0 ? (r.place === 1 ? "leading" : "tied") : gap / spread <= 0.15 ? "close behind" : gap / spread <= 0.4 ? "behind" : "well behind";
@@ -58,8 +58,8 @@ export function scoresStanding(ctx) {
     });
     const total = scoresRounds(ctx);
     const roundNo = scoresRoundNo(ctx);
-    const when = roundNo >= total ? "final ranking" : `after round ${roundNo} of ${total}`;
-    return parts.length ? `${when}: ${parts.join(" · ")}` : "";
+    const when = roundNo >= total ? "Final ranking" : `After round ${roundNo} of ${total}`;
+    return parts.length ? `${when}: ${parts.join("; ")}` : "";
 }
 
 export function scoresIsOver(ctx) {

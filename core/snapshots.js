@@ -177,11 +177,81 @@ export function restoreSwipeState(mesId, swipeId) {
     return true;
 }
 
-// MESSAGE_DELETED does not report which message was removed. The common case
-// is deleting the last AI message, which occupied index `chat.length` after
-// removal — fall back to the newest snapshot at or above that index (covers
-// middle deletions shifting ids as well).
+// MESSAGE_DELETED does not report which messages were removed, and one event
+// can cover many (the "Delete messages" mode drops a message and everything
+// after it). So the chat's message objects are remembered between events
+// (`noteChat`, in memory: ST mutates the same objects, never recreates them)
+// and the delete compares that list with the live chat.
+let _chatShadow = null;
+
+export function noteChat() {
+    const chat = getContext()?.chat;
+    _chatShadow = Array.isArray(chat) ? chat.slice() : null;
+}
+
+// Pure: what a delete did, from the chat before and after and the snapshot
+// ids. Returns
+//   { mode: "unknown" }                    no usable shadow, or none of its
+//                                          messages left (a message added
+//                                          after the last noteChat): fall back
+//   { mode: "tail", from, drop, single }   the end of the chat went: roll back to
+//                                          the OLDEST baseline at or above `from`
+//   { mode: "middle", remap, drop }        older messages went: no rollback (the
+//                                          later turns still stand), ids shift
+// `drop` = snapshot ids of deleted messages; `remap` = old id -> new id.
+export function deletePlan(prev, now, snapshotIds) {
+    if (!Array.isArray(prev) || !prev.length || !Array.isArray(now)) return { mode: "unknown" };
+    const alive = new Set(now);
+    const gone = [];
+    prev.forEach((m, i) => { if (!alive.has(m)) gone.push(i); });
+    if (!gone.length) return { mode: "unknown" };
+    const ids = (snapshotIds || []).map(Number).filter(Number.isFinite);
+    if (gone[gone.length - 1] === prev.length - 1) {
+        // Messages after the shadow (none known) count as part of the tail.
+        const from = gone.find((g, k) => gone.slice(k).every((x, j) => x === g + j));
+        return { mode: "tail", from, drop: ids.filter(id => id >= from), single: gone.length === 1 };
+    }
+    const goneSet = new Set(gone);
+    const remap = {};
+    const drop = [];
+    for (const id of ids) {
+        if (goneSet.has(id)) { drop.push(id); continue; }
+        const shift = gone.filter(g => g < id).length;
+        if (shift) remap[id] = id - shift;
+    }
+    return { mode: "middle", remap, drop };
+}
+
+// Rolls the state back after a delete. A deleted tail rolls back to the state
+// before its FIRST message's changes (a fight round committed on the user
+// message included); deleted messages' snapshots go, so a new message at the
+// same position never inherits a stale baseline. One deleted last message
+// (also the regenerate flow) keeps its swipe versions, as before.
 export function restoreLastDeleted() {
     const st = getContext();
-    return restoreNewestFrom(st.chat.length);
+    const gm = store();
+    const prev = _chatShadow;
+    noteChat();
+    if (!gm) return false;
+    const plan = deletePlan(prev, st.chat, Object.keys(gm.snapshots));
+    console.info(`[GM DIAG] MESSAGE_DELETED: ${plan.mode}${plan.mode === "tail" ? ` from #${plan.from}` : ""}`);
+    if (plan.mode === "unknown") return restoreNewestFrom(st.chat.length);
+    if (plan.mode === "middle") {
+        const next = {};
+        for (const [key, entry] of Object.entries(gm.snapshots)) {
+            if (plan.drop.includes(Number(key))) continue;
+            next[String(plan.remap[key] ?? key)] = entry;
+        }
+        gm.snapshots = next;
+        persist();
+        return false;
+    }
+    const restoredId = plan.drop.slice().sort((a, b) => a - b).find(id => gm.snapshots[String(id)]?.state);
+    const restored = restoredId !== undefined && restoreSnapshot(restoredId);
+    for (const id of plan.drop) {
+        if (plan.single && id === restoredId) continue;
+        delete gm.snapshots[String(id)];
+    }
+    persist();
+    return restored;
 }

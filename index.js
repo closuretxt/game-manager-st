@@ -20,6 +20,7 @@ import { notifications } from "./ui/notifications.js";
 import { initMacros } from "./inject/macro.js";
 import { initPreTurn } from "./inject/preTurn.js";
 import { initPostTurn } from "./inject/postTurn.js";
+import { initBondLines } from "./inject/bondLine.js";
 // Connection profiles
 import { swapProfile } from "./util/profileSwapper.js";
 export { swapProfile };
@@ -52,6 +53,7 @@ jQuery(async () => {
         initMacros();
         initPreTurn();
         initPostTurn();
+        initBondLines();
         initAttachmentRestore();
 
         logDebug("Game Manager initialized.", extension_settings[extensionName]);

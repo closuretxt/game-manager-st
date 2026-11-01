@@ -9,7 +9,7 @@
 // groups = the oracle's groups: [{ title, sides: [{ actor, action, speed, who }],
 //          tiers: [{ name, chance, outcome, effects: [...] }] }]
 
-import { applyEffect, applyLethality, contestKey, outStateOf } from "./effects.js";
+import { applyEffect, applyLethality, contestKey, contestSide, outStateOf } from "./effects.js";
 
 const CONTEST_KEY_LABELS = { crit: "Critical Success", hit: "Success", graze: "Partial Success", miss: "Failure", fumble: "Critical Failure" };
 const CONTEST_KEY_FLIP = { crit: "fumble", hit: "miss", graze: "graze", miss: "hit", fumble: "crit" };
@@ -25,6 +25,42 @@ function callMutators(ctx, hook, ...args) {
             if (ctx.log) ctx.log(`mutator ${m.id} ${hook} failed: ${e?.message || e}`);
         }
     }
+}
+
+// What an action did to the other side, in words (fights only, shape.landed):
+// "Goblin A took Health damage" or "no damage". The story LLM otherwise
+// reads "Partial Success" on an attack as half a hit and narrates one.
+// Only lines aimed at the other side get it; a Defend on an ally does not.
+function landedAttr(ctx, actor, versus, records) {
+    if (!ctx.shape?.landed || !versus) return "";
+    const mine = contestSide(ctx, actor);
+    if (!mine || contestSide(ctx, versus) === mine) return "";
+    const hit = [];
+    for (const r of records) {
+        if (r.status !== "applied" || r.kind !== "resource" || !(r.applied < 0)) continue;
+        if (contestKey(r.by) !== contestKey(actor) || contestSide(ctx, r.target) === mine) continue;
+        const what = `${r.target} took ${r.name} damage`;
+        if (!hit.includes(what)) hit.push(what);
+    }
+    return hit.length ? hit.join(", ") : "no damage";
+}
+
+// Who a group is aimed at. One-sided groups (an attack the target does not
+// contest) name no second side: the target is then the other-side sheet the
+// actor's effects touched, else the participant named in the group title
+// ("Aaru's Bullet vs Scout B"). Without it the story has to guess the target.
+function groupVersus(ctx, g, records) {
+    const first = g.sides?.[0];
+    if (g.sides?.[1]?.actor) return g.sides[1].actor;
+    if (!first) return "";
+    const mine = contestSide(ctx, first.actor);
+    const touched = records.find(r => contestKey(r.by) === contestKey(first.actor) && contestSide(ctx, r.target) && contestSide(ctx, r.target) !== mine);
+    if (touched) return touched.target;
+    const title = String(g.title || "").toLowerCase();
+    const named = (ctx.participants || [])
+        .filter(p => p.side !== mine && title.includes(String(p.name).toLowerCase()))
+        .sort((a, b) => String(b.name).length - String(a.name).length)[0];
+    return named?.name || "";
 }
 
 // Lines the story LLM gets for one resolved group, in the shape's words.
@@ -50,18 +86,20 @@ function groupLines(ctx, g, res) {
                 // opposing survivor wins when the first side fails.
                 const key = i === 0 ? res.outcome.key : CONTEST_KEY_FLIP[res.outcome.key];
                 const versus = g.sides.find(o => o !== sd)?.actor || "";
-                lines.push({ actor: sd.actor, action: sd.action, versus, result: CONTEST_KEY_LABELS[key] || res.outcome.name, text: shape.resultLine(sd.actor, sd.action, key, versus), fell: fellAttr, status: statusAttr });
+                lines.push({ actor: sd.actor, action: sd.action, versus, result: CONTEST_KEY_LABELS[key] || res.outcome.name, text: shape.resultLine(sd.actor, sd.action, key, versus), landed: landedAttr(ctx, sd.actor, versus, res.records), fell: fellAttr, status: statusAttr });
             });
         }
         return lines;
     }
     const tier = g.tiers[res.outcome.tierIndex] || {};
+    const versus = groupVersus(ctx, g, res.records);
     lines.push({
         actor: first.actor,
         action: first.action,
-        versus: g.sides[1]?.actor || "",
+        versus,
         result: res.outcome.name,
-        text: tier.outcome || shape.resultLine(first.actor, first.action, res.outcome.key, g.sides[1]?.actor || ""),
+        text: tier.outcome || shape.resultLine(first.actor, first.action, res.outcome.key, versus),
+        landed: landedAttr(ctx, first.actor, versus, res.records),
         fell: fellAttr,
         status: statusAttr,
     });
