@@ -10,6 +10,7 @@ import { saveSettingsDebounced } from "../../../../../script.js";
 import { extensionName, CHARACTER_STATES } from "../core/constants.js";
 import { gmNotify, logDebug } from "../core/debug.js";
 import { stateManager } from "../core/stateManager.js";
+import { roundCardsEl } from "./roundCard.js";
 import { progression } from "../core/progression.js";
 import { CHARACTER_CONTAINERS } from "../core/schemas.js";
 import { gmSettings, tabEnabled } from "../core/features.js";
@@ -828,8 +829,12 @@ class MainPanel {
 
         if (hud.order.length) {
             const order = $("<div>").addClass("gm_contest_order")
-                .append($("<span>").addClass("gm_section_hint").text("Turn order"));
-            for (const o of hud.order) order.append($("<span>").addClass("gm_party_chip").text(`${o.name} ${o.value}`));
+                .attr("title", "Rolled once when the fight started; highest acts first every round.")
+                .append($("<span>").addClass("gm_section_hint").text("Who acts first"));
+            hud.order.forEach((o, i) => {
+                if (i) order.append($("<span>").addClass("gm_rc_arrow").text("→"));
+                order.append($("<span>").addClass("gm_party_chip").text(o.name));
+            });
             box.append(order);
         }
 
@@ -848,7 +853,7 @@ class MainPanel {
 
         if (hud.meters.length) {
             const meters = $("<div>").addClass("gm_contest_order");
-            for (const mt of hud.meters) meters.append($("<span>").addClass("gm_party_chip").attr("title", mt.label).text(`${mt.label} ${mt.text}`));
+            for (const mt of hud.meters) meters.append($("<span>").addClass("gm_party_chip").attr("title", mt.hint || mt.label).text(`${mt.label} ${mt.text}`));
             box.append(meters);
         }
 
@@ -856,7 +861,12 @@ class MainPanel {
         [...hud.log].reverse().forEach((entry, i) => {
             const round = $("<details>").addClass("gm_contest_log_round").prop("open", i === 0);
             round.append($("<summary>").text(`Round ${entry.round}`));
-            for (const r of entry.rows) {
+            if (entry.cards?.groups?.length) {
+                round.append(roundCardsEl(entry.cards));
+                box.append(round);
+                return;
+            }
+            for (const r of entry.rows || []) {
                 round.append($("<div>").addClass("gm_contest_log_row").append(
                     $("<b>").text(r.title),
                     $("<span>").addClass("gm_contest_num").text(r.tier),

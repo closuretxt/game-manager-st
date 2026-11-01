@@ -10,14 +10,16 @@
 //          tiers: [{ name, chance, outcome, effects: [...] }] }]
 
 import { applyEffect, applyLethality, contestKey, contestSide, outStateOf } from "./effects.js";
+import { plainRoll } from "./ledger.js";
 
 const CONTEST_KEY_LABELS = { crit: "Critical Success", hit: "Success", graze: "Partial Success", miss: "Failure", fumble: "Critical Failure" };
 const CONTEST_KEY_FLIP = { crit: "fumble", hit: "miss", graze: "graze", miss: "hit", fumble: "crit" };
 
 // The turn module may hook the round like a mutator (duel stances, held AP),
-// and runs first so mutators see what it set.
+// and runs first so mutators see what it set. The dice module runs last, so
+// its beforeRoll (the deck's hand) sees every bonus.
 function callMutators(ctx, hook, ...args) {
-    for (const m of [ctx.turn, ...(ctx.mutators || [])]) {
+    for (const m of [ctx.turn, ...(ctx.mutators || []), ctx.dice]) {
         if (typeof m?.[hook] !== "function") continue;
         try {
             m[hook](ctx, ...args);
@@ -108,7 +110,26 @@ function groupLines(ctx, g, res) {
 
 const CONTEST_FELL_WORDS = { dead: "dead", ko: "knocked out", down: "down", fled: "fled", yielded: "yielded", out: "out" };
 
-function resolveGroup(ctx, g, index) {
+// Questions a hook queued on roll.asks ("Ask me", decision 3): each is
+// { id, actor, text, choices: [{ id, label, hint? }], auto, apply(pick) }.
+// The driver answers (runRound: always `auto`; runRoundAsync: the player, or
+// `auto` on a timeout); an unknown answer counts as `auto`.
+function* askSteps(roll) {
+    while (roll.asks.length) {
+        const q = roll.asks.shift();
+        const pick = yield { ask: q };
+        const ok = (q.choices || []).some(c => c.id === pick) ? pick : q.auto;
+        if (typeof q.apply === "function") q.apply(ok);
+    }
+}
+
+function rollOutcome(ctx, g, roll) {
+    const o = ctx.dice.resolve(ctx, g, roll);
+    if (o && !o.plain) o.plain = plainRoll(o);
+    return o;
+}
+
+function* resolveGroupSteps(ctx, g, index) {
     const sides = Array.isArray(g.sides) ? g.sides : [];
     const invalid = [];
     for (const sd of sides) {
@@ -124,17 +145,21 @@ function resolveGroup(ctx, g, index) {
     // Per-group roll adjustments: mutators add a bonus / advantage before the
     // roll and may ask for ONE reroll after it (momentum). Notes go to the
     // results message only.
-    const roll = { bonus: 0, adv: 0, notes: res.notes, reroll: false, rerolled: false };
+    const roll = { bonus: 0, adv: 0, notes: res.notes, reroll: false, rerolled: false, asks: [] };
     callMutators(ctx, "beforeRoll", g, roll);
-    res.outcome = ctx.dice.resolve(ctx, g, roll);
+    yield* askSteps(roll);
+    res.outcome = rollOutcome(ctx, g, roll);
     callMutators(ctx, "afterRoll", g, res.outcome, roll);
+    yield* askSteps(roll);
     if (roll.reroll && !roll.rerolled) {
         roll.reroll = false;
         roll.rerolled = true;
         const first = res.outcome;
-        res.outcome = ctx.dice.resolve(ctx, g, roll);
-        res.outcome.rerolledFrom = { name: first.name, key: first.key, detail: first.detail || "" };
+        res.outcome = rollOutcome(ctx, g, roll);
+        res.outcome.rerolledFrom = { name: first.name, key: first.key, detail: first.detail || "", plain: first.plain || "" };
         callMutators(ctx, "afterRoll", g, res.outcome, roll);
+        // A second question would offer a second reroll: none is allowed.
+        roll.asks.length = 0;
     }
     let effects = ctx.consequence.effects(ctx, g, res.outcome) || [];
     for (const e of effects) if (!e.by) e.by = sides[0].actor;
@@ -161,14 +186,21 @@ function resolveGroup(ctx, g, index) {
 // Resolves a whole round. Returns { order, groups (resolution order),
 // standing, over, out, notes }. `notes` = round-level mechanics for the
 // results message (initiative rolls...), never the story.
-export function runRound(ctx, groups) {
+// A generator: it yields { ask } (a question, answered by the next .next())
+// and { group } (one group done, for the bubble's playback).
+function* roundSteps(ctx, groups) {
     ctx.out = ctx.out || {};
     ctx.notes = ctx.notes || [];
     const list = Array.isArray(groups) ? groups : [];
     // roundStart sees every group before any resolves (flanking, clocks).
     callMutators(ctx, "roundStart", list);
     const order = ctx.turn.queue(ctx, list);
-    const results = order.map(i => resolveGroup(ctx, list[i], i));
+    const results = [];
+    for (const i of order) {
+        const res = yield* resolveGroupSteps(ctx, list[i], i);
+        results.push(res);
+        yield { group: res };
+    }
     callMutators(ctx, "roundEnd", results);
     // Round-tag attributes (race phase...) and event lines (a side clock
     // filled) for the story: fiction, never numbers.
@@ -193,4 +225,41 @@ export function runRound(ctx, groups) {
         attrs,
         events,
     };
+}
+
+// Every question auto-picked: tests, "Auto-pick" rulesets, replays.
+export function runRound(ctx, groups) {
+    const steps = roundSteps(ctx, groups);
+    let s = steps.next();
+    while (!s.done) s = steps.next(s.value?.ask ? s.value.ask.auto : undefined);
+    return s.value;
+}
+
+// The live round: `ask(q)` resolves to a choice id (the player's, or q.auto
+// on a timeout); `onGroup(res)` plays a finished group back. A failing UI
+// never stops the round: the question falls back to its auto pick.
+export async function runRoundAsync(ctx, groups, { ask, onGroup } = {}) {
+    const steps = roundSteps(ctx, groups);
+    let s = steps.next();
+    while (!s.done) {
+        let answer;
+        if (s.value?.ask) {
+            answer = s.value.ask.auto;
+            if (typeof ask === "function") {
+                try {
+                    answer = await ask(s.value.ask);
+                } catch (e) {
+                    if (ctx.log) ctx.log(`ask failed: ${e?.message || e}`);
+                }
+            }
+        } else if (s.value?.group && typeof onGroup === "function") {
+            try {
+                await onGroup(s.value.group);
+            } catch (e) {
+                if (ctx.log) ctx.log(`group playback failed: ${e?.message || e}`);
+            }
+        }
+        s = steps.next(answer);
+    }
+    return s.value;
 }

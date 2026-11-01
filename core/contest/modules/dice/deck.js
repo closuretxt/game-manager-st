@@ -4,10 +4,13 @@
 // dry and reshuffles. Card value (Ace 1 ... King 13) + mod vs the target the
 // oracle sets: a joker, or a King that beats the target = critical; an Ace
 // that misses = fumble; missing by up to 2 = partial. Advantage draws two
-// and keeps the better. The plan's interactive "hand of 3" waits for the Ask
-// me prompt.
+// and keeps the better. Party actors draw a hand (option `hand`, default 3,
+// +1 with advantage, -1 with disadvantage) and pick the card to play: an
+// "Ask me" question (engine.js `roll.asks`), auto-pick = the best card. The
+// cards not played go back under the deck.
 
 import { rollDie } from "../../rng.js";
+import { contestSide } from "../../effects.js";
 import { oracleResolve } from "./oracle.js";
 import { diceSigned, diceOutcome, sampledOdds, diceRollRules, diceFiveTierRule, diceExample } from "./common.js";
 
@@ -49,7 +52,55 @@ function deckDraw(ctx) {
         meters.deck = deckShuffled(ctx.rng);
         reshuffled = true;
     }
-    return { card: deckCard(meters.deck.pop()), reshuffled };
+    const code = meters.deck.pop();
+    return { card: deckCard(code), code, reshuffled };
+}
+
+function deckHandSize(opts) {
+    const n = Number(opts?.["dice.deck"]?.hand);
+    return Number.isFinite(n) ? Math.max(1, Math.min(5, Math.trunc(n))) : 3;
+}
+
+// Party actors draw a hand and choose (Ask me) which card to play.
+export function deckBeforeRoll(ctx, group, roll) {
+    const r = group?.roll;
+    const first = group?.sides?.[0];
+    if (!roll || !Array.isArray(roll.asks) || !first || !deckUsable(r) || r.impossible) return;
+    if (contestSide(ctx, first.actor) !== "party") return;
+    const adv = Math.max(-1, Math.min(1, (Number(r.adv) || 0) + (Number(roll.adv) || 0)));
+    const size = Math.max(1, deckHandSize(ctx.opts) + adv);
+    if (size < 2) return;
+    const hand = [];
+    let reshuffled = false;
+    for (let i = 0; i < size; i++) {
+        const d = deckDraw(ctx);
+        hand.push(d);
+        reshuffled = reshuffled || d.reshuffled;
+    }
+    if (reshuffled && roll.notes) roll.notes.push("Deck reshuffled");
+    const add = Math.trunc(Number(r.mod) || 0) + Math.trunc(Number(roll.bonus) || 0);
+    const choices = hand.map((d, i) => {
+        const total = d.card.value + add;
+        const result = diceOutcome(group, deckKey(d.card, total, r.dc, false)).name;
+        return { id: String(i), label: d.card.label, hint: d.card.joker ? `wild: ${result}` : `${total} vs ${r.dc}: ${result}` };
+    });
+    // Highest card wins (a joker beats everything): the auto pick.
+    const score = c => (c.joker ? 99 : c.value);
+    const best = hand.reduce((b, d, i) => (score(d.card) > score(hand[b].card) ? i : b), 0);
+    const meters = ctx.contest.meters;
+    roll.asks.push({
+        id: "deck_hand",
+        actor: first.actor,
+        text: `${first.actor}: pick a card to play. You need ${r.dc} or more; your bonus is ${diceSigned(add)}.`,
+        choices,
+        auto: String(best),
+        apply: pick => {
+            const i = Number(pick);
+            roll.card = hand[i].card;
+            // The rest go back under the deck (the next draws come off the top).
+            hand.forEach((d, j) => { if (j !== i) meters.deck.unshift(d.code); });
+        },
+    });
 }
 
 function deckUsable(r) {
@@ -66,11 +117,14 @@ export function deckResolve(ctx, group, roll = {}) {
     const r = group?.roll;
     if (!deckUsable(r)) return oracleResolve(ctx, group);
     const adv = Math.max(-1, Math.min(1, (Number(r.adv) || 0) + (Number(roll.adv) || 0)));
-    const first = deckDraw(ctx);
+    // A card picked from the hand (deckBeforeRoll) plays once; a reroll draws.
+    const picked = roll.card || null;
+    roll.card = null;
+    const first = picked ? { card: picked, reshuffled: false } : deckDraw(ctx);
     const drawn = [first.card];
     let reshuffled = first.reshuffled;
     let card = first.card;
-    if (adv) {
+    if (adv && !picked) {
         const second = deckDraw(ctx);
         drawn.push(second.card);
         reshuffled = reshuffled || second.reshuffled;
@@ -88,9 +142,9 @@ export function deckResolve(ctx, group, roll = {}) {
     const total = card.value + extra + mod + bonus;
     const key = deckKey(card, total, r.dc, r.impossible);
     if (reshuffled && roll.notes) roll.notes.push("Deck reshuffled");
-    const shown = `drew ${drawn.map(c => c.label).join(" / ")}`;
+    const shown = `${picked ? "played" : "drew"} ${drawn.map(c => c.label).join(" / ")}`;
     const detail = r.impossible || card.joker ? `${shown}${r.impossible ? ", impossible" : ""}` : `${shown} ${diceSigned(mod)}${bonus ? ` ${diceSigned(bonus)}` : ""} = ${total} vs ${r.dc}`;
-    return diceOutcome(group, key, { roll: total, faces: drawn.map(c => c.value), face: card.value, mod, bonus, dc: r.dc, adv, detail });
+    return diceOutcome(group, key, { roll: total, faces: drawn.map(c => c.value), face: card.value, card: card.label, mod, bonus, dc: r.dc, adv, detail });
 }
 
 // Odds from a full deck (the bubble does not know which cards are gone).
@@ -131,6 +185,8 @@ export const diceDeck = {
     hint: "Draw from a shuffled deck (kept between rounds) + mod vs a target; jokers are wild.",
     icon: "fa-clone",
     sides: 13,
+    options: [{ key: "hand", label: "Cards in hand (party)", type: "number", min: 1, max: 5, default: 3 }],
+    beforeRoll: deckBeforeRoll,
     resolve: deckResolve,
     annotate: deckAnnotate,
     oracle: { rules: DECK_ORACLE_RULES, tierRule: DECK_ORACLE_TIER_RULE, example: deckOracleExample },

@@ -23,7 +23,7 @@ export function deathsDoorAfterAction(ctx, group, res) {
         m.deathsDoor[key] = true;
         const face = rollDie(ctx.rng, 20);
         if (face < target) {
-            res.notes.push(`Death's door: ${f.name} ${face} vs ${target}, falls`);
+            res.notes.push(`${f.name} tries to hang on (rolled ${face}, needed ${target}) and falls`);
             continue;
         }
         delete ctx.out[key];
@@ -41,7 +41,7 @@ export function deathsDoorAfterAction(ctx, group, res) {
         if (found && ctx.ops.setStatus(found.sheet, { name: "Death's Door", modifiers: "", effect: "Barely standing" })) {
             res.records.push({ kind: "status", by: f.name, target: found.sheet.name, side: "party", name: "Death's Door", status: "applied" });
         }
-        res.notes.push(`Death's door: ${f.name} ${face} vs ${target}, stays up`);
+        res.notes.push(`${f.name} hangs on at death's door (rolled ${face}, needed ${target})`);
     }
 }
 

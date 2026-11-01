@@ -30,8 +30,8 @@ export function initiativeQueue(ctx, groups) {
     // New rolls this round go to the results message, never the story.
     if (ctx.initRolls?.length) {
         const rolls = [...ctx.initRolls].sort((a, b) => b.total - a.total)
-            .map(r => `${r.name} ${r.face}${r.bonus ? ` +${r.bonus}` : ""} = ${r.total}`);
-        (ctx.notes = ctx.notes || []).push(`Initiative: ${rolls.join(" · ")}`);
+            .map(r => `${r.name} ${r.total}`);
+        (ctx.notes = ctx.notes || []).push(`Who goes first (rolled once, kept for the whole fight): ${rolls.join(", ")}`);
         ctx.initRolls = [];
     }
     return order;

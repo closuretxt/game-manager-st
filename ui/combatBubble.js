@@ -13,6 +13,7 @@
 import { extension_settings } from "../../../../extensions.js";
 import { extensionName } from "../core/constants.js";
 import { appendResultChip, rollAttachment } from "./diceBubble.js";
+import { roundCardsEl, roundEffectsEl, roundTagsEl } from "./roundCard.js";
 import { onMessageRendered, registerAttachmentRestorer } from "../util/messageDom.js";
 
 const DICE_FACES = ["fa-dice-one", "fa-dice-two", "fa-dice-three", "fa-dice-four", "fa-dice-five", "fa-dice-six"];
@@ -273,10 +274,12 @@ class CombatBubble {
     }
 
     // Stops the sweep and highlights the winning tier of one group with a pop.
-    // winner: { name, face?, detail?, effects?, icon? } — detail is the dice
-    // module's roll ("d20 14 +5 = 19 vs DC 15"), effects the committed
-    // numbers ("Goblin A Health -9").
+    // winner: { name, face?, detail?, effects?, icon?, card? } — detail is the
+    // dice module's roll ("d20 14 +5 = 19 vs DC 15"), effects the committed
+    // numbers ("Goblin A Health -9"). With a round card (ledger.roundCards)
+    // the roll reads in words and the effects are grouped per character.
     resolveGroup(index, winner) {
+        if (winner?.card) return this._resolveCard(index, winner);
         this.stopGroupRoll(index);
         const entry = this._groupEls[index];
         if (!entry) return;
@@ -297,6 +300,72 @@ class CombatBubble {
         this._position();
     }
 
+    _resolveCard(index, { name, face, icon, card }) {
+        this.stopGroupRoll(index);
+        const entry = this._groupEls[index];
+        if (!entry) return;
+        for (const [tier, info] of entry.tierEls) {
+            const isWinner = tier === name;
+            info.row.toggleClass("gm_dice_tier_win", isWinner);
+            if (isWinner) info.bar.addClass("gm_dice_tier_bar_win");
+        }
+        this._rollLine(entry, icon);
+        entry.rollLine.removeClass("gm_combat_roll_spinning");
+        entry.rollFace.text(Number.isFinite(face) ? String(face) : "").toggle(Number.isFinite(face));
+        const words = card.roll ? card.roll[0].toUpperCase() + card.roll.slice(1) : card.math || "";
+        entry.rollText.text(words).attr("title", card.math && card.roll ? `Dice math: ${card.math}` : "");
+        entry.fxEl.empty();
+        if (card.story) entry.fxEl.append($("<div>").addClass("gm_rc_story").text(card.story));
+        if ((card.effects || []).length) entry.fxEl.append(roundEffectsEl(card.effects));
+        if ((card.tags || []).length) entry.fxEl.append(roundTagsEl(card.tags));
+        // Only the tier that happened stays: the odds did their job.
+        entry.card.addClass("gm_combat_group_resolved gm_combat_group_carded");
+        this._position();
+    }
+
+    // "Ask me" (core/contest/engine.js roll.asks): a question with one button
+    // per choice under the cards. Resolves to the picked choice id, or to
+    // q.auto when the time runs out (the story is waiting on this round).
+    ask(q, timeoutMs = 20000) {
+        return new Promise(resolve => {
+            if (!this.el || !q?.choices?.length) return resolve(q?.auto);
+            const box = $("<div>").addClass("gm_ask");
+            const timer = $("<div>").addClass("gm_ask_timer");
+            const choices = $("<div>").addClass("gm_ask_choices");
+            let done = false;
+            const finish = (id) => {
+                if (done) return;
+                done = true;
+                clearTimeout(t);
+                box.remove();
+                this._position();
+                resolve(id);
+            };
+            for (const c of q.choices) {
+                const btn = $("<div>").addClass("menu_button gm_ask_choice").toggleClass("gm_ask_auto", c.id === q.auto);
+                btn.append($("<span>").text(c.label));
+                if (c.hint) btn.append($("<small>").text(c.hint));
+                btn.on("click", () => finish(c.id));
+                choices.append(btn);
+            }
+            const auto = q.choices.find(c => c.id === q.auto);
+            box.append(
+                $("<div>").addClass("gm_ask_text").text(q.text || "Your choice:"),
+                choices,
+                timer,
+                $("<div>").addClass("gm_ask_hint").text(`No answer in ${Math.round(timeoutMs / 1000)} s picks "${auto?.label || "the default"}".`),
+            );
+            this.groupsEl.append(box);
+            this._position();
+            box[0].scrollIntoView({ block: "nearest" });
+            // Bar drains over the timeout.
+            requestAnimationFrame(() => timer.css({ transition: `width ${timeoutMs}ms linear`, width: "0%" }));
+            const t = setTimeout(() => finish(q.auto), timeoutMs);
+            // A closed bubble (chat switch, error) answers with the default.
+            this._askCancel = () => finish(q.auto);
+        });
+    }
+
     // Pipeline finished — stop the dice cycle, swap the icon for a check and
     // fade out.
     done(text) {
@@ -313,6 +382,11 @@ class CombatBubble {
     }
 
     close(instant = false) {
+        if (this._askCancel) {
+            const cancel = this._askCancel;
+            this._askCancel = null;
+            cancel();
+        }
         clearTimeout(this._closeTimer);
         this._closeTimer = null;
         clearInterval(this._faceTimer);
@@ -377,18 +451,29 @@ export function attachCombatToMessage(mesId, groups, winners) {
     });
 }
 
-// Contest rounds (core/contest/contest.js): one chip per group, in resolution
+// Contest rounds (core/contest/contest.js): the round's cards in resolution
 // order, with the committed numbers — the results message is where numbers
-// live; the story LLM never sees them. `rows` = ledger.chipRows().
-export function attachContestToMessage(mesId, rows) {
+// live; the story LLM never sees them. `cards` = ledger.roundCards(); `rows`
+// (ledger.chipRows) = the old one-chip-per-group form, for rounds stored
+// before the cards existed.
+export function attachContestToMessage(mesId, rows, cards = null, icon = "") {
     if (!rollAttachment()) return;
     onMessageRendered(mesId, (mesEl) => {
         if (mesEl.querySelector(".gm_roll_file")) return; // already rendered
+        if (cards?.groups?.length) return appendRoundCards(mesEl, cards, icon);
         for (const r of rows || []) {
             if (!r?.title) continue;
             appendResultChip(mesEl, { icon: r.icon || "fa-hand-fist", title: r.title, tier: r.tier, outcome: r.outcome });
         }
     });
+}
+
+// DOM-only, like the chips: the message text is never touched.
+function appendRoundCards(mesEl, cards, icon) {
+    const box = $("<div>").addClass("gm_roll_file gm_round_file").append(roundCardsEl(cards, { icon }));
+    const wrap = mesEl.querySelector(".mes_file_wrapper");
+    if (wrap) $(wrap).append(box);
+    else $(mesEl.querySelector(".mes_text")).after(box);
 }
 
 export const combatBubble = new CombatBubble();
@@ -397,6 +482,11 @@ export const combatBubble = new CombatBubble();
 // record after ST re-renders the message (swipes, edits, chat reload).
 registerAttachmentRestorer((mesEl, msg) => {
     if (!msg?.is_user) return; // chips belong to the player's action only
+    if (msg?.gm_contest?.cards?.groups?.length) {
+        if (!rollAttachment() || mesEl.querySelector(".gm_roll_file")) return;
+        appendRoundCards(mesEl, msg.gm_contest.cards, msg.gm_contest.icon || "");
+        return;
+    }
     if (Array.isArray(msg?.gm_contest?.chips) && msg.gm_contest.chips.length) {
         if (!rollAttachment() || mesEl.querySelector(".gm_roll_file")) return;
         for (const r of msg.gm_contest.chips) {

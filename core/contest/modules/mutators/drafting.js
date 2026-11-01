@@ -34,7 +34,7 @@ export function draftingAfterAction(ctx, group, res) {
         st.value = next;
         r.after += gained;
         r.applied += gained;
-        res.notes.push(`Drafting behind ${ahead}: ${r.target} saves ${gained} ${st.name}`);
+        res.notes.push(`${r.target} rides in ${ahead}'s slipstream: saves ${gained} ${st.name}`);
     }
 }
 

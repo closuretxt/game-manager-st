@@ -42,7 +42,7 @@ export function bandsResolve(ctx, group, roll = {}) {
     const key = bandsKey(kept[0], kept[1], total, r.impossible);
     const dice = `2d6 ${kept.join("+")}${extra ? ` +${extra} exploded` : ""}${adv ? ` (${all.join("/")} ${adv > 0 ? "adv" : "dis"})` : ""}`;
     const detail = r.impossible ? `${dice}, impossible` : `${dice} ${diceSigned(mod)}${bonus ? ` ${diceSigned(bonus)}` : ""} = ${total}`;
-    return diceOutcome(group, key, { roll: total, faces: all, face: kept[0] + kept[1], mod, bonus, adv, detail });
+    return diceOutcome(group, key, { roll: total, faces: all, face: kept[0] + kept[1], mod, bonus, adv, bands: true, detail });
 }
 
 export function bandsAnnotate(group) {

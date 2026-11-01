@@ -20,10 +20,10 @@ export function escalationBeforeRoll(ctx, group, roll) {
     if (!sides.length) return;
     if (contestSide(ctx, sides[0].actor) === "party") {
         roll.bonus += bonus;
-        roll.notes.push(`Escalation +${bonus}`);
+        roll.notes.push(`+${bonus}: the fight is heating up`);
     } else if (sides.slice(1).some(sd => contestSide(ctx, sd.actor) === "party")) {
         roll.bonus -= bonus;
-        roll.notes.push(`Escalation -${bonus} (party defends)`);
+        roll.notes.push(`-${bonus}: the party is warmed up`);
     }
 }
 

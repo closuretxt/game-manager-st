@@ -6,6 +6,8 @@
 //   chipRows      the player's results chips: tier, roll and effect numbers.
 // Pure: no SillyTavern imports.
 
+import { contestKey } from "./effects.js";
+
 // Entity strings built by concatenation: some tooling decodes entity
 // literals on write and silently turns escapers into no-ops (CLAUDE.md).
 function ledgerAttr(v) {
@@ -135,6 +137,131 @@ export function groupEffectShorts(g) {
         if (!(g.records || []).some(r => r.kind === "state" && r.status === "applied" && r.target === f.name)) fx.push(`${f.name} ${f.word}`);
     }
     return fx;
+}
+
+// ---------- Round cards: the player's readable view ----------
+// One card per group, in plain words for someone who never played a table
+// game: who did what to whom, a result badge, what happened, the roll as
+// "needed 14, got 15", and the effects grouped per character. The dice math
+// (`math`) stays available as a tooltip. Feeds the bubble, the chat message
+// and the HUD log (ui/roundCard.js renders it).
+
+const CARD_TONES = { crit: "great", hit: "good", graze: "mixed", miss: "bad", fumble: "awful" };
+const CARD_MEANINGS = {
+    crit: "The best possible result.",
+    hit: "It worked.",
+    graze: "It half-worked, or worked at a cost.",
+    miss: "It did not work.",
+    fumble: "It went wrong.",
+};
+const CARD_RANGE_WORDS = ["now in melee range", "now close by", "now far away"];
+// Tracks the player never needs to read (the ladder's rung shows as a status).
+const CARD_HIDDEN_TRACKS = new Set(["harm"]);
+
+function cardSigned(n) {
+    return n > 0 ? `+${n}` : `${n}`;
+}
+
+// The roll in words, from whatever the dice module recorded.
+export function plainRoll(o) {
+    if (!o) return "";
+    if (/impossible/.test(String(o.detail || ""))) return "it could not work, whatever the roll";
+    const add = (Number(o.mod) || 0) + (Number(o.bonus) || 0);
+    const twice = o.adv > 0 ? ", best of two" : o.adv < 0 ? ", worst of two" : "";
+    if (Number.isFinite(o.dc) && Number.isFinite(o.roll)) {
+        const how = o.card ? `played ${o.card}` : Number.isFinite(o.face) ? `rolled ${o.face}` : "";
+        const parts = [how, add ? `${cardSigned(add)} bonus` : "", twice.slice(2)].filter(Boolean).join(", ");
+        return `needed ${o.dc}, got ${o.roll}${parts ? ` (${parts})` : ""}`;
+    }
+    if (Number.isFinite(o.target) && Number.isFinite(o.face)) return `needed ${o.target} or lower, rolled ${o.face}${twice}`;
+    if (Number.isFinite(o.pool)) {
+        const theirs = Number.isFinite(o.opp) && o.opp ? `, they got ${o.face - o.roll}` : "";
+        return `${o.face} of ${o.pool} dice hit${theirs}`;
+    }
+    if (Number.isFinite(o.die)) return o.roll > 0 ? `beat them by ${o.roll}` : o.roll < 0 ? `behind by ${-o.roll}` : "a tie";
+    if (o.bands && Number.isFinite(o.roll)) return `got ${o.roll} (10+ works, 7-9 half-works)`;
+    if (Number.isFinite(o.chance) && o.chance > 0) return `had a ${o.chance}% chance`;
+    return "";
+}
+
+// One applied record as a chip: { text, tone, hint? }. Tones: hurt, heal,
+// cost (the actor's own spend), status, out, info.
+function cardEffect(r, actor) {
+    // A cost = the actor spending on themself; a blow the other side lands
+    // on the actor is still damage.
+    const own = contestKey(r.target) === contestKey(actor) && contestKey(r.by || actor) === contestKey(actor);
+    switch (r.kind) {
+        case "resource": {
+            const tone = r.applied > 0 ? "heal" : own ? "cost" : "hurt";
+            return { text: `${cardSigned(r.applied)} ${r.name}`, tone, hint: `${r.before} → ${r.after}` };
+        }
+        case "track": {
+            if (CARD_HIDDEN_TRACKS.has(String(r.name).toLowerCase())) return null;
+            if (String(r.name).toLowerCase() === "range") return { text: CARD_RANGE_WORDS[r.after] || `distance ${r.after}`, tone: "info" };
+            return { text: `${cardSigned(r.applied)} ${r.name}`, tone: "info", hint: `${r.before} → ${r.after}` };
+        }
+        case "status": return r.remove ? { text: `no longer ${r.name}`, tone: "info" } : { text: r.name, tone: "status", hint: r.modifiers || "" };
+        case "skill": return { text: `used ${r.name}`, tone: "cost", hint: "now on cooldown" };
+        case "item": return r.qty > 0 ? { text: `got ${r.qty} ${r.name}`, tone: "heal" } : { text: `used ${-r.qty} ${r.name}`, tone: "cost" };
+        case "state": return { text: CARD_STATE_WORDS[r.name] || r.name, tone: "out" };
+        default: return { text: `${r.kind} ${r.name}`, tone: "info" };
+    }
+}
+
+const CARD_STATE_WORDS = { dead: "dead", ko: "knocked out", down: "down", fled: "fled", yielded: "gave up", out: "out" };
+
+// Effects grouped per character, the people acted on first, the actor's
+// own costs last: [{ who, items: [...] }].
+function cardEffects(g, actor) {
+    const by = new Map();
+    const push = (who, item) => {
+        if (!item) return;
+        const k = contestKey(who);
+        if (!by.has(k)) by.set(k, { who, items: [] });
+        const list = by.get(k).items;
+        if (!list.some(x => x.text === item.text)) list.push(item);
+    };
+    for (const r of g?.records || []) {
+        if (r.status !== "applied") continue;
+        if ((r.kind === "resource" || r.kind === "track") && r.applied === 0) continue;
+        push(r.target, cardEffect(r, actor));
+    }
+    for (const f of g?.fell || []) push(f.name, { text: CARD_STATE_WORDS[f.mode] || f.word || f.mode, tone: "out" });
+    const out = [...by.values()];
+    const me = contestKey(actor);
+    return [...out.filter(e => contestKey(e.who) !== me), ...out.filter(e => contestKey(e.who) === me)];
+}
+
+export function roundCards(round) {
+    const groups = (round?.groups || []).map(g => {
+        const first = g.sides?.[0] || {};
+        const line = g.lines?.[0] || {};
+        const card = {
+            who: first.actor || "",
+            move: storyAction(first.action),
+            target: line.versus || "",
+            against: g.sides?.[1]?.action ? storyAction(g.sides[1].action) : "",
+            story: (g.lines || []).map(l => l.text).filter(Boolean).join(" "),
+            effects: cardEffects(g, first.actor),
+            tags: [...(g.notes || [])],
+        };
+        if (g.status === "interrupted") return { ...card, result: "Interrupted", tone: "none", meaning: "They were taken out before they could act." };
+        const o = g.outcome || {};
+        if (o.rerolledFrom) card.tags.unshift(`First try: ${o.rerolledFrom.name}${o.rerolledFrom.plain ? ` (${o.rerolledFrom.plain})` : ""}`);
+        return { ...card, result: o.name || "", tone: CARD_TONES[o.key] || "none", meaning: CARD_MEANINGS[o.key] || "", roll: o.plain || plainRoll(o), math: outcomeDetail(o, false), face: Number.isFinite(o.face) ? o.face : null };
+    });
+    // Who acted, in the order they acted.
+    const order = [];
+    for (const c of groups) if (c.who && !order.includes(c.who)) order.push(c.who);
+    return { order, notes: [...(round?.notes || [])], events: [...(round?.events || [])], groups };
+}
+
+// The plain-text form (copy, message log): one short paragraph per card.
+export function roundCardText(card) {
+    const head = `${card.who}${card.move ? `: ${card.move}` : ""}${card.target ? ` → ${card.target}` : ""}`;
+    const res = [card.result, card.roll].filter(Boolean).join(", ");
+    const fx = (card.effects || []).map(e => `${e.who} ${e.items.map(i => i.text).join(", ")}`).join("; ");
+    return [`${head}${res ? ` — ${res}` : ""}`, card.story, fx, ...(card.tags || [])].filter(Boolean).join("\n");
 }
 
 // One chip per group: { title, tier, outcome, icon? }. Round notes

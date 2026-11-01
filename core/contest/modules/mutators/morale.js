@@ -65,7 +65,7 @@ export function moraleAfterAction(ctx, group, res) {
         const face = rollDie(ctx.rng, 20);
         const total = face + moraleBonus(found.sheet);
         if (total >= target) {
-            res.notes.push(`Morale (${why}): ${found.sheet.name} ${total} vs ${target}, holds`);
+            res.notes.push(`${found.sheet.name} keeps their nerve (${why}): rolled ${total}, needed ${target}`);
             continue;
         }
         const ratio = moraleRatio(ctx, found.sheet);
@@ -74,7 +74,7 @@ export function moraleAfterAction(ctx, group, res) {
         if (rec.status !== "applied") continue;
         res.records.push(rec);
         res.fell.push({ name: found.sheet.name, side: "enemy", mode, word: MORALE_WORDS[mode] });
-        res.notes.push(`Morale (${why}): ${found.sheet.name} ${total} vs ${target}, ${mode === "fled" ? "flees" : "yields"}`);
+        res.notes.push(`${found.sheet.name} loses their nerve (${why}) and ${mode === "fled" ? "flees" : "gives up"}: rolled ${total}, needed ${target}`);
     }
 }
 

@@ -71,11 +71,9 @@ export function rangeBeforeApply(ctx, group, outcome, effects, notes) {
     // The oracle already moved this enemy's band in this group (a dodge
     // backwards, an approach): its move stands, the module adds none.
     const oracleMoved = effects.some(e => e.kind === "track" && contestKey(e.name) === "range" && contestKey(e.target) === enemyKey);
+    // No note: the range effect itself shows up in the results ("now in melee").
     const move = (to, line) => {
-        if (!oracleMoved) {
-            effects.push({ kind: "track", by: first.actor, target: enemy, name: "range", value: String(to) });
-            notes.push(`Range: ${enemy} ${rangeWord(r)} → ${RANGE_WORDS[to]}`);
-        }
+        if (!oracleMoved) effects.push({ kind: "track", by: first.actor, target: enemy, name: "range", value: String(to) });
         const tier = (group.tiers || [])[outcome?.tierIndex];
         if (line && tier) tier.outcome = line;
     };

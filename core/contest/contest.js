@@ -28,9 +28,9 @@ import { playRoll, playTierResult } from "../soundFx.js";
 import { runEnemyAI } from "../enemyAI.js";
 import { makeRng, newSeed } from "./rng.js";
 import { contestKey, trackValue } from "./effects.js";
-import { runRound } from "./engine.js";
+import { runRoundAsync } from "./engine.js";
 import { resolveRuleset, rulesetIsCustom } from "./registry.js";
-import { storyBlock, postPassBlock, chipRows, outcomeDetail, groupEffectShorts } from "./ledger.js";
+import { storyBlock, postPassBlock, chipRows, roundCards } from "./ledger.js";
 import { adjudicateRound } from "./oracle.js";
 import { brainActions, rivalBrainActions } from "./brains.js";
 import { hudFighters, hudTurnOrder, hudMeters, hudPushLog } from "./hud.js";
@@ -363,12 +363,15 @@ export function contestLedgerFor(aiMsgId) {
 export function replayContestRound(stored, userMsgId) {
     if (!stored?.story) return false;
     queueHigh(stored.story);
-    if (Array.isArray(stored.chips)) attachContestToMessage(userMsgId, stored.chips);
+    if (Array.isArray(stored.chips) || stored.cards) attachContestToMessage(userMsgId, stored.chips, stored.cards || null, stored.icon || "");
     _lastLedger = { userMsgId: Number(userMsgId), post: stored.degraded ? "" : String(stored.post || "") };
     return true;
 }
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
+// "Ask me": how long a mid-roll question waits before it auto-picks. The
+// story generation is on hold meanwhile (we are inside the awaited GAC).
+const CONTEST_ASK_MS = 20000;
 
 // ---------- HUD (ui/mainPanel.js, Enemies tab) ----------
 
@@ -556,7 +559,29 @@ export async function runContestTurn(action, plan, userMsgId, kind = "clash") {
         // COMMIT — baseline first, on the USER message (see header).
         captureSnapshot(userMsgId);
         const participants = ctx.participants;
-        const round = runRound(ctx, groups);
+        // The bubble plays each group back as it resolves (in resolution
+        // order, with the dice module's numbers in words), so an "Ask me"
+        // question for a later group comes after the earlier ones are shown.
+        const die = { icon: ruleset.dice?.icon || "fa-dice", sides: ruleset.dice?.sides || 0 };
+        let notesShown = false;
+        const onGroup = async (g) => {
+            if (!notesShown) {
+                notesShown = true;
+                bubble.setNotes(ctx.notes);
+            }
+            const card = roundCards({ groups: [g] }).groups[0];
+            if (g.status === "interrupted") {
+                bubble.resolveGroup(g.index, { name: "Interrupted", card });
+                return;
+            }
+            bubble.startGroupRoll(g.index, die);
+            playRoll(900);
+            await wait(900);
+            bubble.resolveGroup(g.index, { name: g.outcome.name, face: g.outcome.face, icon: die.icon, card });
+            playTierResult(g.outcome.name);
+        };
+        const askMe = ruleset.opts?.choices !== "auto";
+        const round = await runRoundAsync(ctx, groups, { onGroup, ...(askMe ? { ask: q => bubble.ask(q, CONTEST_ASK_MS) } : {}) });
         for (const g of round.groups) {
             for (const r of g.records) if (r.status === "skipped") logDebug(`contest: effect skipped (${r.reason}) — ${r.kind} "${r.name}" on "${r.target}"`);
         }
@@ -570,7 +595,8 @@ export async function runContestTurn(action, plan, userMsgId, kind = "clash") {
         const story = storyBlock(ruleset.shape, round);
         const post = postPassBlock(round, { degraded, roundNo });
         const chips = chipRows(round, ruleset.dice?.icon || "");
-        contest.log = hudPushLog(contest.log, roundNo, chips);
+        const cards = roundCards(round);
+        contest.log = hudPushLog(contest.log, roundNo, chips, cards);
         if (round.over) {
             stateManager.getData().contest = emptyContest(contest.kind, false, roundNo);
         }
@@ -591,34 +617,16 @@ export async function runContestTurn(action, plan, userMsgId, kind = "clash") {
             story,
             post,
             chips,
+            cards,
+            icon: die.icon,
         });
         _lastLedger = { userMsgId: Number(userMsgId), post: degraded ? "" : post };
         if (story) queueHigh(story);
 
-        // The round is already decided and committed; the bubble only plays
-        // it back in resolution order, with the dice module's own numbers
-        // (d20 face + mod vs DC, or the oracle's tier odds) and the effects.
+        // Round notes that came after the first group (clocks, phases).
         bubble.setNotes(round.notes);
-        const die = { icon: ruleset.dice?.icon || "fa-dice", sides: ruleset.dice?.sides || 0 };
-        for (const g of round.groups) {
-            if (g.status === "interrupted") {
-                bubble.resolveGroup(g.index, { name: "Interrupted", detail: "Interrupted", effects: [] });
-                continue;
-            }
-            bubble.startGroupRoll(g.index, die);
-            playRoll(900);
-            await wait(900);
-            bubble.resolveGroup(g.index, {
-                name: g.outcome.name,
-                face: g.outcome.face,
-                detail: [outcomeDetail(g.outcome, false), ...(g.notes || [])].filter(Boolean).join(" · "),
-                effects: groupEffectShorts(g),
-                icon: die.icon,
-            });
-            playTierResult(g.outcome.name);
-        }
         await wait(1200);
-        attachContestToMessage(userMsgId, chips);
+        attachContestToMessage(userMsgId, chips, cards, die.icon);
         bubble.done(round.over ? "Contest over." : "Round resolved.");
         logDebug(`contest: round ${roundNo} committed — ${round.groups.length} group(s)${degraded ? " (degraded)" : ""}${round.over ? ", contest over" : ""}`);
         return true;

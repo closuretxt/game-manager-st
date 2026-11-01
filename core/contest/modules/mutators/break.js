@@ -64,7 +64,7 @@ export function breakBeforeApply(ctx, group, outcome, effects, notes) {
         if (!breakIsBroken(ctx, sd.actor)) return;
         const key = contestKey(sd.actor);
         for (let j = effects.length - 1; j >= 0; j--) if (contestKey(effects[j].by) === key) effects.splice(j, 1);
-        notes.push(`${sd.actor} is broken and loses the action`);
+        notes.push(`${sd.actor}'s guard is broken: this action is lost`);
         const tier = (group.tiers || [])[outcome?.tierIndex];
         if (i === 0 && tier) tier.outcome = `${sd.actor} reels, broken, and cannot act.`;
     });
@@ -75,7 +75,7 @@ export function breakBeforeRoll(ctx, group, roll) {
     if (!roll || sides.length < 2) return;
     if (breakIsBroken(ctx, sides[1].actor) && contestSide(ctx, sides[0].actor) === "party") {
         roll.bonus += 2;
-        roll.notes.push(`${sides[1].actor} is broken (+2)`);
+        roll.notes.push(`+2: ${sides[1].actor}'s guard is broken`);
     }
 }
 
@@ -96,12 +96,12 @@ export function breakAfterAction(ctx, group, res) {
     const left = Math.max(0, (Number.isFinite(m.toughness[tk]) ? m.toughness[tk] : full) - (key === "crit" ? 2 : 1));
     m.toughness[tk] = left;
     if (left > 0) {
-        res.notes.push(`Weakness hit: ${found.sheet.name} toughness ${left}/${full}`);
+        res.notes.push(`Hit ${found.sheet.name}'s weakness: ${left} of ${full} guard left`);
         return;
     }
     m.broken[tk] = breakRound(ctx);
     res.records.push(applyEffect(ctx, { kind: "status", by: first.actor, target: found.sheet.name, name: "Broken", modifiers: "Defense -4", turns: 1 }));
-    res.notes.push(`Break! ${found.sheet.name} is broken`);
+    res.notes.push(`${found.sheet.name}'s guard broke! Next round it loses its action and is easier to hit`);
 }
 
 // After the round a Broken enemy sat out, its toughness refills.

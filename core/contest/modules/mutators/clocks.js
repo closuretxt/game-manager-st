@@ -49,7 +49,7 @@ export function clocksRoundEnd(ctx) {
             ctx.clockEvents.push(c.name);
         }
     }
-    if (parts.length) ctx.notes.push(`Clocks: ${parts.join(" · ")}`);
+    if (parts.length) ctx.notes.push(`Countdowns (something happens when one fills): ${parts.join(", ")}`);
 }
 
 export function clocksStoryEvents(ctx) {

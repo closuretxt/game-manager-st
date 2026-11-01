@@ -18,6 +18,8 @@ export function actionWeight(action) {
     return "normal";
 }
 
+const TIMELINE_WORDS = { heavy: "made a heavy move (acts later next round)", normal: "made a normal move", light: "made a quick move (acts early again)" };
+
 export function timelineCost(action, speed) {
     const base = { heavy: 9, normal: 6, light: 4 }[actionWeight(action)];
     return Math.max(1, base - Math.min(4, Math.max(0, Math.trunc(Number(speed) || 0))));
@@ -46,13 +48,13 @@ export function timelineQueue(ctx, groups) {
             const key = contestKey(sd.actor);
             if (!key) continue;
             const cost = timelineCost(sd.action, sd.speed);
-            notes.push(`${sd.actor} t${t[key]} (+${cost})`);
+            notes.push(`${sd.actor} ${TIMELINE_WORDS[actionWeight(sd.action)]}`);
             t[key] += cost;
         }
     }
     const low = Math.min(...Object.values(t).filter(Number.isFinite));
     if (Number.isFinite(low) && low > 0) for (const k of Object.keys(t)) t[k] -= low;
-    if (notes.length) (ctx.notes = ctx.notes || []).push(`Timeline: ${notes.join(" · ")}`);
+    if (notes.length) (ctx.notes = ctx.notes || []).push(`Tempo: ${notes.join(", ")}`);
     return order;
 }
 

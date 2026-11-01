@@ -163,9 +163,14 @@ export function rulesetIsCustom(ruleset) {
 
 // Ruleset-wide options (stored at opts[key]); module options live at
 // opts[moduleId][key] and come from each module's `options`.
+// "Ask me" (decision 3): modules that offer a choice mid-roll (momentum's
+// reroll, the deck's hand) ask in the bubble; no answer in time = auto-pick.
+export const CONTEST_CHOICES_OPTION = { key: "choices", label: "Choices during a roll", type: "select", default: "ask", choices: [["ask", "Ask me (auto-picks after 20 s)"], ["auto", "Always auto-pick"]], hint: "Some rules offer you a choice mid-roll, like spending momentum on a reroll or picking a card." };
+
 export const CONTEST_RULESET_OPTIONS = [
     { key: "stakes", label: "Stakes resource", type: "text", default: "Health", hint: "The resource a fighter falls at (Health, Composure, Morale...)." },
     { key: "opposition", label: "Opposition", type: "select", default: "llm", choices: [["llm", "LLM, blind to your move"], ["brains", "Scripted behaviors (no call)"]] },
+    CONTEST_CHOICES_OPTION,
 ];
 
 const CONTEST_ENABLED_OPTION = { key: "enabled", label: "Offered in this chat", type: "select", default: "on", choices: [["on", "On: the router may start one"], ["off", "Off"]] };
@@ -177,15 +182,18 @@ export function contestRulesetOptions(kind) {
             CONTEST_ENABLED_OPTION,
             { key: "stakes", label: "Stamina resource", type: "text", default: "Stamina", hint: "The resource pushing and spurting drain. Running dry slows a runner; it never knocks them out." },
             { key: "opposition", label: "Rival runners", type: "select", default: "llm", choices: [["llm", "LLM, blind to your move"], ["brains", "Scripted tactics (no call)"]] },
+            CONTEST_CHOICES_OPTION,
         ];
         case "scores": return [
             CONTEST_ENABLED_OPTION,
             { key: "stakes", label: "Strain resource", type: "text", default: "", hint: "Optional resource a performance can drain (Composure, Energy...). Empty = none." },
             { key: "opposition", label: "Rival competitors", type: "select", default: "llm", choices: [["llm", "LLM, blind to your move"], ["brains", "Scripted styles (no call)"]] },
+            CONTEST_CHOICES_OPTION,
         ];
         case "challenge": return [
             CONTEST_ENABLED_OPTION,
             { key: "stakes", label: "Stakes resource", type: "text", default: "Health", hint: "The resource the situation can hurt (falls, burns...)." },
+            CONTEST_CHOICES_OPTION,
         ];
         default: return CONTEST_RULESET_OPTIONS;
     }

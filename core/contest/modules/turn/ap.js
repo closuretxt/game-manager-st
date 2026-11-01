@@ -27,11 +27,11 @@ export function apQueue(ctx, groups) {
             if (!key || key in held) continue;
             const cost = Math.min(per, AP_COST[actionWeight(sd.action)]);
             held[key] = per - cost;
-            notes.push(`${sd.actor} ${cost}/${per}${held[key] ? ` (${held[key]} held)` : ""}`);
+            notes.push(`${sd.actor} used ${cost} of ${per}${held[key] ? `, saved ${held[key]} to defend` : ""}`);
         }
     }
     ctx.apHeld = held;
-    if (notes.length) (ctx.notes = ctx.notes || []).push(`AP: ${notes.join(" · ")}`);
+    if (notes.length) (ctx.notes = ctx.notes || []).push(`Action points: ${notes.join("; ")}`);
     return order;
 }
 
@@ -45,7 +45,7 @@ export function apBeforeRoll(ctx, group, roll) {
         const ap = ctx.apHeld[key] || 0;
         if (!ap || contestSide(ctx, sd.actor) === attackerSide) continue;
         roll.bonus -= ap;
-        roll.notes.push(`${sd.actor} reacts with ${ap} AP (-${ap})`);
+        roll.notes.push(`-${ap}: ${sd.actor} defends with ${ap} saved action point${ap === 1 ? "" : "s"}`);
         ctx.apHeld[key] = 0;
     }
 }

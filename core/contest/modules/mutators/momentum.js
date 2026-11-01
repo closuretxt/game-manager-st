@@ -1,10 +1,9 @@
 // mut.momentum — a party meter (plans/combat-modules.md 4.5): +1 on a party
-// hit, +2 on a crit, capped (default 5). With spend "auto" (decision 3's
-// "Auto-pick"; "Ask me" needs a mid-roll prompt, not built yet) it spends
-// itself: a party roll that misses or fumbles rerolls once for `cost`
-// (default 3); "never" keeps it a meter. Kept in contest.meters
-// (d.contest: snapshot rollbacks cover it); reported in the results message
-// only.
+// hit, +2 on a crit, capped (default 5). With spend "auto" a party roll that
+// misses or fumbles may reroll once for `cost` (default 3): it is asked as a
+// question (engine.js `roll.asks`; the ruleset's "Ask me" shows it, auto-pick
+// rerolls); "never" keeps it a meter. Kept in contest.meters (d.contest:
+// snapshot rollbacks cover it); reported in the results message only.
 
 import { contestSide } from "../../effects.js";
 
@@ -21,15 +20,29 @@ export function momentumAfterRoll(ctx, group, outcome, roll) {
     const meters = ctx.contest.meters = ctx.contest.meters && typeof ctx.contest.meters === "object" ? ctx.contest.meters : {};
     const have = Math.max(0, Math.trunc(Number(meters.momentum) || 0));
     if (spend === "auto" && roll && !roll.rerolled && (outcome.key === "miss" || outcome.key === "fumble") && have >= cost) {
-        meters.momentum = have - cost;
-        roll.reroll = true;
-        roll.notes.push(`Momentum -${cost}: rerolled ${outcome.name}`);
+        const spendIt = () => {
+            meters.momentum = have - cost;
+            roll.reroll = true;
+            roll.notes.push(`Spent ${cost} momentum to reroll a ${outcome.name}`);
+        };
+        if (!Array.isArray(roll.asks)) return spendIt();
+        roll.asks.push({
+            id: "momentum",
+            actor: first.actor,
+            text: `${first.actor} got a ${outcome.name}${outcome.plain ? ` (${outcome.plain})` : ""}. Spend ${cost} of your ${have} momentum to roll again?`,
+            choices: [
+                { id: "reroll", label: `Roll again (-${cost} momentum)` },
+                { id: "keep", label: "Keep the result" },
+            ],
+            auto: "reroll",
+            apply: pick => { if (pick === "reroll") spendIt(); },
+        });
         return;
     }
     const gain = outcome.key === "crit" ? 2 : outcome.key === "hit" ? 1 : 0;
     if (!gain) return;
     meters.momentum = Math.min(max, have + gain);
-    if (meters.momentum > have) roll?.notes.push(`Momentum +${meters.momentum - have} (${meters.momentum}/${max})`);
+    if (meters.momentum > have) roll?.notes.push(`Momentum ${meters.momentum}/${max} (hits fill it, spend it to reroll a miss)`);
 }
 
 export function momentumHud(ctx) {

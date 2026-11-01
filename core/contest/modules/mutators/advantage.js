@@ -45,7 +45,7 @@ export function advantageBeforeRoll(ctx, group, roll) {
     if (!delta) return;
     const step = delta > 0 ? 1 : -1;
     roll.adv += step;
-    roll.notes.push(`${step > 0 ? "Advantage" : "Disadvantage"}: ${why.join(", ")}`);
+    roll.notes.push(`${step > 0 ? "Advantage (rolled twice, kept the better)" : "Disadvantage (rolled twice, kept the worse)"}: ${why.join(", ")}`);
 }
 
 export const mutAdvantage = {

@@ -24,7 +24,7 @@ export function chainBeforeRoll(ctx, group, roll) {
     if (!c || c.target !== contestKey(b.actor) || !(c.n > 0)) return;
     const bonus = Math.min(chainMax(ctx), c.n);
     roll.bonus += bonus;
-    roll.notes.push(`Chain +${bonus}`);
+    roll.notes.push(`+${bonus} combo: kept hitting the same target`);
 }
 
 export function chainAfterAction(ctx, group, res) {

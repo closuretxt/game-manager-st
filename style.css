@@ -4179,6 +4179,235 @@ body > #gm_spawn_chip {
     margin-left: 4px;
 }
 
+/* ---------- Round cards (ui/roundCard.js) ---------- */
+.gm_rc_round {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 12px;
+}
+
+.gm_rc_title {
+    font-weight: 700;
+    opacity: 0.85;
+}
+
+.gm_rc_order {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+
+.gm_rc_order_label {
+    opacity: var(--gm-muted);
+    margin-right: 2px;
+}
+
+.gm_rc_pill {
+    padding: 1px 7px;
+    border-radius: 999px;
+    border: 1px solid var(--gm-line);
+}
+
+.gm_rc_arrow {
+    opacity: var(--gm-muted);
+}
+
+.gm_rc {
+    --gm-rc-tone: var(--gm-line);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 6px 8px;
+    border-left: 3px solid var(--gm-rc-tone);
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--gm-rc-tone) 8%, transparent);
+}
+
+.gm_rc_tone_great { --gm-rc-tone: #3fb27f; }
+.gm_rc_tone_good { --gm-rc-tone: #4caf7d; }
+.gm_rc_tone_mixed { --gm-rc-tone: #d8a23a; }
+.gm_rc_tone_bad { --gm-rc-tone: #e07a5f; }
+.gm_rc_tone_awful { --gm-rc-tone: #e5484d; }
+
+.gm_rc_head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.gm_rc_badge {
+    font-weight: 700;
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    color: #fff;
+    background: var(--gm-rc-tone);
+    white-space: nowrap;
+}
+
+.gm_rc_tone_great .gm_rc_badge::after {
+    content: " ★";
+}
+
+.gm_rc_move {
+    font-style: italic;
+    opacity: 0.85;
+}
+
+.gm_rc_against {
+    font-style: normal;
+    opacity: var(--gm-muted);
+}
+
+.gm_rc_meaning {
+    opacity: 0.8;
+}
+
+.gm_rc_story {
+    line-height: 1.35;
+}
+
+.gm_rc_roll {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    opacity: 0.75;
+    font-variant-numeric: tabular-nums;
+    cursor: help;
+}
+
+.gm_rc_fx {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.gm_rc_fx_row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+
+.gm_rc_fx_who {
+    font-weight: 600;
+    margin-right: 2px;
+}
+
+.gm_rc_fx_who::after {
+    content: ":";
+}
+
+.gm_rc_chip {
+    font-size: 11px;
+    padding: 0 6px;
+    border-radius: 999px;
+    border: 1px solid var(--gm-line);
+    font-variant-numeric: tabular-nums;
+}
+
+.gm_rc_hurt { border-color: #e5484d; color: #ff8a8d; }
+.gm_rc_heal { border-color: #4caf7d; color: #7fd4a4; }
+.gm_rc_cost { opacity: 0.7; }
+.gm_rc_status { border-color: #d8a23a; color: #e9c57a; }
+.gm_rc_out { border-color: #e5484d; background: #e5484d; color: #fff; font-weight: 700; }
+.gm_rc_info { border-style: dashed; }
+
+.gm_rc_tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px 8px;
+    font-size: 11px;
+    opacity: var(--gm-muted);
+}
+
+.gm_rc_tag::before {
+    content: "• ";
+}
+
+.gm_rc_event {
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px dashed var(--gm-accent);
+    font-weight: 600;
+}
+
+.gm_rc_notes {
+    font-size: 11px;
+    opacity: 0.8;
+}
+
+.gm_rc_notes summary {
+    cursor: pointer;
+    opacity: var(--gm-muted);
+}
+
+.gm_combat_group_carded .gm_dice_tier:not(.gm_dice_tier_win) {
+    display: none;
+}
+
+/* The round under the player's message. */
+.gm_round_file {
+    margin-top: 6px;
+    padding: 6px;
+    border: 1px solid var(--gm-line);
+    border-radius: var(--gm-radius);
+}
+
+/* "Ask me": a question inside the combat bubble. */
+.gm_ask {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px solid var(--gm-accent);
+    border-radius: var(--gm-radius);
+    background: color-mix(in srgb, var(--gm-accent) 12%, transparent);
+}
+
+.gm_ask_text {
+    font-weight: 600;
+}
+
+.gm_ask_choices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.gm_ask_choice {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 4px 10px;
+    margin: 0;
+}
+
+.gm_ask_choice small {
+    opacity: 0.75;
+}
+
+.gm_ask_auto {
+    outline: 2px solid var(--gm-accent);
+}
+
+.gm_ask_timer {
+    height: 3px;
+    border-radius: 2px;
+    background: var(--gm-accent);
+    width: 100%;
+    transition: width linear;
+}
+
+.gm_ask_hint {
+    font-size: 11px;
+    opacity: var(--gm-muted);
+}
+
 .gm_ruleset_tabs {
     display: flex;
     gap: 4px;

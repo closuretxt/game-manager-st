@@ -40,13 +40,13 @@ export function limitBeforeRoll(ctx, group, roll) {
     const k = contestKey(a.actor);
     const max = limitMax(ctx);
     if ((Number(g[k]) || 0) < max) {
-        roll.notes.push(`Limit not ready (${Number(g[k]) || 0}/${max})`);
+        roll.notes.push(`Ultimate not charged yet (${Number(g[k]) || 0}/${max})`);
         return;
     }
     g[k] = 0;
     roll.adv += 1;
     roll.bonus += 3;
-    roll.notes.push("Limit break!");
+    roll.notes.push("Ultimate unleashed!");
     (ctx.limitSpent = ctx.limitSpent || new Set()).add(k);
 }
 

@@ -47,7 +47,7 @@ export function spurtBeforeApply(ctx, group, outcome, effects, notes) {
         if (bonus) effects.push({ kind: "track", by: name, target: name, name: "progress", delta: `+${bonus}` });
         if (st) effects.push({ kind: "resource", by: name, target: name, name: st.name, value: String(Number.isFinite(+st.min) ? +st.min : 0) });
         if (found && !found.sheet.pseudo) effects.push({ kind: "status", by: name, target: name, name: "Exhausted", modifiers: "Pace -2", effect: "until the race ends" });
-        notes?.push(bonus ? `Spurt: ${name} +${bonus}` : `Spurt: ${name} gains nothing`);
+        notes?.push(bonus ? `${name} sprints: +${bonus} progress` : `${name} sprints but gains nothing`);
     });
 }
 

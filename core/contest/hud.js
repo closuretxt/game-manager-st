@@ -41,14 +41,18 @@ export function hudMeters(ctx, mutators) {
     for (const m of mutators || []) {
         if (typeof m?.hud !== "function") continue;
         const meter = m.hud(ctx);
-        if (meter) out.push(meter);
+        // The module's hint explains the meter on hover.
+        if (meter) out.push(m.hint && !meter.hint ? { ...meter, hint: m.hint } : meter);
     }
     return out;
 }
 
-// Round log: the last few rounds' result rows (ledger.chipRows), newest last.
-export function hudPushLog(log, roundNo, rows) {
+// Round log: the last few rounds, newest last. `cards` = ledger.roundCards
+// (what the HUD renders); `rows` (ledger.chipRows) stay for older logs.
+export function hudPushLog(log, roundNo, rows, cards = null) {
     const list = Array.isArray(log) ? log.slice() : [];
-    list.push({ round: roundNo, rows: (rows || []).map(r => ({ title: String(r.title || ""), tier: String(r.tier || ""), outcome: String(r.outcome || "") })) });
+    const entry = { round: roundNo, rows: (rows || []).map(r => ({ title: String(r.title || ""), tier: String(r.tier || ""), outcome: String(r.outcome || "") })) };
+    if (cards) entry.cards = cards;
+    list.push(entry);
     return list.slice(-HUD_LOG_ROUNDS);
 }
