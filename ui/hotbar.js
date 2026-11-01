@@ -11,13 +11,20 @@ import { extensionName } from "../core/constants.js";
 import { stateManager } from "../core/stateManager.js";
 import { logDebug } from "../core/debug.js";
 import { containerEnabled, gmSettings } from "../core/features.js";
-import { contestActive, contestRuleset } from "../core/contest/contest.js";
+import { activeContestKind, contestRuleset, contestOpponents } from "../core/contest/contest.js";
 import { quickActions, setQuickAction, clearQuickActions, quickPhrase } from "../core/contest/quick.js";
 import { contestKey } from "../core/contest/effects.js";
 
-// The Fight pill: quick actions while a contest runs (not under Legacy).
-const fightShown = () => !!gmSettings().feature_combat && contestActive()
-    && (stateManager.getData().enemies || []).length > 0 && !contestRuleset("clash").legacy;
+// The Fight pill: quick actions while a contest runs (not under Legacy). A
+// fight needs enemies; races, scored contests and challenges do not.
+const fightShown = () => {
+    if (!gmSettings().feature_combat) return false;
+    const kind = activeContestKind();
+    if (!kind || contestRuleset(kind).legacy) return false;
+    return kind !== "clash" || (stateManager.getData().enemies || []).length > 0;
+};
+
+const FIGHT_LABELS = { clash: "Fight", race: "Race", scores: "Contest", challenge: "Challenge" };
 
 // `container` = the tab-toggleable sheet container (core/features.js); a pill
 // whose container is hidden for this chat disappears with it. `when` = an
@@ -25,7 +32,7 @@ const fightShown = () => !!gmSettings().feature_combat && contestActive()
 const HOTBAR_TABS = [
     { id: "skills", label: "Skills", icon: "fa-solid fa-bolt", container: "skills" },
     { id: "items", label: "Items", icon: "fa-solid fa-box-open", container: "inventory" },
-    { id: "fight", label: "Fight", icon: "fa-solid fa-hand-fist", when: fightShown },
+    { id: "fight", get label() { return FIGHT_LABELS[activeContestKind()] || "Fight"; }, icon: "fa-solid fa-hand-fist", when: fightShown },
 ];
 const visibleTabs = () => HOTBAR_TABS.filter(t => (!t.container || containerEnabled(t.container)) && (!t.when || t.when()));
 
@@ -209,13 +216,14 @@ class Hotbar {
     // the fight; targeted actions list one row per target. A click stores
     // the intent (core/contest/quick.js) — clicking it again clears it.
     _renderFight() {
-        const shape = contestRuleset("clash").shape;
+        const shape = contestRuleset(activeContestKind() || "clash").shape;
         const actions = shape?.basicActions || [];
         const d = stateManager.getData();
         const out = d.contest?.out || {};
         const all = stateManager.getCharacters();
         const chars = all.filter(c => !c.state && !out[contestKey(c.name)]);
-        const enemies = (d.enemies || []).filter(e => !e.state);
+        // Enemies in a fight, rivals in a race or scored contest.
+        const enemies = contestOpponents().map(name => ({ name }));
         const pending = quickActions();
         if (pending.length) {
             this.panel.append($("<div>").addClass("gm_hotbar_meta").css({ cursor: "pointer", margin: "0 0 6px" })

@@ -98,7 +98,7 @@ function resolveGroup(ctx, g, index) {
     }
     let effects = ctx.consequence.effects(ctx, g, res.outcome) || [];
     for (const e of effects) if (!e.by) e.by = sides[0].actor;
-    callMutators(ctx, "beforeApply", g, res.outcome, effects);
+    callMutators(ctx, "beforeApply", g, res.outcome, effects, res.notes);
     // Only the invalidated side's own effects are dropped; the survivor's
     // effects in the rolled tier stand (3.3, paired groups).
     const invalidKeys = new Set(invalid.map(x => contestKey(x.actor)));
@@ -128,6 +128,16 @@ export function runRound(ctx, groups) {
     const order = ctx.turn.queue(ctx, list);
     const results = order.map(i => resolveGroup(ctx, list[i], i));
     callMutators(ctx, "roundEnd", results);
+    // Round-tag attributes for the story (race phase...): fiction, never numbers.
+    const attrs = {};
+    for (const src of [ctx.shape, ...(ctx.mutators || [])]) {
+        if (typeof src?.storyAttrs !== "function") continue;
+        try {
+            Object.assign(attrs, src.storyAttrs(ctx) || {});
+        } catch (e) {
+            if (ctx.log) ctx.log(`${src.id} storyAttrs failed: ${e?.message || e}`);
+        }
+    }
     return {
         order,
         groups: results,
@@ -135,5 +145,7 @@ export function runRound(ctx, groups) {
         over: !!ctx.shape.isOver(ctx),
         out: ctx.out,
         notes: ctx.notes,
+        notesLabel: ctx.shape?.notesLabel || "",
+        attrs,
     };
 }

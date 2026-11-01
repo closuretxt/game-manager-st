@@ -13,30 +13,68 @@ import { diceD20 } from "./modules/dice/d20.js";
 import { mutEscalation } from "./modules/mutators/escalation.js";
 import { mutCritEffects } from "./modules/mutators/critEffects.js";
 import { mutMomentum } from "./modules/mutators/momentum.js";
+import { shapeRace } from "./modules/shape/race.js";
+import { shapeScores } from "./modules/shape/scores.js";
+import { shapeChallenge } from "./modules/shape/challenge.js";
+import { consTrack } from "./modules/consequence/track.js";
+import { mutPhases } from "./modules/mutators/phases.js";
+import { mutSpurt } from "./modules/mutators/spurt.js";
+import { mutDrafting } from "./modules/mutators/drafting.js";
+import { mutJudges } from "./modules/mutators/judges.js";
 
 export const CONTEST_MODULES = {
     "shape.clash": shapeClash,
+    "shape.race": shapeRace,
+    "shape.scores": shapeScores,
+    "shape.challenge": shapeChallenge,
     "turn.simultaneous": turnSimultaneous,
     "turn.initiative": turnInitiative,
     "dice.oracle": diceOracle,
     "dice.d20": diceD20,
     "cons.oracle": consOracle,
+    "cons.track": consTrack,
     "mut.escalation": mutEscalation,
     "mut.crit_effects": mutCritEffects,
     "mut.momentum": mutMomentum,
+    "mut.phases": mutPhases,
+    "mut.spurt": mutSpurt,
+    "mut.drafting": mutDrafting,
+    "mut.judges": mutJudges,
 };
 
 // kind -> preset id -> slots. `legacy` runs the pre-rework pipeline
-// (core/combatEngine.js) during the transition.
+// (core/combatEngine.js) during the transition; it exists for fights only.
 export const CONTEST_PRESETS = {
     clash: {
         universal: { label: "Universal", shape: "shape.clash", turn: "turn.simultaneous", dice: "dice.oracle", consequence: "cons.oracle", mutators: [] },
         heroic: { label: "Heroic", shape: "shape.clash", turn: "turn.initiative", dice: "dice.d20", consequence: "cons.oracle", mutators: ["mut.escalation", "mut.crit_effects", "mut.momentum"] },
         legacy: { label: "Legacy", legacy: true, shape: "shape.clash" },
     },
+    race: {
+        universal: { label: "Universal race", shape: "shape.race", turn: "turn.simultaneous", dice: "dice.oracle", consequence: "cons.track", mutators: ["mut.phases"] },
+        classic: { label: "Classic race", shape: "shape.race", turn: "turn.simultaneous", dice: "dice.oracle", consequence: "cons.track", mutators: ["mut.phases", "mut.spurt", "mut.drafting"] },
+    },
+    scores: {
+        universal: { label: "Universal contest", shape: "shape.scores", turn: "turn.simultaneous", dice: "dice.oracle", consequence: "cons.track", mutators: ["mut.judges"] },
+    },
+    challenge: {
+        universal: { label: "Universal challenge", shape: "shape.challenge", turn: "turn.simultaneous", dice: "dice.oracle", consequence: "cons.track", mutators: [] },
+    },
 };
 
-export const CONTEST_DEFAULT_PRESET = { clash: "universal" };
+export const CONTEST_DEFAULT_PRESET = { clash: "universal", race: "universal", scores: "universal", challenge: "universal" };
+
+// The kinds besides fights are offered to the pre-pass only while enabled in
+// the chat's rulesets (on by default; opts.enabled = "off" hides one).
+export function contestKindEnabled(rulesets, kind) {
+    if (kind === "clash") return true;
+    if (!CONTEST_PRESETS[kind]) return false;
+    return rulesets?.[kind]?.opts?.enabled !== "off";
+}
+
+export function enabledContestKinds(rulesets) {
+    return Object.keys(CONTEST_PRESETS).filter(k => contestKindEnabled(rulesets, k));
+}
 
 const CONTEST_SLOTS = ["shape", "turn", "dice", "consequence"];
 
@@ -72,10 +110,37 @@ export const CONTEST_RULESET_OPTIONS = [
     { key: "opposition", label: "Opposition", type: "select", default: "llm", choices: [["llm", "LLM, blind to your move"], ["brains", "Scripted behaviors (no call)"]] },
 ];
 
-// The modules a slot can pick, by id prefix.
-export function slotModules(slot) {
+const CONTEST_ENABLED_OPTION = { key: "enabled", label: "Offered in this chat", type: "select", default: "on", choices: [["on", "On: the router may start one"], ["off", "Off"]] };
+
+// Ruleset-wide options per kind (fights keep CONTEST_RULESET_OPTIONS).
+export function contestRulesetOptions(kind) {
+    switch (kind) {
+        case "race": return [
+            CONTEST_ENABLED_OPTION,
+            { key: "stakes", label: "Stamina resource", type: "text", default: "Stamina", hint: "The resource pushing and spurting drain. Running dry slows a runner; it never knocks them out." },
+            { key: "opposition", label: "Rival runners", type: "select", default: "llm", choices: [["llm", "LLM, blind to your move"], ["brains", "Scripted tactics (no call)"]] },
+        ];
+        case "scores": return [
+            CONTEST_ENABLED_OPTION,
+            { key: "stakes", label: "Strain resource", type: "text", default: "", hint: "Optional resource a performance can drain (Composure, Energy...). Empty = none." },
+            { key: "opposition", label: "Rival competitors", type: "select", default: "llm", choices: [["llm", "LLM, blind to your move"], ["brains", "Scripted styles (no call)"]] },
+        ];
+        case "challenge": return [
+            CONTEST_ENABLED_OPTION,
+            { key: "stakes", label: "Stakes resource", type: "text", default: "Health", hint: "The resource the situation can hurt (falls, burns...)." },
+        ];
+        default: return CONTEST_RULESET_OPTIONS;
+    }
+}
+
+// The modules a slot can pick, by id prefix; with a kind, only the ones made
+// for it (a module without `shapes` fits every kind).
+export function slotModules(slot, kind = null) {
     const prefix = { turn: "turn.", dice: "dice.", consequence: "cons.", mutators: "mut." }[slot] || `${slot}.`;
-    return Object.keys(CONTEST_MODULES).filter(id => id.startsWith(prefix)).map(id => ({ id, label: CONTEST_MODULES[id].label || id, hint: CONTEST_MODULES[id].hint || "" }));
+    return Object.keys(CONTEST_MODULES)
+        .filter(id => id.startsWith(prefix))
+        .filter(id => !kind || !Array.isArray(CONTEST_MODULES[id].shapes) || CONTEST_MODULES[id].shapes.includes(kind))
+        .map(id => ({ id, label: CONTEST_MODULES[id].label || id, hint: CONTEST_MODULES[id].hint || "" }));
 }
 
 function sameList(a, b) {

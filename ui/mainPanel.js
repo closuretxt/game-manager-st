@@ -109,8 +109,6 @@ class MainPanel {
         $("#gm_btn_close").on("click", () => this.close());
         $("#gm_btn_edit").on("click", () => this.toggleEditMode());
         $("#gm_btn_power").on("click", () => this.toggleEnabled());
-        $("#gm_btn_hotbar").on("click", () => this.toggleHotbar());
-        $("#gm_setting_hotbar").on("change.gmpanel", () => this._refreshPowerButton());
         $("#gm_btn_mode").on("click", () => openChatModeDialog());
         $("#gm_btn_rerun").on("click", async () => {
             gmNotify("Running agent pass...", "info");
@@ -256,15 +254,6 @@ class MainPanel {
         gmNotify(s.enabled ? "Game Manager enabled." : "Game Manager disabled.", s.enabled ? "success" : "info");
     }
 
-    // Global like the drawer checkbox it mirrors; that checkbox's change
-    // event saves the setting and refreshes the hotbar.
-    toggleHotbar() {
-        const s = extension_settings[extensionName];
-        s.feature_hotbar = !s.feature_hotbar;
-        $("#gm_setting_hotbar").prop("checked", s.feature_hotbar).trigger("change");
-        this._refreshPowerButton();
-    }
-
     // ---------- geometry ----------
     _saveGeometry() {
         const win = this._window;
@@ -381,7 +370,6 @@ class MainPanel {
 
     _refreshPowerButton() {
         $("#gm_btn_power").toggleClass("gm_btn_off", !extension_settings[extensionName].enabled);
-        $("#gm_btn_hotbar").toggleClass("gm_btn_off", !extension_settings[extensionName].feature_hotbar);
     }
 
     _renderTabs() {
@@ -824,13 +812,15 @@ class MainPanel {
         if (!hud || hud.legacy) return;
         const box = $("<div>").addClass("gm_contest_hud");
         const label = CONTEST_PRESETS[hud.kind]?.[hud.preset]?.label || hud.preset;
-        const end = $("<div>").addClass("menu_button").attr("title", "End the contest (the enemies stay in the scene)")
+        const fight = hud.kind === "clash";
+        const end = $("<div>").addClass("menu_button").attr("title", fight ? "End the contest (the enemies stay in the scene)" : "End the contest")
             .append($("<i>").addClass("fa-solid fa-flag-checkered"), $("<span>").text(" End"));
         end.on("click", () => {
-            if (window.confirm("End this contest? The enemies stay in the scene.")) endContest();
+            if (window.confirm(fight ? "End this contest? The enemies stay in the scene." : "End this contest?")) endContest();
         });
+        const icon = { clash: "fa-hand-fist", race: "fa-flag-checkered", scores: "fa-trophy", challenge: "fa-mountain" }[hud.kind] || "fa-hand-fist";
         box.append($("<div>").addClass("gm_contest_head").append(
-            $("<i>").addClass("fa-solid fa-hand-fist"),
+            $("<i>").addClass(`fa-solid ${icon}`),
             $("<b>").text(`${hud.shape?.label || "Contest"} — round ${hud.round}`),
             $("<span>").addClass("gm_section_hint").text(label),
             end,
@@ -849,7 +839,9 @@ class MainPanel {
             const name = $("<span>").addClass(cls).text(f.name).toggleClass("gm_contest_out", !!f.out);
             const bar = $("<div>").addClass(`gm_contest_bar ${cls}`);
             bar.append($("<div>").addClass("gm_contest_bar_fill").css("width", `${Math.round((f.ratio ?? 1) * 100)}%`));
-            const num = f.out ? f.out : f.value !== null ? `${f.value}/${f.max}` : "—";
+            // Shapes with their own rows (race places, scores, clocks) bring
+            // their text; fights show the stakes numbers.
+            const num = f.text ? f.text : f.out ? f.out : f.value !== null ? `${f.value}/${f.max}` : "—";
             bars.append(name, bar, $("<span>").addClass("gm_contest_num").text(num));
         }
         if (hud.fighters.length) box.append(bars);

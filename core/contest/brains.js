@@ -100,6 +100,54 @@ export function brainAction(enemy, enemies, party, ratio) {
     }
 }
 
+// ---------- rivals (race / scores), 3.7 ----------
+
+export const RACE_BRAIN_IDS = ["front-runner", "stalker", "closer", "pacer"];
+export const SCORES_BRAIN_IDS = ["safe", "showy", "erratic"];
+
+// A rival's style: the sheet's `brain` when it is one of the kind's, else a
+// stable pick from the name (the same rival always runs the same way).
+export function rivalBrainOf(kind, rival) {
+    const ids = kind === "race" ? RACE_BRAIN_IDS : SCORES_BRAIN_IDS;
+    const own = String(rival?.sheet?.brain || "").toLowerCase();
+    if (ids.includes(own)) return own;
+    let h = 0;
+    for (const ch of String(rival?.name || "")) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return ids[h % ids.length];
+}
+
+// info: { phase, ahead(name) -> runner ahead | null, round }.
+export function rivalBrainAction(kind, rival, info) {
+    const brain = rivalBrainOf(kind, rival);
+    const name = rival.name;
+    const act = (title, text) => ({ enemy: name, speed: 0, title, text });
+    if (kind === "race") {
+        const phase = info?.phase || "start";
+        const ahead = info?.ahead ? info.ahead(name) : null;
+        const final = phase === "final stretch";
+        switch (brain) {
+            case "front-runner":
+                return ahead ? act("Take the lead", `${name} pushes hard to get past ${ahead}.`) : act(final ? "Hold the lead" : "Push the pace", `${name} keeps the pace high at the front.`);
+            case "stalker":
+                if (final && ahead) return act(`Overtake ${ahead}`, `${name} swings out to pass ${ahead}.`);
+                return act(ahead ? `Track ${ahead}` : "Hold position", `${name} sits just behind ${ahead || "the field"}, saving energy.`);
+            case "closer":
+                return final ? act("Spurt", `${name} unleashes an all-out spurt for the line.`) : act("Conserve", `${name} hangs back and conserves stamina.`);
+            default:
+                return final ? act("Push the pace", `${name} lifts the pace for the finish.`) : act("Steady pace", `${name} holds an even, steady rhythm.`);
+        }
+    }
+    const showy = brain === "showy" || (brain === "erratic" && (Number(info?.round) || 0) % 2 === 1);
+    return showy
+        ? act("Showpiece", `${name} gambles on a bold, flashy showpiece.`)
+        : act("Safe performance", `${name} sticks to a clean, safe performance.`);
+}
+
+export function rivalBrainActions(kind, rivals, info, max = 6) {
+    const list = (rivals || []).slice(0, Math.max(1, Math.trunc(Number(max) || 6)));
+    return list.map(r => rivalBrainAction(kind, r, info));
+}
+
 export function brainActions(enemies, party, ratio, max = 6) {
     const list = (enemies || []).slice(0, Math.max(1, Math.trunc(Number(max) || 6)));
     return list.map(e => brainAction(e, enemies || [], party || [], ratio));

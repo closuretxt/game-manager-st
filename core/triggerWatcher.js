@@ -36,8 +36,8 @@ import { logDebug } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { rollDice, requeueRollResult } from "./diceRoller.js";
 import { runCombatTurn, requeueCombatRound } from "./combatEngine.js";
-import { runContestTurn, replayContestRound, contestRuleset, contestActive } from "./contest/contest.js";
-import { takeQuickActions, applyQuickActions } from "./contest/quick.js";
+import { runContestTurn, replayContestRound, contestRuleset, activeContestKind, endContest } from "./contest/contest.js";
+import { takeQuickActions, applyQuickActions, continueContestPlan, plannedContestKind } from "./contest/quick.js";
 import { runTransaction } from "./transactions.js";
 import { runPrePass, planFromRaw } from "./prePass.js";
 import { restoreSnapshot } from "./snapshots.js";
@@ -305,9 +305,18 @@ export async function handlePreTurn(type = "normal") {
         // means the player chose a contest action, so the round runs even
         // when the router judged none. Consumed by this message either way.
         const quick = takeQuickActions();
-        if (quick.length && s.feature_combat && contestActive() && (stateManager.getData().enemies || []).length) {
-            plan = applyQuickActions(plan, quick);
+        const activeKind = s.feature_combat ? activeContestKind() : null;
+        if (quick.length && activeKind && (activeKind !== "clash" || (stateManager.getData().enemies || []).length)) {
+            plan = applyQuickActions(plan, quick, activeKind);
             console.info(`[GM DIAG] quick actions: ${quick.length} pending intent(s) — contest round forced`);
+        }
+        // Races, scored contests and challenges: <contest_end/> closes the
+        // running one; otherwise every message continues it by default.
+        if (activeKind && activeKind !== "clash" && plan?.contestEnd) {
+            endContest();
+            console.info(`[GM DIAG] pre-pass ended the running ${activeKind} contest`);
+        } else if (activeKind) {
+            plan = continueContestPlan(plan, activeKind);
         }
     }
     // Swipes/regenerates never re-run the pre-pass while the stash holds the
@@ -358,6 +367,7 @@ export async function handlePreTurn(type = "normal") {
             // entirely. Requires at least one tracked enemy. Legacy runs the
             // pre-rework pipeline (the tracker reads damage from the story).
             let contestRan = false;
+            const contestKind = s.feature_combat ? plannedContestKind(plan) : null;
             if (s.feature_combat && plan.combat?.engaged && (stateManager.getData().enemies || []).length) {
                 statusBubble.close(true); // the combat bubble takes over visually
                 if (contestRuleset("clash").legacy) {
@@ -367,6 +377,12 @@ export async function handlePreTurn(type = "normal") {
                     logDebug("pre-turn: combat planned — contest round");
                     contestRan = await runContestTurn(action, plan, actionMsgId);
                 }
+            } else if (contestKind) {
+                // Race / scored contest / challenge: same RESOLVE -> COMMIT ->
+                // NARRATE round, with rivals (or the situation) as the other side.
+                statusBubble.close(true);
+                logDebug(`pre-turn: ${contestKind} contest round`);
+                contestRan = await runContestTurn(action, plan, actionMsgId, contestKind);
             } else if (s.feature_dice && plan.roll?.needed) {
                 // Dice — the pre-pass decided IF, the roller decides HOW.
                 logDebug(`pre-turn: roll planned "${plan.roll.title}"`);

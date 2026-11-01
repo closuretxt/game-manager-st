@@ -16,8 +16,6 @@
         <div id="gm_window_actions">
             <!-- Per-chat mode + feature/tab toggles (ui/chatModeDialog.js). -->
             <div id="gm_btn_mode" class="gm_window_btn" title="Chat mode — features and tabs for this chat"><i class="fa-solid fa-sliders"></i></div>
-            <!-- Action hotbar above the input bar on/off (mirrors the Action Hotbar checkbox in settings). -->
-            <div id="gm_btn_hotbar" class="gm_window_btn" title="Action hotbar above the chat input on/off"><i class="fa-solid fa-table-cells-large"></i></div>
             <!-- Master on/off switch (mirrors the Enabled checkbox in settings). -->
             <div id="gm_btn_power" class="gm_window_btn" title="Extension on/off"><i class="fa-solid fa-power-off"></i></div>
             <div id="gm_btn_edit" class="gm_window_btn" title="Edit mode"><i class="fa-solid fa-pen"></i></div>
@@ -57,10 +55,6 @@
             <label class="checkbox_label" for="gm_setting_bubble_btn" title="Mobile-friendly floating bubble that opens/closes the panel. Tapping elsewhere fades it into a ghost.">
                 <input id="gm_setting_bubble_btn" type="checkbox" />
                 <span>Bubble button (Mobile)</span>
-            </label>
-            <label class="checkbox_label" for="gm_setting_hotbar" title="Action hotbar above the chat input bar: Skills/Items pills open per-character drawers with entry details and one-click insertion into your action.">
-                <input id="gm_setting_hotbar" type="checkbox" />
-                <span>Action Hotbar</span>
             </label>
 
             <hr class="sysHR" />
@@ -266,6 +260,10 @@
                         <label class="checkbox_label" for="gm_setting_debug_mode">
                             <input id="gm_setting_debug_mode" type="checkbox" />
                             <span>Debug logging</span>
+                        </label>
+                        <label class="checkbox_label" for="gm_setting_hotbar" title="Action hotbar above the chat input bar: Skills/Items pills open per-character drawers with entry details and one-click insertion into your action.">
+                            <input id="gm_setting_hotbar" type="checkbox" />
+                            <span>Action Hotbar</span>
                         </label>
                     </div>
                     <div class="gm_field gm_field_inline">

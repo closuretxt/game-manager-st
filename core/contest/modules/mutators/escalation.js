@@ -38,6 +38,7 @@ export const mutEscalation = {
     id: "mut.escalation",
     label: "Escalation",
     hint: "+1 to party rolls per round fought (d20 rules only).",
+    shapes: ["clash", "challenge"],
     options: [{ key: "max", label: "Max bonus", type: "number", min: 0, max: 20, default: 6 }],
     beforeRoll: escalationBeforeRoll,
     hud: escalationHud,

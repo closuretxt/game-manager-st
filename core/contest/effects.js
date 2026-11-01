@@ -122,6 +122,51 @@ export function outStateOf(ctx, name) {
     return found ? (ctx.ops.priorState(found.sheet) || null) : null;
 }
 
+// Contest-owned values (race progress, scores, clocks): contest.tracks[key][track].
+// Scene clocks (shape.challenge) live under CONTEST_SCENE_KEY.
+export const CONTEST_SCENE_KEY = "scene";
+
+export function trackValue(contest, name, track) {
+    const own = contest?.tracks?.[contestKey(name)];
+    return Number(own?.[contestKey(track)]) || 0;
+}
+
+// Clamps a track value to the shape's bounds (race progress 0..length...).
+function clampTrack(ctx, tname, value) {
+    const b = typeof ctx.shape?.trackBounds === "function" ? ctx.shape.trackBounds(ctx, tname) : null;
+    let v = value;
+    if (b && Number.isFinite(b.max)) v = Math.min(b.max, v);
+    if (b && Number.isFinite(b.min)) v = Math.max(b.min, v);
+    return v;
+}
+
+function applyTrack(ctx, rec, ownerKey, eff) {
+    ctx.contest.tracks = ctx.contest.tracks || {};
+    const own = (ctx.contest.tracks[ownerKey] = ctx.contest.tracks[ownerKey] || {});
+    const tname = contestKey(eff.name);
+    if (eff.swap) {
+        // Swap = the two runners trade places: they exchange the shape's
+        // swap track (race progress), whatever track the effect named.
+        const swapName = ctx.shape?.swapTrack || tname;
+        const byKey = contestKey(eff.by);
+        if (!byKey || byKey === ownerKey) return { ...rec, status: "skipped", reason: "swap needs two actors" };
+        const other = (ctx.contest.tracks[byKey] = ctx.contest.tracks[byKey] || {});
+        const a = Number(own[swapName]) || 0;
+        const b = Number(other[swapName]) || 0;
+        if (b >= a) return { ...rec, status: "wasted", reason: "already ahead" };
+        own[swapName] = b;
+        other[swapName] = a;
+        return { ...rec, name: swapName, status: "applied", swap: true, before: a, after: b, applied: b - a };
+    }
+    const rolled = rollExpr(eff.delta ?? eff.value, ctx.rng, ctx.ops.evalMath);
+    if (!rolled) return { ...rec, status: "skipped", reason: "bad value" };
+    const before = Number(own[tname]) || 0;
+    const raw = eff.delta !== undefined ? before + rolled.value : rolled.value;
+    const after = clampTrack(ctx, tname, Math.round(raw));
+    own[tname] = after;
+    return { ...rec, name: tname, status: "applied", before, after, applied: after - before };
+}
+
 function setOut(ctx, found, mode, extra = {}) {
     const key = contestKey(found.sheet.name);
     ctx.out = ctx.out || {};
@@ -134,6 +179,11 @@ function setOut(ctx, found, mode, extra = {}) {
 // malformed value (logged by the caller, never thrown).
 export function applyEffect(ctx, eff) {
     const rec = { ...eff };
+    // Scene clocks (challenge progress / danger) belong to nobody: whatever
+    // target the oracle wrote, they move the scene's own track.
+    if (eff.kind === "track" && (ctx.shape?.sceneTracks || []).includes(contestKey(eff.name))) {
+        return applyTrack(ctx, { ...rec, target: "Scene", side: "scene" }, CONTEST_SCENE_KEY, eff);
+    }
     const found = ctx.ops.sheet(eff.target);
     if (!found) return { ...rec, status: "skipped", reason: "unknown target" };
     rec.target = found.sheet.name;
@@ -179,19 +229,8 @@ export function applyEffect(ctx, eff) {
                 : ctx.ops.removeItem(sheet, eff.name, -eff.qty);
             return ok ? { ...rec, status: "applied" } : { ...rec, status: "skipped", reason: "unknown item" };
         }
-        case "track": {
-            ctx.contest.tracks = ctx.contest.tracks || {};
-            const key = contestKey(sheet.name);
-            const own = (ctx.contest.tracks[key] = ctx.contest.tracks[key] || {});
-            const tname = contestKey(eff.name);
-            if (eff.swap) return { ...rec, status: "applied", swap: true };
-            const rolled = rollExpr(eff.delta ?? eff.value, ctx.rng, ctx.ops.evalMath);
-            if (!rolled) return { ...rec, status: "skipped", reason: "bad value" };
-            const before = Number(own[tname]) || 0;
-            const after = eff.delta !== undefined ? before + rolled.value : rolled.value;
-            own[tname] = after;
-            return { ...rec, status: "applied", before, after, applied: after - before };
-        }
+        case "track":
+            return applyTrack(ctx, rec, contestKey(sheet.name), eff);
         case "state": {
             if (targetState === eff.name) return { ...rec, status: "wasted", reason: targetState };
             setOut(ctx, found, eff.name, { by: eff.by, reason: eff.reason || "" });
@@ -207,7 +246,10 @@ export function applyEffect(ctx, eff) {
 // Returns the names that fell this way.
 export function applyLethality(ctx, records) {
     const fell = [];
-    const explicit = new Set(records.filter(r => r.kind === "state" && r.status === "applied").map(r => contestKey(r.target)));
+    // Races and scored contests drain their stakes (Stamina) without taking
+    // anyone out: an empty tank slows a runner, it does not knock them down.
+    if (ctx.shape?.lethal === false) return fell;
+    const explicit =new Set(records.filter(r => r.kind === "state" && r.status === "applied").map(r => contestKey(r.target)));
     for (const r of records) {
         if (r.kind !== "resource" || r.status !== "applied" || !(r.applied < 0)) continue;
         const key = contestKey(r.target);

@@ -23,7 +23,7 @@
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { substituteParams } from "../../../../../script.js";
 import { extensionName } from "./constants.js";
-import { gmSettings } from "./features.js";
+import { gmSettings, getContestRulesets } from "./features.js";
 import { storeActionData } from "../util/chatStore.js";
 import { logDebug } from "./debug.js";
 import { stateManager, playerLabel, charLabel, playerNames } from "./stateManager.js";
@@ -34,7 +34,8 @@ import { parseAttrs, escAttr, decodeEntities } from "./toolParser.js";
 import { itemXml, sharedXml, skillXml } from "./sheetXml.js";
 import { resolveResourceMax } from "./resourceScaler.js";
 import { valueGuidelines } from "./valueGuidelines.js";
-import { parseActs } from "./contest/parse.js";
+import { parseActs, parseContestTag } from "./contest/parse.js";
+import { enabledContestKinds } from "./contest/registry.js";
 
 import { recentMessages, sceneContextBlock } from "../util/chatStore.js";
 
@@ -109,6 +110,25 @@ const ACT_RULES = [
     "- No <skill> suggestion together with <combat>: the combat round adjudicates skill uses itself.",
 ].join("\n");
 
+// Contests besides fights (core/contest/: races, scored contests,
+// challenges). Only the kinds the chat enables are offered.
+const CONTEST_KIND_HINTS = {
+    race: 'kind="race": a race or chase — who gets there first (foot, horse, car, pursuit, escape)',
+    scores: 'kind="scores": a judged or scored competition — cooking, talent, cards, a game, an exam, a match',
+    challenge: 'kind="challenge": a sustained effort against a situation, no opponents — a climb, a heist, a ritual, a survival push, crafting under pressure',
+};
+
+function contestRules(kinds) {
+    return [
+        "CONTESTS BESIDES FIGHTS:",
+        '<contest kind="<kind>" rivals="<comma-separated rival names, if any>"/>   <contest round="false"/>   <contest_end/>',
+        ...kinds.map(k => `- ${CONTEST_KIND_HINTS[k]}`),
+        "- START one with <contest kind> when the player's action ENTERS such a contest (the starting gun, the first dish, the first handhold). rivals = the competitors on the other side, from the scene or the tracked enemies, by name; a challenge has none. Never for a contest only being talked about or planned.",
+        "- While one RUNS (<contest> in TRACKED STATE), every player message continues it by default: emit no <contest> tag. Emit <contest round=\"false\"/> when the message does not advance it (an aside, out-of-character talk, a pause the scene allows), and <contest_end/> when the scene leaves it (forfeit, interruption).",
+        "- Inside a running contest never emit <roll>: the contest round resolves the attempt. <act> entries for allies work here too. A real fight breaking out is still <combat>.",
+    ].join("\n");
+}
+
 //
 
 async function collectContext(playerAction) {
@@ -172,6 +192,14 @@ async function collectContext(playerAction) {
         }
     }
 
+    // A running race / scored contest / challenge: the router decides only
+    // whether this message continues it (the default), skips it or ends it.
+    const running = d.contest?.active && d.contest.kind !== "clash" ? d.contest : null;
+    if (s.feature_combat && running) {
+        const rivals = (running.rivals || []).join(", ");
+        parts.push(`<contest kind="${escAttr(running.kind)}" running="true" rounds_played="${Math.trunc(Number(running.round) || 0)}"${rivals ? ` rivals="${escAttr(rivals)}"` : ""}/>`);
+    }
+
     const blocks = [
         "TRACKED STATE (XML):",
         parts.join("\n"),
@@ -220,8 +248,12 @@ function parseReply(text) {
         }
     }
 
-    // Uncommanded allies' acts for the contest round (only kept with <combat>).
+    // Uncommanded allies' acts for the contest round (only kept with <combat>
+    // or a race / scored contest / challenge round).
     plan.acts = parseActs(text);
+    const contestTag = parseContestTag(text);
+    plan.contest = contestTag.contest;
+    plan.contestEnd = contestTag.end;
 
     const txRe = /<transaction\b([^>]*?)(?:\/>|>[\s\S]*?<\/transaction>)/gi;
     while ((m = txRe.exec(text)) !== null) {
@@ -268,7 +300,7 @@ function parseReply(text) {
         if (rewrite) plan.rewrite = rewrite;
     }
 
-    const empty = !plan.roll && !plan.combat && !plan.transactions.length && !plan.warnings.length && !plan.relevant.length && !plan.notes.length && !plan.skills.length && !plan.rewrite;
+    const empty = !plan.roll && !plan.combat && !plan.contest && !plan.contestEnd && !plan.transactions.length && !plan.warnings.length && !plan.relevant.length && !plan.notes.length && !plan.skills.length && !plan.rewrite;
     if (empty && !plan.nothing) {
         logDebug("prePass: no recognizable plan tags in reply");
         return null;
@@ -280,8 +312,11 @@ function parseReply(text) {
 // dropped, strings trimmed, the nothing fast path computed.
 function sanitizePlan(parsed) {
     if (!parsed || typeof parsed !== "object") return null;
+    // <nothing/> still carries a <contest round="false"/>: a running contest
+    // must not continue by default on a message the router judged idle.
     if (parsed.nothing === true) {
-        return { roll: null, combat: null, acts: [], transactions: [], warnings: [], relevant: [], notes: [], skills: [], rewrite: null, nothing: true };
+        const idle = parsed.contest?.round === false ? { kind: "", rivals: [], round: false } : null;
+        return { roll: null, combat: null, contest: idle, contestEnd: !!parsed.contestEnd, acts: [], transactions: [], warnings: [], relevant: [], notes: [], skills: [], rewrite: null, nothing: true };
     }
 
     const d = stateManager.getData();
@@ -295,7 +330,20 @@ function sanitizePlan(parsed) {
         ? { engaged: true, speed: Math.max(0, Math.trunc(Number(parsed.combat.speed) || 0)), reactive: parsed.combat.reactive === true }
         : null;
 
-    const roll = (!combat && parsed.roll && parsed.roll.needed === true)
+    // Races / scored contests / challenges: a start names an enabled kind; a
+    // running one continues by default (core/contest/quick.js), so only the
+    // round="false" opt-out matters without a kind.
+    const s0 = gmSettings();
+    const kinds = s0.feature_combat ? enabledContestKinds(getContestRulesets()).filter(k => k !== "clash") : [];
+    let contest = null;
+    if (parsed.contest?.round === false) contest = { kind: "", rivals: [], round: false };
+    else if (parsed.contest && kinds.includes(parsed.contest.kind)) {
+        contest = { kind: parsed.contest.kind, rivals: (parsed.contest.rivals || []).map(n => String(n).slice(0, 60)), round: true };
+    }
+    const contestEnd = !!parsed.contestEnd;
+    const contestRound = !!contest?.kind || (!!d.contest?.active && d.contest.kind !== "clash" && contest?.round !== false && !contestEnd);
+
+    const roll = (!combat && !contestRound && parsed.roll && parsed.roll.needed === true)
         ? { needed: true, title: String(parsed.roll.title || "Roll").slice(0, 80) }
         : null;
 
@@ -383,7 +431,7 @@ function sanitizePlan(parsed) {
     // can act; the player's own character never gets one (their message IS
     // their act).
     const players = new Set(playerNames().map(n => String(n).toLowerCase()));
-    const acts = combat && gmSettings().feature_ally_ai
+    const acts = (combat || contestRound) && gmSettings().feature_ally_ai
         ? (Array.isArray(parsed.acts) ? parsed.acts : [])
             .map(a => {
                 const char = findChar(a?.actor);
@@ -394,8 +442,8 @@ function sanitizePlan(parsed) {
             .slice(0, 8)
         : [];
 
-    const nothing = !roll && !combat && !transactions.length && !warnings.length && !relevant.length && !notes.length && !skills.length && !rewrite;
-    return { roll, combat, acts, transactions, warnings, relevant, notes, skills, rewrite, nothing };
+    const nothing = !roll && !combat && !contest?.kind && !contestEnd && !transactions.length && !warnings.length && !relevant.length && !notes.length && !skills.length && !rewrite;
+    return { roll, combat, contest, contestEnd, acts, transactions, warnings, relevant, notes, skills, rewrite, nothing };
 }
 
 //
@@ -411,6 +459,10 @@ async function buildSystemContent(playerAction) {
     // already sees the player's action and the party sheets) instead of a
     // separate ally call. The Legacy pipeline keeps its own ALLY AI.
     if (s.feature_combat && s.feature_ally_ai && !s.combat_legacy) content += `\n\n${ACT_RULES}`;
+    if (s.feature_combat) {
+        const kinds = enabledContestKinds(getContestRulesets()).filter(k => k !== "clash");
+        if (kinds.length) content += `\n\n${contestRules(kinds)}`;
+    }
     // Scenario brief: stable, so it sits before the per-turn deep context.
     const brief = scenarioBriefBlock();
     if (brief) content += `\n\n${brief}`;

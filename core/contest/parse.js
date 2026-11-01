@@ -90,7 +90,24 @@ export function sanitizeOracleGroups(groups) {
         .filter(g => g.sides.length && g.tiers.length >= 2);
 }
 
-// Pre-pass ally acts: <act actor="Mara" speed="3" title="Cover Kael">intent</act>.
+// Pre-pass contest tags (races, scored contests, challenges):
+//   <contest kind="race" rivals="Suzuka, Gold Ship"/>  -> start / continue
+//   <contest round="false"/>                           -> no round this message
+//   <contest_end/>                                     -> the scene left it
+// Returns { contest: { kind, rivals, round } | null, end }.
+export function parseContestTag(text) {
+    const src = String(text ?? "");
+    const end = /<contest_end\b/i.test(src);
+    const m = /<contest\b([^>]*?)(?:\/>|>[\s\S]*?<\/contest>)/i.exec(src);
+    if (!m) return { contest: null, end };
+    const a = contestAttrs(m[1]);
+    const kind = String(a.kind || "").trim().toLowerCase();
+    const rivals = String(a.rivals || a.rival || "").split(/[,;]+/).map(n => n.trim()).filter(Boolean).slice(0, 8);
+    const round = !/^(false|no|0)$/i.test(String(a.round ?? "").trim());
+    return { contest: { kind, rivals, round }, end };
+}
+
+// Pre-pass ally acts:<act actor="Mara" speed="3" title="Cover Kael">intent</act>.
 export function parseActs(text) {
     const out = [];
     const re = /<act\b([^>]*?)(?:\/>|>([\s\S]*?)<\/act>)/gi;

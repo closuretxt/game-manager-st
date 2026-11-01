@@ -39,11 +39,14 @@ export function takeQuickActions() {
 
 // Folds the intents into the pre-pass plan (pure): the round runs, the
 // player's intent leads their declared action, allies' intents become acts.
-export function applyQuickActions(plan, intents) {
+// `kind` = the running contest's kind: fights force <combat>, the other
+// kinds force a round of that contest.
+export function applyQuickActions(plan, intents, kind = "clash") {
     if (!Array.isArray(intents) || !intents.length) return plan;
     const p = plan && typeof plan === "object" ? plan : {};
     p.nothing = false;
-    p.combat = { ...(p.combat || {}), engaged: true };
+    if (kind === "clash") p.combat = { ...(p.combat || {}), engaged: true };
+    else p.contest = { ...(p.contest || {}), kind, rivals: p.contest?.rivals || [], round: true };
     const acts = Array.isArray(p.acts) ? p.acts.slice() : [];
     for (const it of intents) {
         const what = [it.action, it.target].filter(Boolean).join(" ");
@@ -59,4 +62,24 @@ export function applyQuickActions(plan, intents) {
     }
     p.acts = acts;
     return p;
+}
+
+// A running race / scored contest / challenge continues on every player
+// message unless the router said otherwise (<contest round="false"/>,
+// <contest_end/>, or a fight that takes over). Fights keep their own gate:
+// they run only when the router judges the action engages the enemies.
+export function continueContestPlan(plan, activeKind) {
+    if (!activeKind || activeKind === "clash") return plan;
+    const p = plan && typeof plan === "object" ? plan : {};
+    if (p.contestEnd || p.combat?.engaged || p.contest?.kind || p.contest?.round === false) return p;
+    p.nothing = false;
+    p.contest = { kind: activeKind, rivals: [], round: true };
+    return p;
+}
+
+// The contest kind this plan runs a round of (fights excluded), or null.
+export function plannedContestKind(plan) {
+    const c = plan?.contest;
+    if (!c?.kind || c.kind === "clash" || c.round === false) return null;
+    return String(c.kind);
 }

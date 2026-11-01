@@ -40,7 +40,10 @@ export function storyBlock(shape, round) {
         }
     }
     if (!lines.length) return "";
-    const out = [`<${tag}>`, shape?.rule || "These results are final: narrate them as they are."];
+    const tagAttrs = Object.entries(round.attrs || {})
+        .filter(([k, v]) => /^[a-z][\w-]*$/i.test(k) && v !== "" && v !== null && v !== undefined)
+        .map(([k, v]) => ` ${k}="${ledgerAttr(v)}"`).join("");
+    const out = [`<${tag}${tagAttrs}>`, shape?.rule || "These results are final: narrate them as they are."];
     out.push(...lines);
     if (round.standing) out.push(`<standing>${ledgerText(round.standing)}</standing>`);
     if (round.over) out.push("The contest is over.");
@@ -126,7 +129,7 @@ export function groupEffectShorts(g) {
 // (initiative...) lead as their own chip; group notes (escalation, momentum)
 // follow the tier. `icon` = the dice module's chip icon.
 export function chipRows(round, icon = "") {
-    const lead = (round?.notes || []).length ? [{ title: "Round", tier: "Turn order", outcome: round.notes.join(" · ") }] : [];
+    const lead = (round?.notes || []).length ? [{ title: "Round", tier: round.notesLabel || "Turn order", outcome: round.notes.join(" · ") }] : [];
     return [...lead, ...(round?.groups || []).map(g => {
         const title = g.title || (g.sides || []).map(sd => sd.actor).join(" vs ");
         const notes = (g.notes || []).length ? ` · ${g.notes.join(" · ")}` : "";

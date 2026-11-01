@@ -27,24 +27,36 @@ import { combatBubble, attachContestToMessage } from "../../ui/combatBubble.js";
 import { playRoll, playTierResult } from "../soundFx.js";
 import { runEnemyAI } from "../enemyAI.js";
 import { makeRng, newSeed } from "./rng.js";
-import { contestKey } from "./effects.js";
+import { contestKey, trackValue } from "./effects.js";
 import { runRound } from "./engine.js";
 import { resolveRuleset } from "./registry.js";
 import { storyBlock, postPassBlock, chipRows, outcomeDetail, groupEffectShorts } from "./ledger.js";
 import { adjudicateRound } from "./oracle.js";
-import { brainActions } from "./brains.js";
+import { brainActions, rivalBrainActions } from "./brains.js";
 import { hudFighters, hudTurnOrder, hudMeters, hudPushLog } from "./hud.js";
+import { runOpposition } from "./opposition.js";
+import { racePhase } from "./modules/shape/race.js";
 
 // ---------- configuration ----------
 
 // The chat's rulesets (chat configuration, outside `data`); a chat without
 // one follows the drawer's global preset. The global Legacy toggle forces the
-// pre-rework pipeline everywhere during the transition.
+// pre-rework pipeline for fights during the transition (the other kinds have
+// no legacy pipeline).
 export function contestRuleset(kind = "clash") {
     const s = gmSettings();
     const rs = resolveRuleset(getContestRulesets(), kind, s.contest_preset);
-    if (s.combat_legacy) return { ...rs, legacy: true, preset: "legacy" };
+    if (s.combat_legacy && kind === "clash") return { ...rs, legacy: true, preset: "legacy" };
     return rs;
+}
+
+// The stakes resource name: the chat's, else the shape's own default
+// (Health for fights, Stamina for races, none for scored contests).
+function stakesNameOf(ruleset) {
+    const own = String(ruleset?.opts?.stakes || "").trim();
+    if (own) return own;
+    const def = ruleset?.shape?.stakesDefault;
+    return def === undefined ? "Health" : String(def);
 }
 
 // ---------- d.contest (game state: snapshots cover it) ----------
@@ -65,12 +77,15 @@ function contestState() {
         meters: c.meters && typeof c.meters === "object" ? c.meters : {},
         // HUD round log (core/contest/hud.js): the last rounds' result rows.
         log: Array.isArray(c.log) ? c.log : [],
+        // Races / scored contests: the rivals' names (tracked enemies or
+        // untracked runners the pre-pass named).
+        rivals: Array.isArray(c.rivals) ? c.rivals.map(String) : [],
     };
     return d.contest;
 }
 
 function emptyContest(kind, active, round = 0) {
-    return { active, kind, round, party: [], out: {}, tracks: {}, initiative: {}, meters: {}, log: [] };
+    return { active, kind, round, party: [], out: {}, tracks: {}, initiative: {}, meters: {}, log: [], rivals: [] };
 }
 
 function startContest(kind) {
@@ -87,19 +102,25 @@ function findSheet(name) {
     if (char) return { sheet: char, side: "party" };
     const enemy = stateManager.getEnemy(name) || matchName(d.enemies || [], name);
     if (enemy) return { sheet: enemy, side: "enemy" };
+    // An untracked rival (race / scored contest): a sheet-less stand-in, so
+    // its tracks move while resource/status effects on it are skipped.
+    const key = contestKey(name);
+    const rival = (d.contest?.active ? d.contest.rivals || [] : []).find(n => contestKey(n) === key);
+    if (rival) return { sheet: { id: null, name: rival, pseudo: true, resources: [], attributes: [], skills: [], statuses: [], inventory: [] }, side: "enemy" };
     return null;
 }
 
 function buildOps() {
+    const real = fn => (sheet, ...args) => (sheet?.pseudo ? false : fn(sheet, ...args));
     return {
         sheet: findSheet,
         match: matchName,
         max: (sheet, entry) => resolveResourceMax(sheet, entry),
-        useSkill: (sheet, name) => stateManager.useSkill(sheet.id, name),
-        addItem: (sheet, name, qty) => stateManager.addItem(sheet.id, { name, qty }),
-        removeItem: (sheet, name, qty) => stateManager.removeItem(sheet.id, name, qty),
-        setStatus: (sheet, fields) => stateManager.updateStatus(sheet.id, fields),
-        clearStatus: (sheet, name) => stateManager.removeStatusByName(sheet.id, name),
+        useSkill: real((sheet, name) => stateManager.useSkill(sheet.id, name)),
+        addItem: real((sheet, name, qty) => stateManager.addItem(sheet.id, { name, qty })),
+        removeItem: real((sheet, name, qty) => stateManager.removeItem(sheet.id, name, qty)),
+        setStatus: real((sheet, fields) => stateManager.updateStatus(sheet.id, fields)),
+        clearStatus: real((sheet, name) => stateManager.removeStatusByName(sheet.id, name)),
         priorState: (sheet) => sheet?.state?.mode || null,
         evalMath: resolveNumericExpr,
     };
@@ -181,6 +202,79 @@ function brainEnemyRaw(contest, stakes, max) {
     return brainActions(enemies, party, stakesRatio(stakes), max);
 }
 
+// ---------- rivals (race / scored contest) ----------
+
+// Adds the pre-pass's rival names to the contest (once each). Party members
+// never become rivals: a race between party members runs them all on the
+// party side.
+function mergeRivals(contest, names) {
+    const d = stateManager.getData();
+    const have = new Set(contest.rivals.map(contestKey));
+    for (const raw of names || []) {
+        const name = cleanText(raw).slice(0, 60);
+        if (!name || have.has(contestKey(name))) continue;
+        if (stateManager.getCharacter(name) || matchName(d.characters || [], name)) continue;
+        const enemy = stateManager.getEnemy(name) || matchName(d.enemies || [], name);
+        contest.rivals.push(enemy ? enemy.name : name);
+        have.add(contestKey(name));
+    }
+}
+
+// Rivals still in the contest: [{ name, sheet }] (sheet = tracked enemy or
+// the sheet-less stand-in).
+function activeRivals(contest) {
+    return (contest.rivals || [])
+        .filter(n => !contest.out[contestKey(n)])
+        .map(n => findSheet(n))
+        .filter(f => f && f.side === "enemy" && !f.sheet.state)
+        .map(f => ({ name: f.sheet.name, sheet: f.sheet }));
+}
+
+// Everyone in the contest this round: [{ name, side }]. Fights take every
+// tracked enemy; races and scored contests their rivals; challenges only
+// the party.
+function contestParticipants(contest, shape, partyActions = []) {
+    const d = stateManager.getData();
+    const opponents = shape?.rivals
+        ? (contest.rivals || []).map(name => ({ name, side: "enemy" }))
+        : shape?.id === "shape.clash" ? (d.enemies || []).map(e => ({ name: e.name, side: "enemy" })) : [];
+    return [
+        ...partyActions.map(a => ({ name: a.actor, side: "party" })),
+        ...contest.party.map(name => ({ name, side: "party" })),
+        ...opponents,
+    ].filter(p => findSheet(p.name));
+}
+
+// The shape's and the mutators' view of the contest for the oracle and the
+// rivals' call (numbers allowed: neither is the story).
+function contestStateLines(ctx) {
+    const lines = [];
+    for (const src of [ctx.shape, ...(ctx.mutators || [])]) {
+        if (typeof src?.oracleState !== "function") continue;
+        try {
+            lines.push(...(src.oracleState(ctx) || []));
+        } catch (e) {
+            logDebug(`contest: ${src.id} oracleState failed — ${e?.message || e}`);
+        }
+    }
+    return lines;
+}
+
+// Scripted rival tactics (0 calls): race styles read the phase and who runs
+// ahead; scored styles alternate safe / showy.
+function rivalBrainRaw(kind, rivals, ctx, max) {
+    const ahead = (name) => {
+        const own = trackValue(ctx.contest, name, "progress");
+        let best = null, gap = Infinity;
+        for (const p of ctx.participants || []) {
+            const g = trackValue(ctx.contest, p.name, "progress") - own;
+            if (g > 0 && g < gap) { gap = g; best = p.name; }
+        }
+        return best;
+    };
+    return rivalBrainActions(kind, rivals, { phase: kind === "race" ? racePhase(ctx) : "", ahead, round: ctx.contest.round }, max);
+}
+
 // Enemy side. An EMPTY array is a deliberate no-op round; only null (the
 // call failed) degrades to the scripted brains.
 function buildEnemyActions(raw, fallback) {
@@ -216,14 +310,17 @@ function fallbackGroups(partyActions, enemyActions) {
 // Persists the round's out-states: party members fall through the sheet's
 // state slot (dead / ko), enemies leave the scene (archived, restored with
 // their last state if they come back). Party members who fled or yielded stay
-// out of the contest until it ends.
-function commitOutStates(round, contest) {
+// out of the contest until it ends. Outside fights a rival who drops out of a
+// race only leaves the contest; a tracked one leaves the scene only if dead.
+function commitOutStates(round, contest, shape) {
     const s = gmSettings();
+    const fight = shape?.id === "shape.clash";
     for (const o of Object.values(round.out || {})) {
         const found = findSheet(o.name);
         if (!found) continue;
         if (found.side === "enemy") {
-            stateManager.removeEnemy(found.sheet.id);
+            if (!found.sheet.pseudo && (fight || o.mode === "dead")) stateManager.removeEnemy(found.sheet.id);
+            else contest.out[contestKey(found.sheet.name)] = o.mode;
             continue;
         }
         if (o.mode === "dead" && s.feature_death !== false) stateManager.setState(found.sheet.id, "dead", o.reason || "fell in combat");
@@ -271,6 +368,21 @@ export function contestActive() {
     return !!c?.active;
 }
 
+// The running contest's kind, or null.
+export function activeContestKind() {
+    const c = stateManager.getData().contest;
+    return c?.active ? String(c.kind || "clash") : null;
+}
+
+// Names the hotbar's targeted quick actions can pick on the opposing side.
+export function contestOpponents() {
+    const d = stateManager.getData();
+    const c = d.contest;
+    if (!c?.active) return [];
+    if (String(c.kind || "clash") === "clash") return (d.enemies || []).filter(e => !e.state).map(e => e.name);
+    return activeRivals(contestState()).map(r => r.name);
+}
+
 // Ends the contest by hand (HUD End button). The enemies stay in the scene:
 // archiving them is the player's call. A plain state edit like any other
 // manual change; the next message's snapshot covers it.
@@ -288,8 +400,9 @@ export function contestHud() {
     const contest = d.contest;
     if (!contest?.active) return null;
     const ruleset = contestRuleset(contest.kind || "clash");
-    const stakesName = String(ruleset.opts?.stakes || "Health");
+    const stakesName = stakesNameOf(ruleset);
     const stakesOf = (sheet) => {
+        if (!stakesName) return null;
         const entry = matchName(sheet?.resources || [], stakesName);
         if (!entry) return null;
         const max = resolveResourceMax(sheet, entry);
@@ -298,13 +411,27 @@ export function contestHud() {
     const names = {};
     for (const sh of [...(d.characters || []), ...(d.enemies || [])]) names[contestKey(sh.name)] = sh.name;
     for (const n of contest.party || []) names[contestKey(n)] = names[contestKey(n)] || n;
+    // Races, scored contests and challenges draw their own rows (progress,
+    // scores, clocks); fights draw the stakes bars.
+    let fighters;
+    if (typeof ruleset.shape?.hudRows === "function") {
+        const view = { contest: contestState(), opts: { ...ruleset.opts, stakes: stakesName }, ops: buildOps(), shape: ruleset.shape, mutators: ruleset.mutators, out: {} };
+        view.participants = contestParticipants(view.contest, ruleset.shape);
+        if (!view.participants.some(p => p.side === "party")) {
+            view.participants.unshift(...(d.characters || []).filter(c => !c.state).map(c => ({ name: c.name, side: "party" })));
+        }
+        view.stakes = sheet => ruleset.shape.stakes(view, sheet);
+        fighters = ruleset.shape.hudRows(view);
+    } else {
+        fighters = hudFighters(contest, d.characters || [], d.enemies || [], stakesOf);
+    }
     return {
         kind: ruleset.kind,
         round: Math.max(0, Math.trunc(Number(contest.round) || 0)),
         preset: ruleset.preset,
         legacy: ruleset.legacy,
         shape: ruleset.shape,
-        fighters: hudFighters(contest, d.characters || [], d.enemies || [], stakesOf),
+        fighters,
         order: hudTurnOrder(contest, names),
         meters: hudMeters({ contest, opts: ruleset.opts || {} }, ruleset.mutators),
         log: Array.isArray(contest.log) ? contest.log : [],
@@ -313,33 +440,69 @@ export function contestHud() {
 
 // One contest round for the player action on user message `userMsgId`.
 // Returns true when a round was committed.
-export async function runContestTurn(action, plan, userMsgId) {
+// `kind`: clash (needs tracked enemies) | race | scores | challenge.
+export async function runContestTurn(action, plan, userMsgId, kind = "clash") {
     const s = gmSettings();
     const d = stateManager.getData();
-    if (!(d.enemies || []).length) {
+    const fight = kind === "clash";
+    if (fight && !(d.enemies || []).length) {
         logDebug("contest: no tracked enemies — no round");
         return false;
     }
-    const ruleset = contestRuleset("clash");
+    const ruleset = contestRuleset(kind);
+    const shape = ruleset.shape;
+    if (!shape) return false;
     let contest = contestState();
     if (!contest.active || contest.kind !== ruleset.kind) contest = startContest(ruleset.kind);
+    if (shape.rivals) mergeRivals(contest, plan?.contest?.rivals);
 
     const bubble = combatBubble.show("Resolving the round...");
     try {
         const partyActions = buildPartyActions(action, plan, contest);
         bubble.showActions(partyActions);
 
+        // One ctx for the whole round: the rivals' call and the oracle read
+        // the shape's view of it; the engine resolves with it.
+        const stakes = stakesNameOf(ruleset);
+        const seed = newSeed();
+        const ctx = {
+            rng: makeRng(seed),
+            ops: buildOps(),
+            shape,
+            turn: ruleset.turn,
+            dice: ruleset.dice,
+            consequence: ruleset.consequence,
+            mutators: ruleset.mutators,
+            opts: { ...ruleset.opts, stakes },
+            contest,
+            participants: contestParticipants(contest, shape, partyActions),
+            roundNo: contest.round + 1,
+            out: {},
+            log: msg => logDebug(`contest: ${msg}`),
+        };
+        ctx.stakes = sheet => shape.stakes(ctx, sheet);
+        const stateLines = fight ? [] : contestStateLines(ctx);
+
         // Blind by default; a reactive pre-pass judgment hands the enemies the
         // player's move so they answer it. opts.opposition = "brains" skips
-        // the call for scripted behaviors (3.7).
-        const stakes = String(ruleset.opts?.stakes || "Health");
+        // the call for scripted behaviors (3.7). Races and scored contests
+        // ask their rivals instead; a challenge has no opposing side.
         const maxActions = Math.max(1, Number(s.combat_max_enemy_actions) || 6);
-        const reactive = plan?.combat?.reactive === true;
-        const enemyRaw = ruleset.opts?.opposition === "brains" ? brainEnemyRaw(contest, stakes, maxActions) : await runEnemyAI({
-            maxActions,
-            ...(reactive ? { playerAction: action } : {}),
-        });
-        const enemyActions = buildEnemyActions(enemyRaw, () => brainEnemyRaw(contest, stakes, maxActions));
+        const brains = ruleset.opts?.opposition === "brains";
+        let enemyRaw, fallback;
+        if (fight) {
+            const reactive = plan?.combat?.reactive === true;
+            fallback = () => brainEnemyRaw(contest, stakes, maxActions);
+            enemyRaw = brains ? fallback() : await runEnemyAI({
+                maxActions,
+                ...(reactive ? { playerAction: action } : {}),
+            });
+        } else {
+            const rivals = shape.opposition ? activeRivals(contest) : [];
+            fallback = () => rivalBrainRaw(kind, rivals, ctx, maxActions);
+            enemyRaw = !rivals.length ? [] : brains ? fallback() : await runOpposition({ shape, rivals, stateLines, maxActions });
+        }
+        const enemyActions = buildEnemyActions(enemyRaw, fallback);
         bubble.addEnemyActions(enemyActions);
         bubble.update("Adjudicating...");
 
@@ -355,6 +518,9 @@ export async function runContestTurn(action, plan, userMsgId) {
             enemyActions,
             stakes,
             dice: ruleset.dice,
+            shape: fight ? null : shape,
+            stateLines,
+            untracked: (contest.rivals || []).filter(n => findSheet(n)?.sheet?.pseudo),
             onStream: (partial) => bubble.syncGroups(annotate(partial)),
         });
         const degraded = !groups;
@@ -363,33 +529,13 @@ export async function runContestTurn(action, plan, userMsgId) {
 
         // COMMIT — baseline first, on the USER message (see header).
         captureSnapshot(userMsgId);
-        const seed = newSeed();
-        const participants = [
-            ...partyActions.map(a => ({ name: a.actor, side: "party" })),
-            ...contest.party.map(name => ({ name, side: "party" })),
-            ...(d.enemies || []).map(e => ({ name: e.name, side: "enemy" })),
-        ].filter(p => findSheet(p.name));
-        const ctx = {
-            rng: makeRng(seed),
-            ops: buildOps(),
-            shape: ruleset.shape,
-            turn: ruleset.turn,
-            dice: ruleset.dice,
-            consequence: ruleset.consequence,
-            mutators: ruleset.mutators,
-            opts: { ...ruleset.opts, stakes },
-            contest,
-            participants,
-            out: {},
-            log: msg => logDebug(`contest: ${msg}`),
-        };
-        ctx.stakes = sheet => ruleset.shape.stakes(ctx, sheet);
+        const participants = ctx.participants;
         const round = runRound(ctx, groups);
         for (const g of round.groups) {
             for (const r of g.records) if (r.status === "skipped") logDebug(`contest: effect skipped (${r.reason}) — ${r.kind} "${r.name}" on "${r.target}"`);
         }
 
-        commitOutStates(round, contest);
+        commitOutStates(round, contest, shape);
         contest.round += 1;
         const roundNo = contest.round;
         for (const p of participants) {

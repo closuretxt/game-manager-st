@@ -14,7 +14,7 @@ import {
     getContestRulesets, setContestRulesets,
 } from "../core/features.js";
 import {
-    CONTEST_MODULES, CONTEST_PRESETS, CONTEST_RULESET_OPTIONS, resolveRuleset, editRuleset, sanitizeRulesets, slotModules,
+    CONTEST_MODULES, CONTEST_PRESETS, contestRulesetOptions, resolveRuleset, editRuleset, sanitizeRulesets, slotModules,
 } from "../core/contest/registry.js";
 import { refreshFeatureUI } from "../settings/settingsManager.js";
 import { fadeOutRemove } from "../util/fx.js";
@@ -142,7 +142,7 @@ function renderRulesetBuilder(body) {
         }
         body.append(tabs);
     }
-    if (s.combat_legacy) {
+    if (s.combat_legacy && _rulesetKind === "clash") {
         body.append($("<div>").addClass("gm_modal_hint").text("The global Legacy combat toggle is on: every chat runs the old pipeline until it is switched off in the settings drawer."));
     }
 
@@ -157,10 +157,13 @@ function renderRulesetBuilder(body) {
     if (rs.legacy) {
         body.append($("<div>").addClass("gm_modal_hint").text("Legacy runs the pre-rework pipeline: no slots or options."));
     } else {
+        // Shape options (race length, rounds, clock sizes).
+        const shapeOpts = rs.shape ? moduleOptions(rs.shape.id, raw.opts) : null;
+        if (shapeOpts) body.append(shapeOpts);
         const changedSlots = [];
         for (const slot of Object.keys(SLOT_LABELS)) {
             const sel = $("<select>").addClass("text_pole");
-            for (const m of slotModules(slot)) sel.append($("<option>").val(m.id).text(m.label).attr("title", m.hint));
+            for (const m of slotModules(slot, _rulesetKind)) sel.append($("<option>").val(m.id).text(m.label).attr("title", m.hint));
             sel.val(rs[slot]?.id || "");
             sel.on("change", () => editRules({ slot, value: sel.val() }));
             const row = $("<div>").addClass("gm_field gm_field_inline").append($("<label>").text(SLOT_LABELS[slot]), sel);
@@ -173,7 +176,7 @@ function renderRulesetBuilder(body) {
 
         const on = new Set(rs.mutators.map(m => m.id));
         const grid = $("<div>").addClass("gm_settings_grid");
-        for (const m of slotModules("mutators")) {
+        for (const m of slotModules("mutators", _rulesetKind)) {
             const box = $("<input>").attr("type", "checkbox").prop("checked", on.has(m.id));
             box.on("change", () => editRules({ mutator: m.id, on: box.prop("checked") }));
             const row = $("<label>").addClass("checkbox_label").attr("title", m.hint).append(box, $("<span>").text(m.label));
@@ -186,7 +189,7 @@ function renderRulesetBuilder(body) {
             if (opts) body.append($("<div>").addClass("gm_section_hint").text(m.label), opts);
         }
 
-        for (const opt of CONTEST_RULESET_OPTIONS) {
+        for (const opt of contestRulesetOptions(_rulesetKind)) {
             body.append(optionControl(opt, raw.opts?.[opt.key], v => editRules({ opt: opt.key, value: v })));
         }
     }
