@@ -124,6 +124,9 @@ function renderQuickReply(mesEl, msg) {
     const showing = isQuickReplyShowing(msg);
     const existing = mesEl.querySelector(".gm_quick_reply");
     mesEl.classList.toggle("gm_quick_mes", showing);
+    // The action above hides its round card (style.css .gm_quick_prev).
+    const prev = mesEl.previousElementSibling;
+    if (prev?.classList?.contains("mes")) prev.classList.toggle("gm_quick_prev", showing);
     // Inline too: chat themes style .mes_text with selectors that outrank
     // the stylesheet's rule (seen live: the text showed above the cards).
     const textEl = mesEl.querySelector(".mes_text");
@@ -185,5 +188,6 @@ export function initQuickBattle() {
         renderButton();
     });
     stateManager.onChange(() => renderButton());
+    document.addEventListener("gm:inputbar", () => renderButton());
     renderButton();
 }

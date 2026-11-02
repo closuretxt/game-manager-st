@@ -101,7 +101,9 @@ function renderButton() {
     }
     const cold = show && !!getRouterCold();
     btn.style.display = show ? "" : "none";
-    btn.className = `interactable fa-solid ${cold ? "fa-snowflake gm_router_cold" : "fa-fire"}`;
+    // Runs on every state change: touch the DOM only when something differs.
+    const cls = `interactable fa-solid ${cold ? "fa-snowflake gm_router_cold" : "fa-fire"}`;
+    if (btn.className !== cls) btn.className = cls;
     btn.title = cold
         ? "Router COLD: actions skip the pre-pass (no roll/transaction judging). It wakes on new enemies, named skills or fight/trade actions, or when the GM says so. Click to make it hot."
         : "Router HOT: every action is judged by the pre-pass. Click to let it sleep until something happens.";
@@ -111,5 +113,6 @@ export function initRouterHeat() {
     const st = getContext();
     st.eventSource.on(st.event_types.CHAT_CHANGED, () => renderButton());
     stateManager.onChange(() => renderButton());
+    document.addEventListener("gm:inputbar", () => renderButton());
     renderButton();
 }

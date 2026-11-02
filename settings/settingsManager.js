@@ -247,8 +247,10 @@ function onCheckbox(key, id) {
     extension_settings[extensionName][key] = $(`#${id}`).prop("checked");
     saveSettingsDebounced();
     // The open chat may follow these defaults — let the panel re-render.
-    // The input-bar buttons (router heat, quick battle) show or hide.
-    if (OVERRIDABLE_KEYS.includes(key) || ["pre_pass", "router_heat", "ui_quick_button", "ui_router_button"].includes(key)) stateManager.emitChange("features");
+    if (OVERRIDABLE_KEYS.includes(key)) stateManager.emitChange("features");
+    // Input-bar buttons (router heat, quick battle) only: a DOM event, not a
+    // full panel re-render (they listen in inject/routerHeat.js, quickBattle.js).
+    else if (["pre_pass", "router_heat", "ui_quick_button", "ui_router_button"].includes(key)) document.dispatchEvent(new Event("gm:inputbar"));
 }
 
 // Kept for index.js's re-export: re-reads every checkbox.

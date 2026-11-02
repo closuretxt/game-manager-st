@@ -4403,8 +4403,10 @@ body > #gm_spawn_chip {
     font-weight: 600;
     text-align: center;
 }
-/* The reply below already shows this round: no second copy on the action. */
-.mes:has(+ .mes.gm_quick_mes) .gm_round_file {
+/* The reply below already shows this round: no second copy on the action.
+   A class set by inject/quickBattle.js, not :has(+ ...): a sibling :has makes
+   every chat DOM change re-check every message (long chats stall). */
+.mes.gm_quick_prev .gm_round_file {
     display: none;
 }
 
