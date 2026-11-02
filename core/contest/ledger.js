@@ -282,10 +282,15 @@ export function roundCardText(card) {
 
 // The quick-battle reply's text (inject/quickBattle.js): what the chat keeps
 // in place of a narrated reply, so later story turns read what happened. The
-// message itself shows the cards; this is the prompt's view of it.
+// message itself shows the cards; this is the prompt's view of it, so the
+// fiction and the outcome only: no dice math, no rule notes (momentum, deck).
 export function quickReplyText(cards, roundNo, over = false) {
     const parts = [`[Quick battle, round ${roundNo}]`];
-    for (const c of cards?.groups || []) parts.push(roundCardText(c));
+    for (const c of cards?.groups || []) {
+        const head = `${c.who}${c.move ? `: ${c.move}` : ""}${c.target ? ` → ${c.target}` : ""}${c.result ? ` (${c.result})` : ""}`;
+        const fx = (c.effects || []).map(e => `${e.who} ${e.items.map(i => i.text).join(", ")}`).join("; ");
+        parts.push([head, c.story, fx].filter(Boolean).join("\n"));
+    }
     for (const ev of cards?.events || []) parts.push(ev);
     if (over) parts.push("The fight is over.");
     return parts.join("\n\n");

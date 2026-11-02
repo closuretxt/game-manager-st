@@ -4380,7 +4380,7 @@ body > #gm_spawn_chip {
     filter: drop-shadow(0 0 4px var(--SmartThemeQuoteColor, #e8a33d));
 }
 .gm_quick_mes .mes_text {
-    display: none;
+    display: none !important;
 }
 .gm_quick_reply {
     margin-top: 4px;

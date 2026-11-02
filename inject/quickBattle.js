@@ -124,6 +124,10 @@ function renderQuickReply(mesEl, msg) {
     const showing = isQuickReplyShowing(msg);
     const existing = mesEl.querySelector(".gm_quick_reply");
     mesEl.classList.toggle("gm_quick_mes", showing);
+    // Inline too: chat themes style .mes_text with selectors that outrank
+    // the stylesheet's rule (seen live: the text showed above the cards).
+    const textEl = mesEl.querySelector(".mes_text");
+    if (textEl) textEl.style.display = showing ? "none" : "";
     if (!showing) {
         existing?.remove();
         return;
