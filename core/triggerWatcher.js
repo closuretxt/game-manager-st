@@ -32,13 +32,14 @@
 import { extension_settings, getContext } from "../../../../extensions.js";
 import { extensionName } from "./constants.js";
 import { gmSettings } from "./features.js";
-import { logDebug } from "./debug.js";
+import { logDebug, gmNotify } from "./debug.js";
 import { stateManager } from "./stateManager.js";
 import { rollDice, requeueRollResult } from "./diceRoller.js";
 import { runCombatTurn, requeueCombatRound } from "./combatEngine.js";
 import { runContestTurn, replayContestRound, contestRuleset, activeContestKind, endContest } from "./contest/contest.js";
 import { takeQuickActions, applyQuickActions, continueContestPlan, plannedContestKind } from "./contest/quick.js";
 import { forceQuickPlan, markQuickRound } from "../inject/quickBattle.js";
+import { routerCold, routerWakeReason, noteColdTurn, setRouterHeat } from "../inject/routerHeat.js";
 import { runTransaction } from "./transactions.js";
 import { runPrePass, planFromRaw } from "./prePass.js";
 import { restoreSnapshot } from "./snapshots.js";
@@ -200,6 +201,10 @@ async function recoverSwipePlan(targetMsgId) {
         return { plan, action, reused: true };
     }
 
+    // A cold router skipped this action when it was sent; a swipe doesn't
+    // pay for the call it never made.
+    if (routerCold()) return { plan: null, action, reused: true };
+
     // Nothing persisted for this action — the only case that pays for a call.
     console.info(`[GM DIAG] recoverSwipePlan: no persisted pre-pass for message ${targetMsgId} — re-judging original action`);
     statusBubble.show(s.pre_pass ? "Judging action..." : "Checking action...");
@@ -296,17 +301,36 @@ export async function handlePreTurn(type = "normal") {
     // Falls back to legacy keyword detection when disabled or on failure.
     let plan = null;
     if (action) {
-        // Live feedback: the story generation waits for the pre-pass, so the
-        // screen would otherwise look frozen.
-        statusBubble.show(s.pre_pass ? "Judging action..." : "Checking action...");
-        plan = await runPrePass(action);
-        console.info(`[GM DIAG] pre-pass returned: ${plan ? `roll=${!!plan.roll} tx=${plan.transactions.length} warn=${plan.warnings.length} relevant=${plan.relevant.length} notes=${plan.notes.length} skills=${plan.skills.length} rewrite=${!!plan.rewrite} nothing=${plan.nothing}` : "NULL (fell back to keywords)"}`);
-        if (!plan) plan = planFromTriggers(detectTriggers(action));
+        const activeKind = s.feature_combat ? activeContestKind() : null;
+        // Router heat (inject/routerHeat.js): a cold router skips the call
+        // unless this action wakes it. A running race/challenge still gets
+        // judged — only the router can end it (<contest_end/>).
+        let cold = isPlayerAction && routerCold() && !(activeKind && activeKind !== "clash");
+        if (cold) {
+            const wake = routerWakeReason(action, detectTriggers(action));
+            if (wake) {
+                setRouterHeat(true);
+                cold = false;
+                gmNotify(`Router woke up: ${wake}.`, "info");
+                console.info(`[GM DIAG] router woke: ${wake}`);
+            }
+        }
+        if (cold) {
+            noteColdTurn();
+            plan = planFromTriggers([]);
+            console.info("[GM DIAG] router cold — pre-pass skipped");
+        } else {
+            // Live feedback: the story generation waits for the pre-pass, so the
+            // screen would otherwise look frozen.
+            statusBubble.show(s.pre_pass ? "Judging action..." : "Checking action...");
+            plan = await runPrePass(action);
+            console.info(`[GM DIAG] pre-pass returned: ${plan ? `roll=${!!plan.roll} tx=${plan.transactions.length} warn=${plan.warnings.length} relevant=${plan.relevant.length} notes=${plan.notes.length} skills=${plan.skills.length} rewrite=${!!plan.rewrite} nothing=${plan.nothing}` : "NULL (fell back to keywords)"}`);
+            if (!plan) plan = planFromTriggers(detectTriggers(action));
+        }
         // Hotbar quick actions (core/contest/quick.js): a pending intent
         // means the player chose a contest action, so the round runs even
         // when the router judged none. Consumed by this message either way.
         const quick = takeQuickActions();
-        const activeKind = s.feature_combat ? activeContestKind() : null;
         if (quick.length && activeKind && (activeKind !== "clash" || (stateManager.getData().enemies || []).length)) {
             plan = applyQuickActions(plan, quick, activeKind);
             console.info(`[GM DIAG] quick actions: ${quick.length} pending intent(s) — contest round forced`);

@@ -146,7 +146,7 @@ function renderQuickReply(mesEl, msg) {
 function renderButton() {
     let btn = document.getElementById("gm_quick_battle");
     const s = gmSettings();
-    const show = !!(s.enabled && s.feature_combat && hasChat());
+    const show = !!(s.enabled && s.feature_combat && s.ui_quick_button !== false && hasChat());
     if (!btn) {
         const send = document.getElementById("send_but");
         if (!send) return;

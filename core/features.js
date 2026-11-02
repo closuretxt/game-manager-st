@@ -240,6 +240,23 @@ export function setQuickBattle(on) {
     return true;
 }
 
+// Router heat (inject/routerHeat.js): a cold router skips the pre-pass call.
+// Chat configuration, so a rollback never flips it. `seen` = the live enemy
+// ids at the last cold turn (a new one wakes the router).
+export function getRouterCold() {
+    const r = chatBucket()?.router;
+    return r && typeof r === "object" && r.cold === true ? { cold: true, seen: Array.isArray(r.seen) ? r.seen : [] } : null;
+}
+
+export function setRouterCold(cold, seen = []) {
+    const b = chatBucket(true);
+    if (!b) return false;
+    if (cold) b.router = { cold: true, seen: [...seen] };
+    else delete b.router;
+    saveChat();
+    return true;
+}
+
 // Container gate shared by the UI, the snapshot renderers and the parser.
 // Containers no tab toggle covers (resources, attributes, traits) are always on.
 export function containerEnabled(container) {

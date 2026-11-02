@@ -22,7 +22,9 @@ import { stateManager, playerLabel, charLabel, playerNames } from "./stateManage
 import { bondDefs, isPlayerSheet, formatEffects, BOND_STAGES, stageDef, stageOf, eligibleStages } from "./bonds.js";
 import { attachBondLines } from "../inject/bondLine.js";
 import { chronoConfig, chronoStateXml } from "./chrono.js";
-import { beginMessageLog, commitMessageLog } from "../ui/messageLog.js";
+import { beginMessageLog, commitMessageLog, logNotification } from "../ui/messageLog.js";
+import { statusBubble } from "../ui/statusBubble.js";
+import { routerCold, routerHeatOn, applyRouterTag } from "../inject/routerHeat.js";
 import { progression } from "./progression.js";
 import { parseToolBlocks, applyToolBlocks, escAttr } from "./toolParser.js";
 import { sheetXml, sharedXml, customXml, xmlEl } from "./sheetXml.js";
@@ -304,6 +306,7 @@ async function buildSystemPrompt(exchange = [], { contest = "" } = {}) {
         ...(spawnReview ? ['<new_characters><char name="Kael" kind="party" details="wounded knight the party rescued, stoic and dry-humored" level="3"/><char name="Goblin Chief" kind="enemy" details="scarred veteran leading the warband, brutal close-quarters fighter"/></new_characters>'] : []),
         ...(s.feature_death !== false ? ['<deaths><death char="Name" reason="short cause of death"/></deaths>'] : []),
         '<knockouts><ko char="Name" reason="short cause"/><ko_clear char="Name"/></knockouts>',
+        ...(routerHeatOn() ? ['<router state="cold"/>'] : []),
         ...(bonds ? ['<bonds><bond_thread char="Mara" name="Rooftop night" effect="Affection +4, Trust +2" ends="if Aaru tells anyone">After the raid Mara and Aaru shared a bottle on the roof; Aaru sang badly, Mara laughed and asked him to keep the night between them.</bond_thread><bond_end char="Mara" name="Broken promise"/><bond_stage char="Mara" to="Friend"/></bonds>'] : []),
         ...(prog ?['<grant_exp><char>Name</char><exp amount="25"/></grant_exp>'] : []),
         ...(chrono ? [
@@ -330,6 +333,9 @@ async function buildSystemPrompt(exchange = [], { contest = "" } = {}) {
         "Use <renames> when the exchange shows a tracked actor's NAME actually changing (a title granted, a cover dropped, an alias becomes their real name): <rename from=\"...\" to=\"...\"/> — The new name must NOT already be tracked, and only for names already in the snapshot. Do NOT rename for passing nicknames or pronoun shifts — only when the story makes the new name the actor's actual tracked name.",
         ...(spawnReview ? [
             "Use <new_characters> when a NEW named character or enemy clearly enters the scene and matters beyond this exchange: one <char> per newcomer with kind=\"party\" (a potential companion or recurring NPC) or kind=\"enemy\" (a hostile threat), a short details brief (role, appearance, combat style, what makes them different) and their level when progression is active. Never re-emit names already in the state snapshot. When you report a new enemy here, skip the <enemies> add — the player reviews and builds the full sheet from your brief; keep <enemies> for updates and removals.",
+        ] : []),
+        ...(routerHeatOn() ? [
+            "Use <router> to pace the PRE-PASS: a separate call that judges each player action before the story (rolls, payments, fights). <router_state> below the snapshot says whether it is hot (judging every action) or cold (asleep, actions run unjudged). <router state=\"cold\"/> when the scene settles into a stretch where nothing needs judging (casual talk, downtime, safe travel, intimacy). <router state=\"hot\"/> as soon as tension builds (a threat shows up, a confrontation, a risky or costly action is coming). Report only a change — omit it when the state already fits.",
         ] : []),
         "Use <set_traits> when the exchange CHANGES one of a character's tracked <traits> (free-text details such as Clothing, Appearance, Mood, Location): write the full NEW text, short and concrete, replacing the old one. Only names already in that character's <traits>; never re-emit unchanged text.",
         ...(on.statuses ? ["Use <set_statuses> for TEMPORARY per-character conditions (Dazed, Drunk, Inspired...). When a status lands, also apply its listed stat modifiers through <change_values>; when the condition ends, remove the modifiers with a matching <change_values> and clear the status with <clear_statuses>. Do not use statuses for permanent traits (passives) or party-wide gimmicks (custom)."] : []),
@@ -435,6 +441,8 @@ function buildUserPrompt(exchange, history = [], present = [], contest = "") {
         // Only when it applies: the system prompt stays identical turn to turn.
         ...(present.length ? ['- <char roster="present"> — a benched character who appears in this exchange: account their changes exactly like a party character\'s (same <char> scoping).'] : []),
         buildStateSummaryXml(present),
+        // Per turn, outside the cached system prompt.
+        ...(routerHeatOn() ? [`<router_state>${routerCold() ? "cold" : "hot"}</router_state>`] : []),
         "",
     );
     // Game-system results (dice rolls, clash rounds, transactions — the GM
@@ -532,6 +540,13 @@ export async function runAgentPass(reason = "manual", mesId = null) {
             logDebug(`agent pass (${reason}): applied ${applied} change(s)`);
         } else {
             logDebug(`agent pass (${reason}): no changes reported`);
+        }
+        // Router heat: chat configuration, not state — outside the snapshot.
+        const heat = applyRouterTag(reply);
+        if (heat) {
+            const note = heat === "hot" ? "🔥 The GM woke the router: actions are judged again." : "❄ The GM put the router to sleep: actions skip the pre-pass.";
+            statusBubble.notify(note, 12000, false);
+            logNotification(note);
         }
         // Bonds: stage moves the new bars call for (demotion, Wary/Hostile,
         // graduation), then the message-attached story lines. Before the

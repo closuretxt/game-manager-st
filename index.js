@@ -23,6 +23,7 @@ import { initPostTurn } from "./inject/postTurn.js";
 import { initBondLines } from "./inject/bondLine.js";
 import { initInterceptor } from "./inject/interceptor.js";
 import { initQuickBattle } from "./inject/quickBattle.js";
+import { initRouterHeat } from "./inject/routerHeat.js";
 // Connection profiles
 import { swapProfile } from "./util/profileSwapper.js";
 export { swapProfile };
@@ -58,6 +59,7 @@ jQuery(async () => {
         initBondLines();
         initInterceptor();
         initQuickBattle();
+        initRouterHeat();
         initAttachmentRestore();
 
         logDebug("Game Manager initialized.", extension_settings[extensionName]);

@@ -15,8 +15,11 @@ const CHECKBOXES = {
     open_panel_on_start: "gm_setting_open_panel",
     feature_bubble_button: "gm_setting_bubble_btn",
     feature_hotbar: "gm_setting_hotbar",
+    ui_quick_button: "gm_setting_quick_button",
+    ui_router_button: "gm_setting_router_button",
     legacy_api: "gm_setting_legacy",
     pre_pass: "gm_setting_pre_pass",
+    router_heat: "gm_setting_router_heat",
     feature_setup_wizard: "gm_setting_feat_wizard",
     feature_character_creator: "gm_setting_feat_char_creator",
     feature_spawn_review: "gm_setting_spawn_review",
@@ -72,9 +75,14 @@ export const defaultSettings = {
     feature_bubble_button: false, // Mobile-friendly floating bubble that toggles the panel (fades into a ghost when unused).
     bubble_pos: { x: null, y: null }, // Saved bubble position (null = default bottom-right corner).
     feature_hotbar: true, // Action hotbar above the input bar: Skills/Items pills with per-character drawers and one-click action insertion.
+    ui_quick_button: true, // Input-bar quick battle button (inject/quickBattle.js).
+    ui_router_button: true, // Input-bar router heat button (inject/routerHeat.js; also needs router_heat).
 
     // Pre-pass router — LLM judges every fresh action instead of keyword triggers.
     pre_pass: true,
+    // Router heat (inject/routerHeat.js): the router may go cold (skip the
+    // pre-pass) by button or the tracker's call. Off = always hot, no button.
+    router_heat: false,
 
     // Scenario Setup Wizard — one-button LLM bootstrap of the tracked setup.
     feature_setup_wizard: true,
@@ -239,7 +247,8 @@ function onCheckbox(key, id) {
     extension_settings[extensionName][key] = $(`#${id}`).prop("checked");
     saveSettingsDebounced();
     // The open chat may follow these defaults — let the panel re-render.
-    if (OVERRIDABLE_KEYS.includes(key)) stateManager.emitChange("features");
+    // The input-bar buttons (router heat, quick battle) show or hide.
+    if (OVERRIDABLE_KEYS.includes(key) || ["pre_pass", "router_heat", "ui_quick_button", "ui_router_button"].includes(key)) stateManager.emitChange("features");
 }
 
 // Kept for index.js's re-export: re-reads every checkbox.

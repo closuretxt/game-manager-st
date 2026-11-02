@@ -4379,6 +4379,19 @@ body > #gm_spawn_chip {
     color: var(--SmartThemeQuoteColor, #e8a33d);
     filter: drop-shadow(0 0 4px var(--SmartThemeQuoteColor, #e8a33d));
 }
+/* Router heat: hot is the quiet default; cold stands out (calls skipped). */
+#gm_router_heat {
+    opacity: 0.6;
+    transition: opacity 0.15s, color 0.15s;
+}
+#gm_router_heat:hover {
+    opacity: 1;
+}
+#gm_router_heat.gm_router_cold {
+    opacity: 1;
+    color: #7cc4f0;
+    filter: drop-shadow(0 0 4px #7cc4f0);
+}
 .gm_quick_mes .mes_text {
     display: none !important;
 }
